@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from backend.web.flask_runs import MutationGuard, PrincipalResolver, create_run_blueprint
 from backend.web.flask_auth import (
@@ -15,6 +15,7 @@ from backend.web.flask_indicators import create_indicator_blueprint
 from backend.web.flask_ui import create_ui_blueprint
 from backend.web.flask_account import create_account_blueprint
 from backend.web.flask_audit import create_audit_blueprint, install_audit_hook
+from backend.web.flask_tiles import create_tile_blueprint
 from backend.web.run_api import RunApi
 from backend.web.results_api import ResultsApi
 from backend.web.situation_api import SituationApi
@@ -42,8 +43,10 @@ def create_app(
     session_idle_timeout_seconds: int = DEFAULT_IDLE_TIMEOUT_SECONDS,
     session_absolute_timeout_seconds: int = DEFAULT_ABSOLUTE_TIMEOUT_SECONDS,
     enable_ui: bool = True,
+    app_config: Optional[Mapping[str, Any]] = None,
+    tile_root: Optional[str | Path] = None,
 ):
-    """Minimal Flask application shell for the first Run API vertical slice."""
+    """Create the complete Flask shell from already-constructed application APIs."""
 
     try:
         from flask import Flask
@@ -58,6 +61,8 @@ def create_app(
         static_url_path="/static",
     )
     app.json.ensure_ascii = False
+    if app_config:
+        app.config.from_mapping(dict(app_config))
     if principal_resolver is None:
         if not isinstance(secret_key, str) or not secret_key:
             raise RuntimeError("secret_key is required for default session authentication")
@@ -120,6 +125,8 @@ def create_app(
         install_audit_hook(
             app, repository=audit_api.repository, principal_resolver=principal_resolver
         )
+    if tile_root is not None:
+        app.register_blueprint(create_tile_blueprint(tile_root=tile_root))
     if enable_ui:
         app.register_blueprint(create_ui_blueprint())
     return app

@@ -17,9 +17,9 @@ class _ClosingConnection(sqlite3.Connection):
     def __enter__(self):
         return super().__enter__()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_value, traceback):
         try:
-            return super().__exit__(exc_type, exc_val, exc_tb)
+            return super().__exit__(exc_type, exc_value, traceback)
         finally:
             self.close()
 
@@ -72,6 +72,7 @@ class AuditRepository:
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, factory=_ClosingConnection)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     @staticmethod
