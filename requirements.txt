@@ -1,0 +1,9 @@
+# Web/API runtime. Keep implementation on basic Flask APIs compatible with both the
+# project's older Python deployment line and newer Linux/Kylin environments.
+Flask>=2.3,<4
+
+# PySCIPOpt/SCIP is intentionally not pinned here yet. Real-solver packaging remains a
+# separate deployment task; unit/contract tests use the solver-free fake model boundary.
+
+# Programmatic offline PDF result reports. CSV export uses the Python standard library.
+reportlab>=4,<5

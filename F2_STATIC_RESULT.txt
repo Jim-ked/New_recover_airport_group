@@ -1,0 +1,22 @@
+F2 STATIC BUILD GATE
+TEMPLATE PASS pages/login.html
+TEMPLATE PASS pages/situations.html
+TEMPLATE PASS pages/base_data.html
+TEMPLATE PASS pages/run.html
+TEMPLATE PASS pages/single_run.html
+TEMPLATE PASS pages/gis_runtime.html
+TEMPLATE PASS pages/results.html
+JS PASS frontend/static/js/modules/api-client.js
+JS PASS frontend/static/js/modules/base-data.js
+JS PASS frontend/static/js/modules/gis-runtime.js
+JS PASS frontend/static/js/modules/login.js
+JS PASS frontend/static/js/modules/results.js
+JS PASS frontend/static/js/modules/run.js
+JS PASS frontend/static/js/modules/shell.js
+JS PASS frontend/static/js/modules/single-run.js
+JS PASS frontend/static/js/modules/situations.js
+NETWORK_RUNTIME_REFS 0 []
+LEGACY_API_REFS 0 []
+FONT_MIN frontend/static/css/situations.css 10.0
+FONT_MIN frontend/static/css/base-data.css 10.0
+LEAFLET_LOCAL_FILES ['README.md']

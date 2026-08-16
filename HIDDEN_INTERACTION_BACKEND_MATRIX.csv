@@ -1,0 +1,21 @@
+﻿interaction,status,support
+Situation optimistic save conflict,READY_BACKEND,expected_content_hash on PUT/DELETE; stale edits rejected instead of overwriting.
+Situation delete while historical/active Runs refer to it,READY_BACKEND,Mutable current Situation can be deleted without touching immutable Run snapshots; reference counts returned for confirmation copy.
+Base Data stale edit / delete,READY_BACKEND,Catalog revision on mutable records; stale write/delete conflicts and current-Situation reference protection.
+Restore current base data into a Situation Working Copy,READY_BACKEND,Nonpersistent copy-airport transform owns base/profile copy semantics; user still explicitly saves the Working Copy.
+Select mission from historical Run,READY_BACKEND,GET /api/missions/history reads immutable owner Run snapshots and returns distinct frozen mission objects.
+Run validate then another tab changes input before submit,READY_BACKEND,validate returns validated_input_hash; submit echoes expected_input_hash; mismatch => 409 RUN_VALIDATION_STALE and no Run created.
+Retry failed Run after current Situation changes,READY_BACKEND,POST /api/runs/{id}/retry clones the failed Run immutable snapshot; it does not read current Situation/catalogs.
+Run cancel/complete race,READY_BACKEND,Persistent lifecycle/cancel_requested gate prevents canonical success from being published after acknowledged cancellation.
+History filter after mutable Situation changes,READY_BACKEND,"Run history filters use immutable snapshots/Solution facts, not current Situation."
+Permission-aware button visibility,READY_BACKEND,GET /api/me returns effective permissions; HTTP permission checks remain final authority.
+Expert edits same score sheet in two tabs,READY_BACKEND,Whole expert score sheet has aggregate revision; stale replacement rejected; submitted sheet must cover every enabled L3.
+Core indicator deletion,READY_BACKEND,Core/protected L3 nodes cannot be deleted; indicator set edits are draft/version controlled.
+Expert scores become published weights,SEMANTIC_BLOCKER,No approved score aggregation/normalization rule. Backend stores/versions scores and reports weights unavailable rather than inventing a formula.
+GIS displays all OD / weak connections,READY_BACKEND,Frozen Run snapshot OD matrix is projected by backend; frontend never recomputes distances.
+GIS strong-connection threshold,SEMANTIC_BLOCKER,"Meaning of threshold (distance, sorties, or another measure) is not frozen. Control must remain hidden/neutral until decided."
+Bulk Base Data import existing IDs,SEMANTIC_BLOCKER,"Exact CSV representation, duplicate/update conflict policy, and atomic batch semantics are not frozen. Do not silently upsert."
+Formatted Results report download,READY_SOURCE_DATA_RENDERER_DEFERRED,Canonical report-data.v1 is available with export permission; PDF/DOCX/CSV rendering template/format is not frozen.
+Operation/security audit trail,READY_BACKEND_RUNTIME_TEST_DEFERRED,"Append-only audit repository, filtered admin API and Flask after_request hook are coded; real Flask hook execution waits for Codex runtime."
+Session login / expiry flow,RUNTIME_DEFERRED,Principal/session adapter and /api/me exist; actual host login route and browser session-expiry flow are runtime integration work.
+Settings entry,PRODUCT_SCOPE_UNDEFINED,No frozen settings scope; do not create a fake backend/API merely to activate the visual entry.

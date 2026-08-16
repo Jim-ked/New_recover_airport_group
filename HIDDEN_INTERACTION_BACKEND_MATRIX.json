@@ -1,0 +1,102 @@
+[
+  {
+    "interaction": "Situation optimistic save conflict",
+    "status": "READY_BACKEND",
+    "support": "expected_content_hash on PUT/DELETE; stale edits rejected instead of overwriting."
+  },
+  {
+    "interaction": "Situation delete while historical/active Runs refer to it",
+    "status": "READY_BACKEND",
+    "support": "Mutable current Situation can be deleted without touching immutable Run snapshots; reference counts returned for confirmation copy."
+  },
+  {
+    "interaction": "Base Data stale edit / delete",
+    "status": "READY_BACKEND",
+    "support": "Catalog revision on mutable records; stale write/delete conflicts and current-Situation reference protection."
+  },
+  {
+    "interaction": "Restore current base data into a Situation Working Copy",
+    "status": "READY_BACKEND",
+    "support": "Nonpersistent copy-airport transform owns base/profile copy semantics; user still explicitly saves the Working Copy."
+  },
+  {
+    "interaction": "Select mission from historical Run",
+    "status": "READY_BACKEND",
+    "support": "GET /api/missions/history reads immutable owner Run snapshots and returns distinct frozen mission objects."
+  },
+  {
+    "interaction": "Run validate then another tab changes input before submit",
+    "status": "READY_BACKEND",
+    "support": "validate returns validated_input_hash; submit echoes expected_input_hash; mismatch => 409 RUN_VALIDATION_STALE and no Run created."
+  },
+  {
+    "interaction": "Retry failed Run after current Situation changes",
+    "status": "READY_BACKEND",
+    "support": "POST /api/runs/{id}/retry clones the failed Run immutable snapshot; it does not read current Situation/catalogs."
+  },
+  {
+    "interaction": "Run cancel/complete race",
+    "status": "READY_BACKEND",
+    "support": "Persistent lifecycle/cancel_requested gate prevents canonical success from being published after acknowledged cancellation."
+  },
+  {
+    "interaction": "History filter after mutable Situation changes",
+    "status": "READY_BACKEND",
+    "support": "Run history filters use immutable snapshots/Solution facts, not current Situation."
+  },
+  {
+    "interaction": "Permission-aware button visibility",
+    "status": "READY_BACKEND",
+    "support": "GET /api/me returns effective permissions; HTTP permission checks remain final authority."
+  },
+  {
+    "interaction": "Expert edits same score sheet in two tabs",
+    "status": "READY_BACKEND",
+    "support": "Whole expert score sheet has aggregate revision; stale replacement rejected; submitted sheet must cover every enabled L3."
+  },
+  {
+    "interaction": "Core indicator deletion",
+    "status": "READY_BACKEND",
+    "support": "Core/protected L3 nodes cannot be deleted; indicator set edits are draft/version controlled."
+  },
+  {
+    "interaction": "Expert scores become published weights",
+    "status": "SEMANTIC_BLOCKER",
+    "support": "No approved score aggregation/normalization rule. Backend stores/versions scores and reports weights unavailable rather than inventing a formula."
+  },
+  {
+    "interaction": "GIS displays all OD / weak connections",
+    "status": "READY_BACKEND",
+    "support": "Frozen Run snapshot OD matrix is projected by backend; frontend never recomputes distances."
+  },
+  {
+    "interaction": "GIS strong-connection threshold",
+    "status": "SEMANTIC_BLOCKER",
+    "support": "Meaning of threshold (distance, sorties, or another measure) is not frozen. Control must remain hidden/neutral until decided."
+  },
+  {
+    "interaction": "Bulk Base Data import existing IDs",
+    "status": "SEMANTIC_BLOCKER",
+    "support": "Exact CSV representation, duplicate/update conflict policy, and atomic batch semantics are not frozen. Do not silently upsert."
+  },
+  {
+    "interaction": "Formatted Results report download",
+    "status": "READY_SOURCE_DATA_RENDERER_DEFERRED",
+    "support": "Canonical report-data.v1 is available with export permission; PDF/DOCX/CSV rendering template/format is not frozen."
+  },
+  {
+    "interaction": "Operation/security audit trail",
+    "status": "READY_BACKEND_RUNTIME_TEST_DEFERRED",
+    "support": "Append-only audit repository, filtered admin API and Flask after_request hook are coded; real Flask hook execution waits for Codex runtime."
+  },
+  {
+    "interaction": "Session login / expiry flow",
+    "status": "RUNTIME_DEFERRED",
+    "support": "Principal/session adapter and /api/me exist; actual host login route and browser session-expiry flow are runtime integration work."
+  },
+  {
+    "interaction": "Settings entry",
+    "status": "PRODUCT_SCOPE_UNDEFINED",
+    "support": "No frozen settings scope; do not create a fake backend/API merely to activate the visual entry."
+  }
+]

@@ -1,0 +1,56 @@
+:root{
+  --shell-top:60px;
+  --shell-side:176px;
+  --bg-canvas:#061522;
+  --bg-shell:#03111d;
+  --bg-sidebar:#041725;
+  --bg-surface:#081b2a;
+  --bg-surface-raised:#0a2132;
+  --bg-field:#061724;
+  --bg-hover:#0d2b41;
+  --bg-active:#103b61;
+  --line-soft:#18374b;
+  --line:#244a62;
+  --line-strong:#35627d;
+  --text:#edf6fc;
+  --text-secondary:#b7cad6;
+  --text-muted:#7893a4;
+  --accent:#3b9cf2;
+  --accent-strong:#247fce;
+  --success:#68c98a;
+  --warning:#d5a755;
+  --danger:#de6666;
+  --info:#6bb5e8;
+  --shadow-1:0 10px 26px rgba(0,0,0,.24);
+  --shadow-2:0 18px 46px rgba(0,0,0,.36);
+  --radius-sm:4px;
+  --radius-md:6px;
+  --radius-lg:9px;
+  --space-1:4px;
+  --space-2:6px;
+  --space-3:8px;
+  --space-4:12px;
+  --space-5:16px;
+  --space-6:20px;
+  --space-7:24px;
+  --space-8:32px;
+  --font-sans:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Source Han Sans CN",Arial,sans-serif;
+  --font-mono:Consolas,"Cascadia Mono","Microsoft YaHei",monospace;
+  --fs-0:11px;
+  --fs-1:12px;
+  --fs-2:13px;
+  --fs-3:14px;
+  --fs-4:16px;
+  --fs-5:20px;
+  --lh-tight:1.25;
+  --lh-ui:1.45;
+  --lh-copy:1.65;
+  /* Transitional aliases keep page slices stable while F0 removes page-owned globals. */
+  --top:var(--shell-top); --side:var(--shell-side); --bg:var(--bg-canvas); --shell:var(--bg-shell); --sidebg:var(--bg-sidebar);
+  --panel:var(--bg-surface); --panel2:var(--bg-surface-raised); --line2:var(--line); --text2:var(--text-secondary); --muted:var(--text-muted);
+  --blue:var(--accent); --green:var(--success); --yellow:var(--warning); --red:var(--danger); --font:var(--font-sans);
+  --motion-fast:120ms;
+  --motion-base:180ms;
+  --ease:cubic-bezier(.2,.75,.3,1);
+}
+@media(max-width:1180px){:root{--shell-side:156px}}

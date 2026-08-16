@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# Runtime state: never mix runtime/user data with source
+runtime/db/*
+runtime/content/*
+runtime/runs/*
+runtime/logs/*
+runtime/temp/*
+!runtime/db/.gitkeep
+!runtime/content/.gitkeep
+!runtime/runs/.gitkeep
+!runtime/logs/.gitkeep
+!runtime/temp/.gitkeep
+
+# Large offline tiles are deployment resources, not normal Git source
+resources/tiles/*
+!resources/tiles/.gitkeep
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Delivery archives: handoff packages are not repo source
+airport_cluster_refactor_contracts.zip
+codex_handoff.zip

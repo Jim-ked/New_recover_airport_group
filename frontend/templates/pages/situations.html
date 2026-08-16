@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}情境构建 · 机场群顽存能力仿真系统{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/situations.css') }}">{% endblock %}
+{% block content %}
+<main class="situation-page shell-content" id="situationPage" data-tile-template="{{ tile_template|default('') }}">
+  <div id="situationMap" class="situation-map" aria-label="情境空间工作区"></div>
+  <div id="situationFallbackMap" class="situation-fallback-map hidden" aria-label="无底图坐标视图"><div class="fallback-grid"></div><div id="fallbackObjects" class="fallback-objects"></div><span>无底图坐标视图 · 本地 Leaflet 就位后自动切换正式地图</span></div>
+
+  <header class="situation-head overlay-surface">
+    <div class="situation-heading">
+      <div><h1>情境构建</h1><div id="situationMeta" class="situation-meta">打开或创建情境后开始编辑</div></div>
+      <span id="situationSaveState" class="badge">未打开</span>
+    </div>
+    <div class="situation-picker"><label for="situationSelect">当前情境</label><select id="situationSelect" class="control"><option value="">选择情境…</option></select></div>
+    <div class="situation-actions">
+      <button id="newSituationButton" class="btn" type="button">新建</button>
+      <button id="saveSituationButton" class="btn primary" type="button" disabled>保存</button>
+      <button id="deleteSituationButton" class="btn danger" type="button" disabled>删除</button>
+      <a class="btn" href="{{ url_for('ui_v1.base_data_page') }}">数据管理</a>
+    </div>
+  </header>
+
+  <section class="situation-tools overlay-surface" aria-label="地图工具">
+    <button class="tool-button active" data-mode="select" type="button"><b>↖</b><span>选择</span></button>
+    <button class="tool-button" data-mode="airport" type="button"><b>◎</b><span>机场</span></button>
+    <button class="tool-button" data-mode="mission" type="button"><b>◆</b><span>任务</span></button>
+    <button class="tool-button" data-mode="damage" type="button"><b>✦</b><span>损毁</span></button>
+    <button class="tool-button" data-mode="layers" type="button"><b>▤</b><span>图层</span></button>
+  </section>
+
+  <section class="situation-search overlay-surface"><input id="situationSearch" class="control" type="search" placeholder="搜索当前情境对象"><button id="fitSituationButton" class="btn" type="button">适应范围</button></section>
+
+  <aside id="situationInspector" class="situation-inspector overlay-surface">
+    <header class="inspector-head"><div><strong id="inspectorTitle">情境对象</strong><small id="inspectorSubtitle">选择地图对象或切换工具</small></div><button id="closeInspector" class="icon-button" type="button" aria-label="收起面板">×</button></header>
+    <div id="inspectorBody" class="inspector-content"><div class="empty-state">当前没有选中对象。</div></div>
+  </aside>
+
+  <section id="situationOverview" class="situation-overview overlay-surface">
+    <button id="overviewTrigger" class="overview-trigger" type="button" aria-expanded="false"><span><strong>情境总览</strong><small id="overviewCounts">机场 0 · 任务 0 · 损毁场景 0</small></span><span class="chevron">⌃</span></button>
+    <div class="overview-body"><div><div id="overviewContent" class="overview-content"></div></div></div>
+  </section>
+
+  <div id="situationMessage" class="workspace-message hidden" role="alert"></div>
+
+  <div id="situationCreateModal" class="shell-modal-backdrop" aria-hidden="true">
+    <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationCreateTitle">
+      <header><strong id="situationCreateTitle">新建情境</strong></header>
+      <div class="body"><div class="field required"><label>情境编号</label><input id="newSituationId" class="control" placeholder="例如 SITUATION-01"></div><div class="field required"><label>名称</label><input id="newSituationName" class="control"></div><div class="field"><label>说明</label><textarea id="newSituationDescription" class="control textarea-control" rows="3"></textarea></div><div id="newSituationMessage" class="inline-message hidden"></div></div>
+      <footer><button id="newSituationCancel" class="btn ghost" type="button">取消</button><button id="newSituationConfirm" class="btn primary" type="button">创建工作副本</button></footer>
+    </section>
+  </div>
+
+  <div id="situationConfirmModal" class="shell-modal-backdrop" aria-hidden="true">
+    <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationConfirmTitle"><header><strong id="situationConfirmTitle">确认操作</strong></header><div id="situationConfirmBody" class="body"></div><footer><button id="situationConfirmCancel" class="btn ghost" type="button">取消</button><button id="situationConfirmAction" class="btn danger" type="button">确认</button></footer></section>
+  </div>
+</main>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/modules/situations.js') }}"></script>{% endblock %}

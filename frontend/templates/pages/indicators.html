@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}指标管理 · 机场群顽存能力仿真系统{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/indicators.css') }}">{% endblock %}
+{% block content %}
+<main class="indicator-page shell-content">
+  <header class="indicator-toolbar">
+    <div class="indicator-title"><h1>指标管理</h1><p>维护指标定义、专家评分与发布态权重；不参与算法运行。</p></div>
+    <div class="set-picker"><label for="indicatorSetSelect">指标集</label><select id="indicatorSetSelect" class="control"></select><span id="indicatorSetStatus" class="badge">—</span></div>
+    <div class="toolbar-actions"><button id="newIndicatorSet" class="btn" type="button">新建指标集</button><button id="publishIndicatorSet" class="btn primary" type="button" disabled>发布草稿</button></div>
+  </header>
+
+  <section class="indicator-workspace">
+    <section class="indicator-tree panel">
+      <header class="panel-head"><div><strong>三级指标体系</strong><small id="indicatorTreeMeta">正在加载默认指标集…</small></div><button id="addIndicatorNode" class="btn" type="button" disabled>新增三级指标</button></header>
+      <div class="tree-body">
+        <section class="tree-band"><h2>一级</h2><div id="indicatorL1" class="tree-row roots"></div></section>
+        <section class="tree-band"><h2>二级</h2><div id="indicatorL2" class="tree-row"></div></section>
+        <section class="tree-band grow"><h2>三级</h2><div id="indicatorL3" class="l3-grid"></div></section>
+      </div>
+    </section>
+
+    <aside class="indicator-panel panel">
+      <div class="indicator-tabs segmented" id="indicatorTabs"><button class="active" data-tab="detail" type="button">节点详情</button><button data-tab="score" type="button">专家评分</button></div>
+      <div id="indicatorDetailPane" class="indicator-pane"></div>
+      <div id="indicatorScorePane" class="indicator-pane hidden">
+        <div class="score-head"><div class="field"><label for="expertSelect">评分专家</label><select id="expertSelect" class="control"></select></div><button id="manageExperts" class="btn" type="button">专家管理</button></div>
+        <div id="scoreSummary" class="score-summary"></div>
+        <div class="field"><label for="scoreGroupSelect">当前二级指标</label><select id="scoreGroupSelect" class="control"></select></div>
+        <div id="scoreRows" class="score-rows"><div class="empty-state">选择专家后开始评分。</div></div>
+        <footer class="score-actions"><button id="saveScoreDraft" class="btn" type="button" disabled>保存草稿</button><button id="submitScores" class="btn primary" type="button" disabled>提交评分</button></footer>
+      </div>
+    </aside>
+  </section>
+
+  <div id="indicatorMessage" class="workspace-message hidden" role="alert"></div>
+
+  <div id="indicatorSetModal" class="shell-modal-backdrop" aria-hidden="true"><section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="indicatorSetModalTitle"><header><strong id="indicatorSetModalTitle">新建指标集</strong></header><div class="body"><div class="field required"><label for="newSetName">名称</label><input id="newSetName" class="control" placeholder="例如 保障指标集·试验方案A"></div><div class="field required"><label for="newSetVersion">标识</label><input id="newSetVersion" class="control" placeholder="例如 CUSTOM-A"></div><div class="field"><label for="newSetSource">基于</label><select id="newSetSource" class="control"></select><div class="field-note">复制既有已发布指标集，保留一级/二级结构和受保护核心指标，再维护自己的三级指标。</div></div><div class="field"><label for="newSetDescription">说明</label><textarea id="newSetDescription" class="control textarea-control" rows="3"></textarea></div><div id="newSetMessage" class="inline-message hidden"></div></div><footer><button id="newSetCancel" class="btn ghost" type="button">取消</button><button id="newSetConfirm" class="btn primary" type="button">创建草稿</button></footer></section></div>
+
+  <div id="indicatorNodeModal" class="shell-modal-backdrop" aria-hidden="true"><section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="indicatorNodeModalTitle"><header><strong id="indicatorNodeModalTitle">三级指标</strong></header><div class="body"><div class="field required"><label for="nodeName">名称</label><input id="nodeName" class="control"></div><div class="field required"><label for="nodeCode">业务编码</label><input id="nodeCode" class="control"></div><div class="compact-grid"><div class="field required"><label for="nodeKind">类型</label><select id="nodeKind" class="control"><option value="ABSTRACT">抽象指标</option><option value="DIRECT">直接指标</option></select></div><div class="field"><label for="nodeDirection">方向</label><select id="nodeDirection" class="control"><option value="">未设置</option><option value="positive">正向</option><option value="negative">负向</option><option value="neutral">中性</option></select></div></div><div class="field"><label for="nodeUnit">单位</label><input id="nodeUnit" class="control"></div><div class="field"><label for="nodeDescription">说明</label><textarea id="nodeDescription" class="control textarea-control" rows="4"></textarea></div><label class="check-line"><input id="nodeEnabled" type="checkbox" checked>启用该指标</label><div id="nodeMessage" class="inline-message hidden"></div></div><footer><button id="nodeCancel" class="btn ghost" type="button">取消</button><button id="nodeDelete" class="btn danger hidden" type="button">删除</button><button id="nodeSave" class="btn primary" type="button">保存</button></footer></section></div>
+
+  <div id="expertsModal" class="shell-modal-backdrop" aria-hidden="true"><section class="shell-modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="expertsModalTitle"><header><strong id="expertsModalTitle">专家管理</strong></header><div class="body"><div id="expertList" class="expert-list"></div><div class="expert-add"><input id="newExpertId" class="control" placeholder="专家编号"><input id="newExpertName" class="control" placeholder="专家姓名"><button id="addExpert" class="btn primary" type="button">新增</button></div><div id="expertMessage" class="inline-message hidden"></div></div><footer><button id="expertsClose" class="btn" type="button">完成</button></footer></section></div>
+</main>
+{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/modules/indicators.js') }}"></script>{% endblock %}

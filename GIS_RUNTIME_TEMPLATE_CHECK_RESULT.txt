@@ -1,0 +1,4 @@
+OK frontend/templates/base.html
+OK frontend/templates/pages/gis_runtime.html
+OK frontend/templates/pages/run.html
+OK frontend/templates/pages/single_run.html

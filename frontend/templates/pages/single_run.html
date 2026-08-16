@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}单次运行仪表盘 · 机场群顽存能力仿真系统{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/single-run.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="single-run-page" id="singleRunPage" data-run-id="{{ run_id }}">
+  <header class="single-head">
+    <a class="single-back" href="{{ url_for('ui_v1.run_page') }}">‹　返回算法运行</a>
+    <h1>单次运行仪表盘</h1>
+    <div id="runBadges" class="single-badges"><span class="single-badge">正在读取 Run…</span></div>
+    <div class="single-actions">
+      <button id="openRuntimeButton" class="btn primary" type="button">打开运行态势</button>
+    </div>
+  </header>
+
+  <div id="singleRunMessage" class="single-message hidden" role="alert"></div>
+  <div id="singleRunLoading" class="single-loading">正在读取冻结 RunSnapshot、Solution 与 Metrics…</div>
+
+  <section id="singleRunContent" class="hidden" aria-label="成功运行结果">
+    <div class="summary-cards">
+      <section class="summary-card">
+        <h2>最终组群</h2>
+        <div id="clusterPrimary" class="summary-big">—</div>
+        <div id="clusterMeta" class="summary-mini"></div>
+        <div id="clusterBadges" class="summary-badges"></div>
+      </section>
+      <section class="summary-card">
+        <h2>任务规模</h2>
+        <div id="missionPrimary" class="summary-big">—</div>
+        <div id="missionMeta" class="summary-mini"></div>
+      </section>
+      <section class="summary-card">
+        <h2>出动情况</h2>
+        <div id="sortiePrimary" class="summary-big">—</div>
+        <div id="sortieMeta" class="summary-mini"></div>
+      </section>
+      <section class="summary-card">
+        <h2>机场协同</h2>
+        <div id="collaborationPrimary" class="summary-big">—</div>
+        <div id="collaborationMeta" class="summary-mini"></div>
+      </section>
+      <section class="summary-card resource-summary-card">
+        <h2>资源保障</h2>
+        <div id="resourceSummary" class="resource-summary"></div>
+      </section>
+    </div>
+
+    <div class="single-middle">
+      <section class="single-panel timeline-panel">
+        <div class="single-panel-title">
+          <strong>任务调度时序</strong>
+          <div class="timeline-controls">
+            <div id="timelineModes" class="segmented" role="tablist" aria-label="时序查看维度">
+              <button type="button" class="active" data-mode="all">全部</button>
+              <button type="button" data-mode="airport">机场</button>
+              <button type="button" data-mode="mission">任务</button>
+              <button type="button" data-mode="aircraft">机型</button>
+            </div>
+            <select id="timelineObjectSelect" class="mini-select hidden" aria-label="选择时序对象"></select>
+          </div>
+        </div>
+        <div id="timelineChart" class="svg-chart" role="img" aria-label="出动返场时间序列"></div>
+        <div class="chart-legend"><span><i class="legend-departure"></i>出动</span><span><i class="legend-return"></i>返航</span></div>
+      </section>
+
+      <div class="single-right-column">
+        <section class="single-panel spatial-panel">
+          <div class="single-panel-title"><strong>组群与航链结构</strong><span>非比例示意 · 地理关系见运行态势</span></div>
+          <div id="spatialChart" class="spatial-chart" role="img" aria-label="冻结运行空间布局"></div>
+        </section>
+        <section class="single-panel resource-timeline-panel">
+          <div class="single-panel-title"><strong>资源余量时序</strong><span>参与机场类别最低余量率</span></div>
+          <div id="resourceTimelineChart" class="svg-chart resource-svg-chart" role="img" aria-label="燃油航材航弹余量时序"></div>
+          <div class="chart-legend resource-legend"><span><i data-category="fuel"></i>燃油</span><span><i data-category="material"></i>航材</span><span><i data-category="munition"></i>航弹</span></div>
+        </section>
+      </div>
+    </div>
+
+    <div class="single-bottom">
+      <section class="single-panel structure-card" data-detail-tab="airport">
+        <div class="single-panel-title"><strong>全机场承接</strong><span id="airportCountLabel">全部机场</span></div>
+        <div class="structure-table-wrap">
+          <table class="structure-table">
+            <thead><tr><th>机场</th><th>出动</th><th>返航</th><th>承接占比</th><th>角色</th></tr></thead>
+            <tbody id="airportTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="single-panel structure-card" data-detail-tab="mission">
+        <div class="single-panel-title"><strong>任务调度结构</strong><span id="missionCountLabel">全部任务</span></div>
+        <div class="structure-table-wrap">
+          <table class="structure-table">
+            <thead><tr><th>任务</th><th>需求架次</th><th>已调度</th><th>承接机场</th></tr></thead>
+            <tbody id="missionTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="single-panel structure-card" data-detail-tab="aircraft">
+        <div class="single-panel-title"><strong>机型投入结构</strong><span id="aircraftCountLabel">全部机型</span></div>
+        <div class="structure-table-wrap">
+          <table class="structure-table">
+            <thead><tr><th>机型</th><th>投入架次</th><th>投入占比</th><th>出动机场</th></tr></thead>
+            <tbody id="aircraftTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="single-panel attention-card">
+        <div class="single-panel-title"><strong>方案关注</strong><span>规则状态</span></div>
+        <div class="attention-empty">
+          <strong>未配置自动关注规则</strong>
+          <span>当前仅展示确定的运行事实，不根据资源比例、集中度或峰值自行生成阈值告警。</span>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section id="detailDock" class="detail-dock" aria-label="统一结果详情">
+    <nav id="detailTabs" class="detail-tabs">
+      <button type="button" data-tab="airport" class="active">机场承接</button>
+      <button type="button" data-tab="mission">任务调度</button>
+      <button type="button" data-tab="aircraft">机型投入</button>
+      <button type="button" data-tab="resource">资源保障</button>
+      <button type="button" data-tab="technical">技术信息</button>
+      <button id="detailCloseButton" type="button" class="detail-close" aria-label="关闭详情">×</button>
+    </nav>
+    <div id="detailBody" class="detail-body">点击机场、任务、机型或资源对象后，在此显示同一 Run 的冻结结果详情。</div>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/modules/single-run.js') }}"></script>
+{% endblock %}

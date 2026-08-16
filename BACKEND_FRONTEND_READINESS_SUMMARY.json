@@ -1,0 +1,84 @@
+{
+  "schema_version": "backend_frontend_readiness.v1",
+  "date": "2026-08-16",
+  "tests": {
+    "passed": 275,
+    "failed": 0,
+    "runtime_flask_browser_deferred": true
+  },
+  "capability_status_counts": {
+    "FRONTEND_ONLY": 12,
+    "RUNTIME_DEFERRED": 2,
+    "READY_BACKEND": 58,
+    "PRODUCT_SCOPE_UNDEFINED": 1,
+    "READY_SOURCE_DATA_RENDERER_DEFERRED": 2,
+    "SEMANTIC_BLOCKER": 2
+  },
+  "hidden_interaction_status_counts": {
+    "READY_BACKEND": 13,
+    "SEMANTIC_BLOCKER": 3,
+    "READY_SOURCE_DATA_RENDERER_DEFERRED": 1,
+    "READY_BACKEND_RUNTIME_TEST_DEFERRED": 1,
+    "RUNTIME_DEFERRED": 1,
+    "PRODUCT_SCOPE_UNDEFINED": 1
+  },
+  "module_status": [
+    {
+      "module": "Base Data",
+      "status": "READY_WITH_IMPORT_BLOCKER",
+      "judgment": "Airport/Mission/AircraftType/ResourceType CRUD, revisions, reference protection, paging/search and historical mission source are ready. Bulk JSON/CSV import semantics remain blocked by package/conflict policy."
+    },
+    {
+      "module": "Situation",
+      "status": "READY_BACKEND",
+      "judgment": "Whole Working Copy create/read/update/delete, owner scope, content-hash optimistic locking, base/mission copy transforms and saved-list search are ready."
+    },
+    {
+      "module": "Indicator",
+      "status": "READY_WITH_WEIGHT_FORMULA_BLOCKER",
+      "judgment": "Default V1.1 tree, draft versioning, protected core nodes, Expert CRUD, aggregate draft/submitted score sheets are ready. Score→weight formula is not frozen."
+    },
+    {
+      "module": "Run",
+      "status": "READY_BACKEND",
+      "judgment": "Validate, exact validated-input fingerprint binding, submit, persistent history search, structured events, cancel, failure detail and snapshot-based retry are ready."
+    },
+    {
+      "module": "Single Run",
+      "status": "READY_BACKEND",
+      "judgment": "Succeeded-only immutable Snapshot/Solution/Metrics result facts and backend-derived chart/detail leaves are ready."
+    },
+    {
+      "module": "GIS Runtime",
+      "status": "READY_WITH_DISPLAY_SEMANTIC_BLOCKER",
+      "judgment": "Per-window server projection, damage facts, complete sortie chains and frozen all-OD facts are ready. Strong-connection threshold meaning is unresolved; Leaflet/tile assets are runtime-deferred."
+    },
+    {
+      "module": "Results",
+      "status": "READY_SOURCE_DATA_RENDERER_DEFERRED",
+      "judgment": "R0/R1/R2, multi-scenario, configuration comparisons, comparable candidate filtering and report-data.v1 source facts are ready. Final downloadable report renderer/format is not frozen."
+    },
+    {
+      "module": "Cross-cutting auth/audit",
+      "status": "READY_CODE_RUNTIME_TEST_DEFERRED",
+      "judgment": "/api/me effective permissions, CSRF integration points, unified errors, append-only audit storage/query and Flask audit hook are coded. Login host integration and real Flask hook/browser execution are deferred."
+    }
+  ],
+  "semantic_blockers": [
+    "indicator_score_to_weight_formula",
+    "bulk_import_package_conflict_transaction_semantics",
+    "gis_strong_connection_threshold_semantics"
+  ],
+  "renderer_deferred": [
+    "final_report_file_format_template"
+  ],
+  "runtime_deferred": [
+    "flask_dependency_and_testclient",
+    "login_host_integration",
+    "leaflet_and_offline_tiles",
+    "real_browser_smoke"
+  ],
+  "product_scope_undefined": [
+    "settings"
+  ]
+}

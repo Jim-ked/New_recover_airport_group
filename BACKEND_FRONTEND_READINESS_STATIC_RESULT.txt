@@ -1,0 +1,4 @@
+STATIC_CHECK=PASS
+compileall backend: PASS
+node --check frontend modules: PASS
+remote frontend refs (excluding SVG namespace): 0

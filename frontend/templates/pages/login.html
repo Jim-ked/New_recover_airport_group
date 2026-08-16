@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 机场群顽存能力仿真系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+</head>
+<body>
+<main class="login-page" id="loginPage" data-next="{{ next_path|default('/run') }}">
+  <section class="login-visual" aria-hidden="true">
+    <div class="login-grid"></div>
+    <div class="login-brand">
+      <h1>机场群顽存能力仿真系统</h1>
+      <p>机场、任务、损毁情境、组群优化与运行结果统一工作区。登录后进入受权限控制的业务界面。</p>
+    </div>
+  </section>
+  <section class="login-side">
+    <form id="loginForm" class="login-card" novalidate>
+      <h2>用户登录</h2>
+      <p>账号由系统用户库统一管理。</p>
+      <div id="loginMessage" class="inline-message error hidden" role="alert"></div>
+      <div class="field required"><label for="loginName">用户名</label><input id="loginName" class="control" name="username" autocomplete="username" required></div>
+      <div class="field required"><label for="loginPassword">密码</label><input id="loginPassword" class="control" name="password" type="password" autocomplete="current-password" required></div>
+      <button id="loginButton" class="btn primary" type="submit">登录</button>
+      <div class="login-foot">会话同时受空闲超时和绝对时长限制；账号被禁用或密码修改后，已有会话会立即失效。</div>
+    </form>
+  </section>
+</main>
+<script type="module" src="{{ url_for('static', filename='js/modules/login.js') }}"></script>
+</body>
+</html>

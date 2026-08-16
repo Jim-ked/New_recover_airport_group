@@ -1,0 +1,28 @@
+=== F0/F1 STATIC BUILD GATE ===
+UTC 2026-08-16T08:39:55Z
+[1] Python compileall
+PASS
+[2] Jinja parse/render without Flask runtime
+PASS base.html 3182
+PASS pages/login.html 1482
+PASS pages/run.html 10181
+PASS pages/single_run.html 9260
+PASS pages/gis_runtime.html 7789
+PASS pages/results.html 6809
+[3] Node syntax
+PASS frontend/static/js/modules/api-client.js
+PASS frontend/static/js/modules/gis-runtime.js
+PASS frontend/static/js/modules/login.js
+PASS frontend/static/js/modules/results.js
+PASS frontend/static/js/modules/run.js
+PASS frontend/static/js/modules/shell.js
+PASS frontend/static/js/modules/single-run.js
+[4] Runtime remote URL scan (SVG namespace excluded)
+PASS no network/CDN runtime references
+[5] Legacy API scan
+PASS no legacy runtime/scene/dispatch APIs
+[6] Tiny page font scan (<10px explicit)
+PASS no explicit 8-9.5px page font sizes
+[7] Shared UI ownership contract
+[8] Browser runtime note
+DEFERRED: managed Chromium blocks local http/file navigation in this container; real Flask/browser smoke remains Codex/human step.
