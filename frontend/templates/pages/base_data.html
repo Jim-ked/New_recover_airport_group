@@ -20,7 +20,7 @@
       <span class="workspace-divider" aria-hidden="true"></span>
       <nav class="data-tabs" id="baseDataTabs" aria-label="基础数据类型">
         <button class="active" type="button" data-tab="airports">机场</button>
-        <button type="button" data-tab="missions">任务模板</button>
+        <button type="button" data-tab="missions">任务</button>
         <button type="button" data-tab="aircraft_types">机型</button>
         <button type="button" data-tab="resource_types">保障资源</button>
       </nav>
@@ -83,7 +83,7 @@
       <div class="body">
         <div class="inline-message warning">导入会先完整校验，再以一个事务替换所选数据集当前内容；不生成可选择的历史版本。操作摘要会进入统一行为日志。</div>
         <div class="import-grid">
-          <div class="field"><label>数据集</label><select id="importDataset" class="control" autocomplete="off" name="base-data-import-dataset"><option value="airports">机场</option><option value="missions">任务模板</option><option value="aircraft_types">机型</option><option value="resource_types">保障资源</option><option value="aircraft_resource_requirements">机型资源消耗关系</option></select></div>
+          <div class="field"><label>数据集</label><select id="importDataset" class="control" autocomplete="off" name="base-data-import-dataset"><option value="airports">机场</option><option value="missions">任务</option><option value="aircraft_types">机型</option><option value="resource_types">保障资源</option><option value="aircraft_resource_requirements">机型资源消耗关系</option></select></div>
           <div class="field"><label>格式</label><select id="importFormat" class="control" autocomplete="off" name="base-data-import-format"><option value="json">JSON</option><option value="csv">CSV</option></select></div>
         </div>
         <div class="field"><label>选择文件</label><input id="importFile" class="control file-control" type="file" accept=".json,.csv,application/json,text/csv"></div>

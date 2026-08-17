@@ -59,7 +59,8 @@ function confirmAction(text,label='确认'){return new Promise(resolve=>{refs.co
 function markDirty(){if(!state.working)return;state.dirty=true;renderHeader();renderOverview();drawMap()}
 async function canonicalizeWorking(candidate){const d=await apiFetch('/api/situations/working-copy/canonicalize',{method:'POST',body:{situation:candidate}});return deep(d.situation)}
 function aircraftName(id){const x=state.aircraft.find(v=>v.aircraft_type.aircraft_type_id===id);return x?.aircraft_type?.name||id} function resourceName(id){const x=state.resources.find(v=>v.resource_type.resource_type_id===id);return x?.resource_type?.name||id}
-function renderHeader(){if(!state.working){refs.meta.textContent='打开或创建情境后开始编辑';refs.saveState.textContent='未打开';refs.saveState.className='situation-save-state';refs.save.disabled=true;refs.del.disabled=true;return} refs.meta.textContent=`${state.working.situation_id}${state.meta?.updated_at?` · 最近保存 ${state.meta.updated_at}`:''}${state.meta?.historical_run_count?` · 历史 Run ${state.meta.historical_run_count}`:''}`;refs.saveState.textContent=state.persisted?(state.dirty?'未保存':'已保存'):'新建未保存';refs.saveState.className=`situation-save-state ${state.dirty||!state.persisted?'warning':'success'}`;refs.save.disabled=!writable()||(!state.dirty&&state.persisted);refs.del.disabled=!writable()||!state.persisted}
+function savedTimeLabel(value){if(!value)return'';const parsed=new Date(value);if(!Number.isNaN(parsed.getTime()))return`${String(parsed.getHours()).padStart(2,'0')}:${String(parsed.getMinutes()).padStart(2,'0')}`;const match=String(value).match(/(?:T|\s)(\d{2}:\d{2})/);return match?.[1]||String(value)}
+function renderHeader(){if(!state.working){refs.meta.textContent='';refs.saveState.textContent='未打开';refs.saveState.className='situation-save-state';refs.save.disabled=true;refs.del.disabled=true;return}const savedTime=savedTimeLabel(state.meta?.updated_at);refs.meta.textContent=savedTime?`最近保存 ${savedTime}`:'';refs.saveState.textContent=state.persisted?(state.dirty?'未保存':'已保存'):'新建未保存';refs.saveState.className=`situation-save-state ${state.dirty||!state.persisted?'warning':'success'}`;refs.save.disabled=!writable()||(!state.dirty&&state.persisted);refs.del.disabled=!writable()||!state.persisted}
 async function loadSituationList(selectId=null){const d=await apiFetch('/api/situations?limit=500&offset=0');state.list=d.items||[];refs.select.innerHTML='<option value="">选择情境…</option>'+state.list.map(x=>`<option value="${esc(x.situation_id)}">${esc(x.name)}（${esc(x.situation_id)}）</option>`).join('');if(selectId)refs.select.value=selectId}
 async function canDiscardSituation(){if(!state.dirty&&!state.panelDraftDirty)return true;return confirmAction('当前情境有未保存修改。继续会丢弃这些修改。','放弃修改')}
 function setPanelDraftDirty(dirty=true){state.panelDraftDirty=dirty;refs.panelDraftStatus?.classList.toggle('hidden',!dirty);if(!dirty){pendingPanelTransition=null;refs.body?.querySelector('#panelDraftWarning')?.remove()}}
@@ -77,7 +78,7 @@ function setMode(mode){state.mode=mode;state.selected=null;state.draftMissionCoo
 function lockEditorForReadOnly(){if(writable())return;refs.body.querySelectorAll('input,select,textarea,button').forEach(el=>{el.disabled=true});refs.inspectorSubtitle.textContent=`${refs.inspectorSubtitle.textContent} · 只读`; }
 function applyPermissionUi(){const can=writable();refs.newBtn.disabled=!can;document.getElementById('overviewEditSituationInfo').disabled=!can;for(const mode of ['airport','mission','damage']){const b=refs.tools.querySelector(`[data-mode="${mode}"]`);if(b){b.disabled=!can;b.title=can?'':'当前账号为只读权限';}}}
 function renderAll(){applyPermissionUi();renderHeader();renderOverview();renderInspector();drawMap();syncWorkspaceChrome()}
-function renderOverview(){const s=state.working;const ac=s?.airports?.length||0,mc=s?.missions?.length||0,dc=s?.damage_scenarios?.length||0;refs.overviewCounts.textContent=`机场 ${ac} · 任务 ${mc} · 损毁场景 ${dc}`;if(!s){refs.overviewContent.innerHTML='<div class="empty-state">尚未打开情境。</div>';return}const col=(title,items)=>`<div class="overview-column"><h3>${title}</h3>${items.length?items.map(x=>`<div class="overview-item"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join(''):'<div class="field-note">暂无</div>'}</div>`;refs.overviewContent.innerHTML=col('机场',s.airports.map(x=>[x.airport.airport_name,x.airport.airport_id]))+col('任务',s.missions.map(x=>[x.name,x.mission_id]))+col('损毁场景',s.damage_scenarios.map(x=>[x.name,`${x.events.length} 事件`]));}
+function renderOverview(){const s=state.working;const ac=s?.airports?.length||0,mc=s?.missions?.length||0,dc=s?.damage_scenarios?.length||0;refs.overviewCounts.textContent=`机场 ${ac} · 任务 ${mc} · 损毁 ${dc}`;const col=(title,items)=>`<div class="overview-column"><h3>${title}</h3>${items.length?items.map(item=>`<div class="overview-item"><span class="overview-item-key">${esc(item[0])}</span><span class="overview-item-value"><span>${esc(item[1])}</span>${item[2]?`<small>${esc(item[2])}</small>`:''}</span></div>`).join(''):'<div class="overview-empty">暂无</div>'}</div>`;refs.overviewContent.innerHTML=col('机场',(s?.airports||[]).map(item=>[item.airport.airport_name,item.airport.airport_id]))+col('任务',(s?.missions||[]).map(mission=>[mission.mission_id,mission.name]))+col('损毁场景',(s?.damage_scenarios||[]).map(scenario=>[scenario.damage_scenario_id,scenario.name,`${damageCategoryLabel(scenario.category)} · ${scenario.events.length} 事件`]));}
 function objectCard(type,id,title,sub){return `<button class="object-card ${state.selected?.type===type&&state.selected?.id===id?'selected':''}" type="button" data-object-type="${type}" data-object-id="${esc(id)}"><span><strong>${esc(title)}</strong><small>${esc(sub)}</small></span><svg class="ui-icon"><use href="#i-arrow-right"></use></svg></button>`}
 function renderInspector(){if(!state.working){refs.body.replaceChildren();setInspectorOpen(false);return}if(state.mode==='airport'){setInspectorOpen(true);renderAirportCandidates();return}if(state.mode==='mission'){setInspectorOpen(true);renderMissionMode();return}if(state.mode==='damage'){setInspectorOpen(true);renderDamageMode();return}if(state.selected?.type==='airport'){setInspectorOpen(true);renderAirportEditor(state.selected.id);return}if(state.selected?.type==='mission'){setInspectorOpen(true);renderMissionEditor(state.selected.id);return}refs.body.replaceChildren();setInspectorOpen(false)}
 function renderSituationInfoEditor(){collapseOverview();refs.inspectorTitle.textContent='情境信息';refs.inspectorSubtitle.textContent=state.working.situation_id;refs.body.innerHTML=`<div class="compact-grid"><div class="field wide"><label>情境编号</label><input class="control" value="${esc(state.working.situation_id)}" readonly></div><div class="field wide"><label>名称</label><input id="editSituationName" class="control" value="${esc(state.working.name)}"></div><div class="field wide"><label>说明</label><textarea id="editSituationDescription" class="control textarea-control" rows="4">${esc(state.working.description||'')}</textarea></div></div><div class="inspector-footer"><button id="cancelSituationInfo" class="btn ghost" type="button">取消</button><button id="applySituationInfo" class="btn primary" type="button">应用到情境</button></div>`;bindPanelDraft();$('cancelSituationInfo').onclick=()=>{clearPanelDraft();renderInspector()};$('applySituationInfo').onclick=async()=>{const name=$('editSituationName').value.trim();if(!name){showMessage('情境名称不能为空。','error');return}try{const candidate=deep(state.working);candidate.name=name;candidate.description=$('editSituationDescription').value.trim()||null;state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();renderSituationInfoEditor();showMessage('情境信息已应用到当前情境。','success')}catch(e){showMessage(errText(e),'error')}};lockEditorForReadOnly()}
@@ -218,91 +219,120 @@ async function applyAirport(){try{const candidate=deep(state.working);const x=ca
 async function restoreAirportBase(){if(!(await confirmAction('恢复会用当前 Base Data 的机场及运行配置替换该情境机场配置；现有本情境补给安排也会被清除。','恢复基础配置')))return;try{const d=await apiFetch('/api/situations/working-copy/copy-airport',{method:'POST',body:{situation:state.working,airport_id:state.selected.id}});state.working=deep(d.situation);clearPanelDraft();markDirty();renderInspector();showMessage('已恢复基础配置，尚未保存。','success')}catch(e){showMessage(errText(e),'error')}}
 async function removeAirport(){const id=state.selected.id;const refsDamage=state.working.damage_scenarios.flatMap(s=>s.events).filter(e=>e.target.airport_id===id);if(refsDamage.length){showMessage(`该机场仍被 ${refsDamage.length} 个损毁事件引用，请先删除相关事件。`,'error');return}if(!(await confirmAction(`从当前情境移除机场 ${id}？只影响当前情境，不删除 Base Data。`,'移出情境')))return;state.working.airports=state.working.airports.filter(x=>x.airport.airport_id!==id);clearPanelDraft();state.selected=null;markDirty();renderInspector()}
 async function ensureMissionData(){if(!state.missionCatalog.length){let offset=0,total=1,out=[];while(offset<total){const d=await apiFetch(`/api/missions?limit=500&offset=${offset}`);out.push(...(d.items||[]));total=d.total||0;offset+=500}state.missionCatalog=out}if(!state.missionHistory.length){const h=await apiFetch('/api/missions/history?limit=500');state.missionHistory=h.items||[]}}
-async function renderMissionMode(){refs.inspector.dataset.kind='mission-editor';refs.inspectorTitle.textContent='任务';refs.inspectorSubtitle.textContent='新建、从模板或历史 Run 复制';refs.body.innerHTML='<div class="empty-state">正在读取任务来源…</div>';try{await ensureMissionData();refs.body.innerHTML=`<div class="mode-actions"><button id="newMissionAction" class="btn primary" type="button">新建任务</button></div><div class="inspector-section"><h3>任务模板</h3><div class="object-list">${state.missionCatalog.map(x=>objectCard('template',x.mission.mission_id,x.mission.name,`${x.mission.mission_id} · T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`)).join('')||'<div class="field-note">暂无任务模板。</div>'}</div></div><div class="inspector-section"><h3>历史 Run Snapshot</h3><div class="object-list">${state.missionHistory.slice(0,50).map((x,i)=>objectCard('history',String(i),x.mission.name,`${x.mission.mission_id} · ${x.source_run_id}`)).join('')||'<div class="field-note">暂无历史任务。</div>'}</div></div>`;$('newMissionAction').onclick=()=>renderMissionEditor(null);refs.body.querySelectorAll('[data-object-type="template"]').forEach(b=>b.onclick=()=>copyMissionTemplate(b.dataset.objectId));refs.body.querySelectorAll('[data-object-type="history"]').forEach(b=>b.onclick=()=>copyHistoricalMission(Number(b.dataset.objectId)))}catch(e){refs.body.innerHTML=`<div class="inline-message error">${esc(errText(e))}</div>`}}
-async function copyMissionTemplate(id){if(state.working.missions.some(x=>x.mission_id===id)){showMessage('当前情境已存在同编号任务。','error');return}try{const d=await apiFetch('/api/situations/working-copy/copy-mission',{method:'POST',body:{situation:state.working,mission_id:id}});state.working=deep(d.situation);markDirty();showMessage('任务模板已复制到情境，尚未保存。','success');renderMissionMode()}catch(e){showMessage(errText(e),'error')}}
+async function renderMissionMode(){refs.inspector.dataset.kind='mission-editor';refs.inspectorTitle.textContent='任务';refs.inspectorSubtitle.textContent='新建、从基础库或历史 Run 复制';refs.body.innerHTML='<div class="empty-state">正在读取任务来源…</div>';try{await ensureMissionData();refs.body.innerHTML=`<div class="mode-actions"><button id="newMissionAction" class="btn primary" type="button">新建任务</button></div><div class="inspector-section"><h3>任务</h3><div class="object-list">${state.missionCatalog.map(x=>objectCard('template',x.mission.mission_id,x.mission.name,`${x.mission.mission_id} · T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`)).join('')||'<div class="field-note">暂无任务。</div>'}</div></div><div class="inspector-section"><h3>历史 Run Snapshot</h3><div class="object-list">${state.missionHistory.slice(0,50).map((x,i)=>objectCard('history',String(i),x.mission.name,`${x.mission.mission_id} · ${x.source_run_id}`)).join('')||'<div class="field-note">暂无历史任务。</div>'}</div></div>`;$('newMissionAction').onclick=()=>renderMissionEditor(null);refs.body.querySelectorAll('[data-object-type="template"]').forEach(b=>b.onclick=()=>copyMissionTemplate(b.dataset.objectId));refs.body.querySelectorAll('[data-object-type="history"]').forEach(b=>b.onclick=()=>copyHistoricalMission(Number(b.dataset.objectId)))}catch(e){refs.body.innerHTML=`<div class="inline-message error">${esc(errText(e))}</div>`}}
+async function copyMissionTemplate(id){if(state.working.missions.some(x=>x.mission_id===id)){showMessage('当前情境已存在同编号任务。','error');return}try{const d=await apiFetch('/api/situations/working-copy/copy-mission',{method:'POST',body:{situation:state.working,mission_id:id}});state.working=deep(d.situation);markDirty();showMessage('任务已复制到情境，尚未保存。','success');renderMissionMode()}catch(e){showMessage(errText(e),'error')}}
 async function copyHistoricalMission(index){const m=state.missionHistory[index]?.mission;if(!m)return;if(state.working.missions.some(x=>x.mission_id===m.mission_id)){showMessage('当前情境已存在同编号任务；可先打开已有任务编辑。','error');return}try{const d=await apiFetch('/api/situations/working-copy/copy-mission',{method:'POST',body:{situation:state.working,mission:m}});state.working=deep(d.situation);markDirty();showMessage('历史任务快照已复制到情境。','success');renderMissionMode()}catch(e){showMessage(errText(e),'error')}}
 function missionReqRow(r={}){return `<div class="dynamic-row mission-req"><div class="field"><label>机型</label><select class="control row-aircraft">${opt(state.aircraft,r.aircraft_type_id,x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select></div><div class="field"><label>架次</label><input class="control row-sorties" type="number" min="1" value="${esc(val(r.required_sorties))}"></div><div class="field"><label>作业/窗</label><input class="control row-work" type="number" min="0" value="${esc(val(r.tau_work_windows))}"></div>${removeRowButton()}</div>`}
 function renderMissionEditor(id){refs.inspector.dataset.kind='mission-editor';collapseOverview();const m=id?missionItem(id):{mission_id:'',name:'',longitude:'',latitude:'',window_start_slot:0,window_end_slot:1,aircraft_requirements:[]};refs.inspectorTitle.textContent=id?m.name:'新建任务';refs.inspectorSubtitle.textContent=id?`${m.mission_id} · 情境任务快照`:'新任务只进入当前情境';refs.body.innerHTML=`<div class="compact-grid"><div class="field"><label>任务编号</label><input id="sitMissionId" class="control" value="${esc(m.mission_id)}" ${id?'readonly':''}></div><div class="field"><label>名称</label><input id="sitMissionName" class="control" value="${esc(m.name)}"></div><div class="field"><label>经度</label><input id="sitMissionLon" class="control" type="number" step="any" value="${esc(val(m.longitude))}"></div><div class="field"><label>纬度</label><input id="sitMissionLat" class="control" type="number" step="any" value="${esc(val(m.latitude))}"></div><div class="field wide"><button id="pickMissionLocation" class="btn ghost" type="button">从地图取点</button></div><div class="field"><label>开始窗</label><input id="sitMissionStart" class="control" type="number" min="0" value="${esc(val(m.window_start_slot))}"></div><div class="field"><label>结束窗（不含）</label><input id="sitMissionEnd" class="control" type="number" min="1" value="${esc(val(m.window_end_slot))}"></div></div><div class="inspector-section"><h3>各机型需求与作业时间</h3><div id="sitMissionReqs">${(m.aircraft_requirements||[]).map(missionReqRow).join('')}</div><button id="sitAddMissionReq" class="btn ghost" type="button">添加机型需求</button></div><div class="inspector-footer"><button id="cancelMissionEdit" class="btn ghost" type="button">取消</button>${id?'<button id="removeMission" class="btn danger" type="button">移出情境</button>':''}<button id="applyMission" class="btn primary" type="button">${id?'应用':'加入情境'}</button></div>`;bindDynamic('sitAddMissionReq','sitMissionReqs',missionReqRow);const syncDraft=()=>{const lonRaw=$('sitMissionLon').value.trim(),latRaw=$('sitMissionLat').value.trim();const lon=lonRaw===''?null:Number(lonRaw),lat=latRaw===''?null:Number(latRaw);state.draftMissionCoord=Number.isFinite(lon)&&Number.isFinite(lat)?{lon,lat}:null;drawMap()};$('sitMissionLon').oninput=syncDraft;$('sitMissionLat').oninput=syncDraft;state.draftMissionCoord=(m.longitude===''||m.longitude==null||m.latitude===''||m.latitude==null)?null:{lon:Number(m.longitude),lat:Number(m.latitude)};bindPanelDraft();$('cancelMissionEdit').onclick=()=>{clearPanelDraft();setMode('select')};$('pickMissionLocation').onclick=beginMissionLocationPick;$('applyMission').onclick=()=>applyMission(id);if(id)$('removeMission').onclick=()=>removeMission(id);lockEditorForReadOnly()}
 async function applyMission(oldId){const id=$('sitMissionId').value.trim(),name=$('sitMissionName').value.trim();if(!id||!name){showMessage('任务编号和名称不能为空。','error');return}if(!oldId&&state.working.missions.some(x=>x.mission_id===id)){showMessage('当前情境已存在同编号任务。','error');return}try{const candidate=deep(state.working);const m={mission_id:id,name,longitude:num($('sitMissionLon').value),latitude:num($('sitMissionLat').value),window_start_slot:int($('sitMissionStart').value),window_end_slot:int($('sitMissionEnd').value),aircraft_requirements:collectRows('.mission-req',r=>({aircraft_type_id:r.querySelector('.row-aircraft').value,required_sorties:int(r.querySelector('.row-sorties').value),tau_work_windows:int(r.querySelector('.row-work').value)}))};if(oldId)candidate.missions=candidate.missions.map(x=>x.mission_id===oldId?m:x);else candidate.missions.push(m);state.working=await canonicalizeWorking(candidate);clearPanelDraft();state.selected={type:'mission',id};markDirty();renderMissionEditor(id);showMessage('任务已应用到当前情境。','success')}catch(e){showMessage(errText(e),'error')}}
 async function removeMission(id){if(!(await confirmAction(`从当前情境移除任务 ${id}？`,'移出情境')))return;state.working.missions=state.working.missions.filter(x=>x.mission_id!==id);clearPanelDraft();state.selected=null;markDirty();setMode('select')}
-function renderDamageMode(){refs.inspector.dataset.kind='damage-editor';refs.inspectorTitle.textContent='损毁场景';refs.inspectorSubtitle.textContent='新增、编辑或删除损毁场景';refs.body.innerHTML=`<div class="mode-actions"><button id="newDamageScenario" class="btn primary" type="button">新建损毁场景</button></div><div class="object-list">${state.working.damage_scenarios.map(s=>objectCard('damage',s.damage_scenario_id,s.name,`${s.category} · ${s.events.length} 个事件`)).join('')||'<div class="empty-state">当前情境还没有损毁场景。</div>'}</div>`;$('newDamageScenario').onclick=()=>renderDamageEditor(null);refs.body.querySelectorAll('[data-object-type="damage"]').forEach(b=>b.onclick=()=>renderDamageEditor(b.dataset.objectId))}
+const DAMAGE_CATEGORY_LABELS = { low: '低', medium: '中', high: '高', custom: '自定义' };
+const damageCategoryLabel = (category) => DAMAGE_CATEGORY_LABELS[category] || category;
+function renderDamageMode(){refs.inspector.dataset.kind='damage-editor';refs.inspectorTitle.textContent='损毁场景';refs.inspectorSubtitle.textContent='新增、编辑或删除损毁场景';refs.body.innerHTML=`<div class="mode-actions"><button id="newDamageScenario" class="btn primary" type="button">新建损毁场景</button></div><div class="object-list">${state.working.damage_scenarios.map(s=>objectCard('damage',s.damage_scenario_id,s.name,`${damageCategoryLabel(s.category)} · ${s.events.length} 个事件`)).join('')||'<div class="empty-state">当前情境还没有损毁场景。</div>'}</div>`;$('newDamageScenario').onclick=()=>renderDamageEditor(null);refs.body.querySelectorAll('[data-object-type="damage"]').forEach(b=>b.onclick=()=>renderDamageEditor(b.dataset.objectId))}
 function damageEventRow(e={},idx=0){const t=e.damage_type||'capacity_damage',airport=e.target?.airport_id||'',rec=e.recovery_mode||'instant';let effect='';if(t==='capacity_damage'){effect=`<div class="damage-effect-grid"><div class="field"><label>剩余容量/窗</label><input class="control ev-cap" type="number" min="0" value="${esc(val(e.effect?.remaining_capacity_per_window??0))}"></div><div class="field"><label>关闭</label><select class="control ev-closed"><option value="false" ${e.effect?.closed?'':'selected'}>否</option><option value="true" ${e.effect?.closed?'selected':''}>是</option></select></div></div>`}else if(t==='navigation_delay'){effect=`<div class="damage-effect-grid"><div class="field"><label>离场延迟/窗</label><input class="control ev-dep-delay" type="number" min="0" value="${esc(val(e.effect?.departure_delay_slots??0))}"></div><div class="field"><label>返航延迟/窗</label><input class="control ev-ret-delay" type="number" min="0" value="${esc(val(e.effect?.return_delay_slots??0))}"></div></div>`}else if(t==='aircraft_damage'){const entries=Object.entries(e.effect?.aircraft_loss||{});effect=`<div class="effect-rows aircraft-loss-rows">${(entries.length?entries:[['',1]]).map(([id,q])=>`<div class="damage-effect-grid effect-row"><select class="control loss-aircraft">${opt(state.aircraft,id,x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select><input class="control loss-qty" type="number" min="1" value="${esc(val(q))}"></div>`).join('')}</div><button class="btn ghost add-loss-row" type="button"><svg class="ui-icon"><use href="#i-plus"></use></svg>机型损失</button>`}else{const entries=Object.entries(e.effect?.remaining_quantity||{});effect=`<div class="effect-rows resource-loss-rows">${(entries.length?entries:[['',0]]).map(([id,q])=>`<div class="damage-effect-grid effect-row"><select class="control loss-resource">${opt(state.resources,id,x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select><input class="control loss-qty" type="number" min="0" step="any" value="${esc(val(q))}"></div>`).join('')}</div><button class="btn ghost add-resource-row" type="button"><svg class="ui-icon"><use href="#i-plus"></use></svg>资源余量</button>`}return `<div class="damage-event" data-event-index="${idx}"><div class="damage-event-head"><strong>事件 ${idx+1}</strong><button class="mini-button remove-event" type="button" aria-label="删除事件"><svg class="ui-icon"><use href="#i-close"></use></svg></button></div><div class="compact-grid"><div class="field"><label>事件编号</label><input class="control ev-id" value="${esc(e.event_id||`E${idx+1}`)}"></div><div class="field"><label>顺序</label><input class="control ev-seq" type="number" min="0" value="${esc(val(e.sequence??idx))}"></div><div class="field wide"><label>目标机场</label><select class="control ev-airport">${opt(state.working.airports,airport,x=>x.airport.airport_id,x=>x.airport.airport_name)}</select></div><div class="field"><label>类型</label><select class="control ev-type"><option value="capacity_damage" ${t==='capacity_damage'?'selected':''}>起降能力变化</option><option value="resource_damage" ${t==='resource_damage'?'selected':''}>资源变化</option><option value="navigation_delay" ${t==='navigation_delay'?'selected':''}>调度延迟</option><option value="aircraft_damage" ${t==='aircraft_damage'?'selected':''}>初始航空器损失</option></select></div><div class="field"><label>恢复</label><select class="control ev-recovery" ${t==='aircraft_damage'?'disabled':''}><option value="instant" ${rec==='instant'?'selected':''}>结束后立即恢复</option><option value="average" ${rec==='average'?'selected':''}>平均恢复</option><option value="none" ${rec==='none'?'selected':''}>不恢复</option></select></div><div class="field"><label>开始窗</label><input class="control ev-start" type="number" min="0" value="${esc(val(e.start_slot??0))}"></div><div class="field"><label>结束窗（不含）</label><input class="control ev-end" type="number" min="1" value="${esc(val(e.end_slot??1))}"></div><div class="field wide"><label>平均恢复时长/窗</label><input class="control ev-duration" type="number" min="1" value="${esc(val(e.recovery_duration_slots))}" ${rec==='average'?'':'disabled'}></div></div><div class="inspector-section effect-editor">${effect}</div></div>`}
 const DAMAGE_PRESETS = {
-  low: { percent: 80, duration: 4 },
-  medium: { percent: 50, duration: 8 },
-  high: { percent: 20, duration: 12 },
+  low: { label: '低', category: 'low', segments: [{ offset: 0, duration: 4, ratio: 0.80 }] },
+  medium: { label: '中', category: 'medium', segments: [{ offset: 0, duration: 4, ratio: 0.50 }] },
+  high: { label: '高', category: 'high', segments: [{ offset: 0, duration: 4, ratio: 0.20 }] },
+  sustained: {
+    label: '持续', category: 'custom',
+    segments: [
+      { offset: 0, duration: 4, ratio: 0.50 },
+      { offset: 5, duration: 4, ratio: 0.50 },
+      { offset: 10, duration: 4, ratio: 0.50 },
+    ],
+  },
+  extreme: {
+    label: '极端', category: 'custom',
+    segments: [
+      { offset: 0, duration: 4, ratio: 0.20 },
+      { offset: 5, duration: 4, closed: true },
+      { offset: 10, duration: 4, ratio: 0.20 },
+    ],
+  },
 };
 
-function damagePresetMarkup(category) {
-  const airports = state.working.airports.filter((item) =>
-    Number.isFinite(Number(item.operational_profile.capacity_per_window)));
+function damagePresetMarkup() {
+  const airportOptions = state.working.airports.map((item) => {
+    const capacity = Number(item.operational_profile.capacity_per_window);
+    const available = Number.isInteger(capacity) && capacity > 0;
+    const airport = item.airport;
+    return `<option value="${esc(airport.airport_id)}" ${available ? '' : 'disabled'}>${esc(airport.airport_name)} · ${available ? `${capacity}/窗` : '该机场尚未配置容量'}</option>`;
+  }).join('');
   return `<section class="editor-section damage-preset">
-    <h3>典型场景速填</h3>
-    <p>仅生成可继续编辑的容量损毁事件，不改变 DamageProjection。</p>
-    <div class="field"><label>作用机场</label><select id="damagePresetAirports" class="control" multiple size="4">
-      ${airports.map((item) => `<option value="${esc(item.airport.airport_id)}">${esc(item.airport.airport_name)} · ${esc(item.operational_profile.capacity_per_window)}/窗</option>`).join('')}
-    </select></div>
-    <div class="preset-fields">
-      <div class="field"><label>开始窗</label><input id="damagePresetStart" class="control" type="number" min="0" value="0"></div>
-      <div class="field"><label>持续窗数</label><input id="damagePresetDuration" class="control" type="number" min="1"></div>
-      <div class="field"><label>剩余容量 %</label><input id="damagePresetPercent" class="control" type="number" min="0" max="100"></div>
+    <h3>快速预设</h3>
+    <div class="damage-preset-kinds" role="group" aria-label="损毁快速预设">
+      ${Object.entries(DAMAGE_PRESETS).map(([kind, preset], index) => `<button class="preset-kind${index === 0 ? ' active' : ''}" type="button" data-preset-kind="${kind}" aria-pressed="${index === 0 ? 'true' : 'false'}">${preset.label}</button>`).join('')}
     </div>
-    <button id="applyDamagePreset" class="btn" type="button">生成容量损毁事件</button>
-    <div id="damagePresetStatus" class="field-note"></div>
+    <div class="field"><label>作用机场</label><select id="damagePresetAirports" class="control" multiple size="4">
+      ${airportOptions}
+    </select></div>
+    <div class="damage-preset-footer">
+      <div class="field"><label>开始窗</label><input id="damagePresetStart" class="control" type="number" min="0" step="1" value="0"></div>
+      <button id="applyDamagePreset" class="btn" type="button">生成预设事件</button>
+    </div>
+    <div id="damagePresetStatus" class="field-note">生成后可逐项修改。</div>
   </section>`;
 }
 
-function syncDamagePreset() {
-  const preset = DAMAGE_PRESETS[$('damageScenarioCategory').value];
-  const button = $('applyDamagePreset');
-  if (!button) return;
-  button.disabled = !preset || !$('damagePresetAirports').options.length;
-  if (!preset) {
-    $('damagePresetStatus').textContent = '自定义场景请直接添加事件。';
-    return;
-  }
-  $('damagePresetDuration').value = String(preset.duration);
-  $('damagePresetPercent').value = String(preset.percent);
-  $('damagePresetStatus').textContent = '建议值只用于速填，生成后可逐项修改。';
+function bindDamagePreset() {
+  const buttons = [...refs.body.querySelectorAll('[data-preset-kind]')];
+  buttons.forEach((button) => button.addEventListener('click', () => {
+    buttons.forEach((item) => {
+      const active = item === button;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-pressed', String(active));
+    });
+    setPanelDraftDirty(true);
+  }));
+  const available = [...$('damagePresetAirports').options].some((option) => !option.disabled);
+  $('applyDamagePreset').disabled = !available;
+  if (!available && state.working.airports.length) $('damagePresetStatus').textContent = '该机场尚未配置容量';
 }
 
 async function applyDamagePresetDraft() {
-  const category = $('damageScenarioCategory').value;
-  if (!DAMAGE_PRESETS[category]) return;
-  const airportIds = [...$('damagePresetAirports').selectedOptions].map((option) => option.value);
+  const presetKind = refs.body.querySelector('[data-preset-kind].active')?.dataset.presetKind;
+  const preset = DAMAGE_PRESETS[presetKind];
+  if (!preset) return;
+  const airportIds = [...$('damagePresetAirports').selectedOptions]
+    .filter((option) => !option.disabled)
+    .map((option) => option.value);
   if (!airportIds.length) {
     $('damagePresetStatus').textContent = '请至少选择一个机场。';
     return;
   }
-  const start = int($('damagePresetStart').value);
-  const duration = int($('damagePresetDuration').value);
-  const percent = num($('damagePresetPercent').value);
-  if (start == null || start < 0 || duration == null || duration < 1 || percent == null || percent < 0 || percent > 100) {
-    $('damagePresetStatus').textContent = '请检查开始窗、持续窗数和剩余容量比例。';
+  const start = Number($('damagePresetStart').value);
+  if (!Number.isInteger(start) || start < 0) {
+    $('damagePresetStatus').textContent = '请检查开始窗。';
     return;
   }
-  if ($('damageEventRows').children.length && !(await confirmAction('速填将替换当前表单中的事件，是否继续？', '替换事件'))) return;
-  const events = airportIds.map((airportId, index) => {
-    const item = airportItem(airportId);
-    const capacity = Number(item.operational_profile.capacity_per_window);
-    const remaining = Math.max(0, Math.min(capacity, Math.round(capacity * percent / 100)));
-    return {
-      event_id: `${category.toUpperCase()}-${airportId}-${index + 1}`.slice(0, 64),
-      sequence: index,
-      target: { airport_id: airportId, target_type: 'airport', target_id: null },
-      damage_type: 'capacity_damage',
-      start_slot: start,
-      end_slot: start + duration,
-      effect: { closed: remaining === 0, remaining_capacity_per_window: remaining },
-      recovery_mode: 'instant',
-      recovery_duration_slots: null,
-    };
-  });
+  if ($('damageEventRows').children.length && !(await confirmAction('预设将替换当前草稿中的事件，是否继续？', '替换事件'))) return;
+  const events = [];
+  for (const segment of preset.segments) {
+    for (const airportId of airportIds) {
+      const capacity = Number(airportItem(airportId).operational_profile.capacity_per_window);
+      const closed = segment.closed === true;
+      const remaining = closed ? 0 : Math.max(1, Math.floor(capacity * segment.ratio));
+      const sequence = events.length;
+      events.push({
+        event_id: `P${sequence + 1}`,
+        sequence,
+        target: { airport_id: airportId, target_type: 'airport', target_id: null },
+        damage_type: 'capacity_damage',
+        start_slot: start + segment.offset,
+        end_slot: start + segment.offset + segment.duration,
+        effect: { closed, remaining_capacity_per_window: remaining },
+        recovery_mode: 'instant',
+        recovery_duration_slots: null,
+      });
+    }
+  }
+  $('damageScenarioCategory').value = preset.category;
   $('damageEventRows').innerHTML = events.map(damageEventRow).join('');
   setPanelDraftDirty(true);
   bindDamageEvents();
   bindPanelDraft();
-  $('damagePresetStatus').textContent = `已生成 ${events.length} 个容量损毁事件，请检查后应用。`;
+  $('damagePresetStatus').textContent = '生成后可逐项修改。';
 }
 
 function renderDamageEditor(id) {
@@ -310,7 +340,7 @@ function renderDamageEditor(id) {
   collapseOverview();
   const scenario = id ? deep(damageScenario(id)) : { damage_scenario_id: '', name: '', category: 'custom', events: [] };
   refs.inspectorTitle.textContent = id ? scenario.name : '新建损毁场景';
-  refs.inspectorSubtitle.textContent = '使用现有 DamageProjection 事件模型';
+  refs.inspectorSubtitle.textContent = '配置一个或多个损毁事件';
   refs.body.innerHTML = `
     <div class="compact-grid">
       <div class="field"><label>场景编号</label><input id="damageScenarioId" class="control" value="${esc(scenario.damage_scenario_id)}" ${id ? 'readonly' : ''}></div>
@@ -322,7 +352,7 @@ function renderDamageEditor(id) {
         <option value="custom" ${scenario.category === 'custom' ? 'selected' : ''}>自定义</option>
       </select></div>
     </div>
-    ${damagePresetMarkup(scenario.category)}
+    ${id ? '' : damagePresetMarkup()}
     <section class="editor-section">
       <div class="mode-actions"><h3>损毁事件</h3><button id="addDamageEvent" class="btn ghost" type="button">添加事件</button></div>
       <div id="damageEventRows">${scenario.events.map(damageEventRow).join('')}</div>
@@ -330,13 +360,14 @@ function renderDamageEditor(id) {
     <div class="inspector-footer">
       <button id="cancelDamageEdit" class="btn ghost" type="button">取消</button>
       ${id ? '<button id="removeDamageScenario" class="btn danger" type="button">删除场景</button>' : ''}
-      <button id="applyDamageScenario" class="btn primary" type="button">应用</button>
+      <button id="applyDamageScenario" class="btn primary" type="button">应用到情境</button>
     </div>`;
   bindDamageEvents();
   bindPanelDraft();
-  syncDamagePreset();
-  $('damageScenarioCategory').addEventListener('change', syncDamagePreset);
-  $('applyDamagePreset').addEventListener('click', applyDamagePresetDraft);
+  if (!id) {
+    bindDamagePreset();
+    $('applyDamagePreset').addEventListener('click', applyDamagePresetDraft);
+  }
   $('cancelDamageEdit').onclick = () => { clearPanelDraft(); renderDamageMode(); };
   $('addDamageEvent').onclick = () => {
     setPanelDraftDirty(true);
@@ -379,6 +410,7 @@ function bind(signal) {
     const open = !refs.overview.classList.contains('open');
     refs.overview.classList.toggle('open', open);
     refs.overviewTrigger.setAttribute('aria-expanded', String(open));
+    refs.overviewTrigger.setAttribute('aria-label', open ? '收起情境摘要' : '展开情境摘要');
   }, { signal });
   window.addEventListener('beforeunload', (event) => {
     if (state.dirty || state.panelDraftDirty) {

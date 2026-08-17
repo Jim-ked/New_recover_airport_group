@@ -28,7 +28,7 @@ async function apiFetch(path,options={}){try{return await requestJson(path,{...o
 async function apiText(path,options={}){try{return await requestText(path,{...options,signal:options.signal||lifecycleController?.signal});}catch(error){if(!mounted&&wasAborted(error))return new Promise(()=>{});throw error;}}
 const TAB_META = {
   airports:{title:'机场基础库', singular:'机场', empty:'选择一条机场查看详细信息', searchPlaceholder:'搜索机场编号或名称', endpoint:'/api/airports'},
-  missions:{title:'任务模板库', singular:'任务模板', empty:'选择一条任务模板查看详细信息', searchPlaceholder:'搜索任务编号或名称', endpoint:'/api/missions'},
+  missions:{title:'任务库', singular:'任务', empty:'选择一条任务查看详细信息', searchPlaceholder:'搜索任务编号或名称', endpoint:'/api/missions'},
   aircraft_types:{title:'机型基础库', singular:'机型', empty:'选择一条机型查看详细信息', searchPlaceholder:'搜索机型编号或名称', endpoint:'/api/aircraft-types'},
   resource_types:{title:'保障资源类型', singular:'资源类型', empty:'选择一条资源类型查看详细信息', searchPlaceholder:'搜索资源编号或名称', endpoint:'/api/resource-types'},
 };

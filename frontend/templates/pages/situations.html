@@ -90,7 +90,7 @@
         <input id="showAllAirports" type="checkbox">
       </label>
       <label class="layer-scope-row">
-        <span><svg class="ui-icon"><use href="#i-task"></use></svg>全部任务模板</span>
+        <span><svg class="ui-icon"><use href="#i-task"></use></svg>全部任务</span>
         <input id="showAllMissions" type="checkbox">
       </label>
       <label class="layer-scope-row">
@@ -118,24 +118,24 @@
 
   <section id="situationOverview" class="situation-overview overlay-surface">
     <div class="overview-head">
-      <button id="overviewTrigger" class="overview-toggle" type="button" aria-expanded="false" title="展开/收起情境信息">
-        <svg class="ui-icon"><use href="#i-info"></use></svg>
-        <span>情境</span>
+      <div class="overview-summary">
+        <span class="overview-label">
+          <svg class="ui-icon"><use href="#i-info"></use></svg>
+          <span>情境</span>
+        </span>
+        <select id="situationSelect" class="control overview-situation-select" aria-label="切换情境">
+          <option value="">选择情境…</option>
+        </select>
+        <span id="situationMeta" class="overview-meta"></span>
+        <span id="overviewCounts" class="overview-counts">机场 0 · 任务 0 · 损毁 0</span>
+      </div>
+      <button id="overviewEditSituationInfo" class="btn ghost compact-action" type="button">编辑</button>
+      <button id="overviewTrigger" class="overview-toggle" type="button" aria-expanded="false" aria-label="展开情境摘要" title="展开/收起情境信息">
         <svg class="ui-icon chevron"><use href="#i-chevron"></use></svg>
       </button>
-
-      <select id="situationSelect" class="control overview-situation-select" aria-label="切换情境">
-        <option value="">选择情境…</option>
-      </select>
-
-      <span id="overviewCounts" class="overview-counts">机场 0 · 任务 0 · 损毁场景 0</span>
     </div>
 
     <div class="overview-body">
-      <div class="overview-meta-row">
-        <span id="situationMeta" class="overview-meta"></span>
-        <button id="overviewEditSituationInfo" class="btn ghost compact-action" type="button">编辑情境信息</button>
-      </div>
       <div id="overviewContent" class="overview-content"></div>
     </div>
   </section>

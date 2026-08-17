@@ -16,6 +16,7 @@ export function setInspectorOpen(open) {
 export function collapseOverview() {
   refs.overview.classList.remove('open');
   refs.overviewTrigger.setAttribute('aria-expanded', 'false');
+  refs.overviewTrigger.setAttribute('aria-label', '展开情境摘要');
 }
 
 function inspectorHasTask() {
@@ -128,7 +129,7 @@ function initLayers(signal) {
   document.getElementById('closeLayerScope').addEventListener('click', close, { signal });
   for (const [id, kind, label] of [
     ['showAllAirports', 'airports', '基础机场'],
-    ['showAllMissions', 'missions', '任务模板'],
+    ['showAllMissions', 'missions', '任务'],
   ]) {
     document.getElementById(id).addEventListener('change', async (event) => {
       try {
