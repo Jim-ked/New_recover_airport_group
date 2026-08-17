@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Mapping, NoReturn
+from typing import Any, NoReturn
 
-from backend.domain.airport import AirportBase
+from backend.domain.airport import AirportValidationError
+from backend.services.airport_master_parser import (
+    AirportMasterParseError,
+    parse_airport_master_document,
+)
 from backend.storage.airport_repository import AirportRepository
 
 
@@ -30,6 +34,9 @@ def bootstrap_airport_master(
     - no aliases, coercion, duplicate merging or coordinate repair are attempted;
     - existing business data is never overwritten;
     - AirportBase strict validation owns every airport row.
+
+    Document parsing is shared with the Web import path through
+    ``AirportMasterV1Parser`` (parse_airport_master_document).
     """
     path = Path(seed_path)
     try:
@@ -37,35 +44,19 @@ def bootstrap_airport_master(
     except (OSError, json.JSONDecodeError) as exc:
         _fail("seed_path", f"cannot read canonical airport seed: {exc}")
 
-    if not isinstance(raw, Mapping):
-        _fail("seed", "airport seed root must be an object")
-    allowed = {"schema", "generated_date", "coordinate_reference_system", "count", "airports"}
-    unknown = [key for key in raw if key not in allowed]
-    if unknown:
-        _fail(str(unknown[0]), f"unknown seed metadata field: {unknown[0]}")
-    if raw.get("schema") != "airport_master_v1":
-        _fail("schema", "airport seed schema must be airport_master_v1")
-    if raw.get("coordinate_reference_system") != "WGS84":
-        _fail("coordinate_reference_system", "airport seed coordinate reference system must be WGS84")
-
-    airports_raw = raw.get("airports")
-    if not isinstance(airports_raw, list):
-        _fail("airports", "airports must be an array")
-    count = raw.get("count")
-    if isinstance(count, bool) or not isinstance(count, int) or count != len(airports_raw):
-        _fail("count", "seed count must exactly match the airports array length")
+    try:
+        airports = parse_airport_master_document(raw)
+    except (AirportMasterParseError, AirportValidationError) as exc:
+        field = getattr(exc, "field", None)
+        _fail(field or "seed", str(exc))
 
     repository.init_schema()
     existing = repository.count_airports()
     if existing != 0:
         _fail("airports", f"airport authority is not empty ({existing} records); bootstrap refuses to overwrite")
 
-    airports = [AirportBase.from_mapping(item) for item in airports_raw]
-    ids = [item.airport_id for item in airports]
-    if len(ids) != len(set(ids)):
-        _fail("airports", "airport_id values must be unique in canonical seed")
-
-    repository.save_airports(airports)
+    count = len(airports)
+    repository.save_airports(list(airports))
     stored = repository.count_airports()
     if stored != count:
         _fail("airports", f"bootstrap verification failed: expected {count}, stored {stored}")

@@ -310,9 +310,14 @@ class CatalogApi:
         def action() -> ApiResponse:
             principal.require_permission("catalog.write")
             body = require_object(raw_body)
-            reject_unknown(body, {"dataset", "items"})
-            dataset = required_nonblank_string(body, "dataset")
-            result = self.import_service.replace_json(dataset, body.get("items"))
+            if body.get("schema") == "airport_master_v1":
+                # Official airport dataset upload: the raw airport_master_v1 document is
+                # sent unchanged; document-level metadata validation belongs to the parser.
+                result = self.import_service.replace_airport_master_document(raw_body)
+            else:
+                reject_unknown(body, {"dataset", "items"})
+                dataset = required_nonblank_string(body, "dataset")
+                result = self.import_service.replace_json(dataset, body.get("items"))
             return ApiResponse(result.to_dict(), 200)
         return self._handle(action)
 

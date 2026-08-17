@@ -6,10 +6,14 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
-from backend.domain.airport import AirportBase
+from backend.domain.airport import AirportBase, AirportValidationError
 from backend.domain.airport_operations import AirportOperationalProfile
 from backend.domain.catalog import AircraftResourceRequirement, AircraftType, ResourceType
 from backend.domain.mission import Mission
+from backend.services.airport_master_parser import (
+    AirportMasterParseError,
+    parse_airport_master_document,
+)
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.mission_repository import MissionRepository
 
@@ -108,6 +112,24 @@ class BaseDataImportService:
         if not isinstance(raw_items, list):
             raise BaseDataImportError("items must be an array")
         return self._replace(dataset, raw_items, source_format="json")
+
+    def replace_airport_master_document(self, raw: Any) -> BaseDataReplaceResult:
+        """Replace the current airport dataset from a full airport_master_v1 document.
+
+        Shares ``parse_airport_master_document`` with the seed bootstrap path.  The
+        master document only carries airport base facts, so operational profiles of
+        the replaced dataset are reset (same replace-current-state semantics as the
+        generic JSON import).
+        """
+        try:
+            airports = parse_airport_master_document(raw)
+        except (AirportMasterParseError, AirportValidationError) as exc:
+            raise BaseDataImportError(f"airport master document is invalid: {exc}") from exc
+        bundles = [(airport, None) for airport in airports]
+        summary = self.airports.replace_airport_bundles_current(bundles)
+        return BaseDataReplaceResult(
+            dataset="airports", source_format="airport_master_v1", **summary
+        )
 
     def replace_csv(self, dataset: str, text: str) -> BaseDataReplaceResult:
         dataset = self._dataset(dataset)
