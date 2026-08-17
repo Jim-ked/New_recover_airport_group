@@ -8,7 +8,7 @@ from backend.domain.airport import AirportBase, AirportValidationError
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MASTER_PATH = ROOT / "resources" / "seed" / "airports" / "cleaned" / "airports_master_v1.json"
+MASTER_PATH = ROOT / "resources" / "seed" / "airports_master_v1.json"
 
 VALID_AIRPORT = {
     "airport_id": "oa:27188",

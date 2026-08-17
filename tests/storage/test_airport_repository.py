@@ -13,7 +13,7 @@ from backend.storage.airport_repository import AirportRepository
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MASTER_PATH = ROOT / "resources" / "seed" / "airports" / "cleaned" / "airports_master_v1.json"
+MASTER_PATH = ROOT / "resources" / "seed" / "airports_master_v1.json"
 
 
 class AirportRepositoryTests(unittest.TestCase):

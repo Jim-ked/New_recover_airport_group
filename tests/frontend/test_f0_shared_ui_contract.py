@@ -11,7 +11,7 @@ SHELL = (ROOT / "frontend/static/css/shell.css").read_text(encoding="utf-8")
 COMPONENTS = (ROOT / "frontend/static/css/components.css").read_text(encoding="utf-8")
 SHELL_JS = (ROOT / "frontend/static/js/modules/shell.js").read_text(encoding="utf-8")
 API_JS = (ROOT / "frontend/static/js/modules/api-client.js").read_text(encoding="utf-8")
-ASSET_README = (ROOT / "frontend/static/assets/README.md").read_text(encoding="utf-8")
+ASSET_README = (ROOT / "docs/frontend-static.md").read_text(encoding="utf-8")
 LEAFLET_README = (ROOT / "frontend/static/vendor/leaflet/README.md").read_text(encoding="utf-8")
 PAGE_CSS = [
     ROOT / "frontend/static/css/run.css",
