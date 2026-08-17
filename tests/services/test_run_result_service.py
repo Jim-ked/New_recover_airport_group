@@ -69,6 +69,32 @@ class RunResultServiceTests(unittest.TestCase):
         self.assertEqual("R1", bundle["run"]["run_id"])
         self.assertIn("situation_id", bundle["situation"])
 
+    def test_run_detail_projects_damage_name_from_immutable_snapshot(self):
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS1", "name": "冻结损毁场景",
+            "category": "custom", "events": [],
+        })
+        snapshot = make_snapshot(run_id="R1", scenario=scenario)
+        self.runs.create_queued(snapshot=snapshot, owner_user_id="U1")
+
+        detail = self.service.get_run_detail("R1", actor_user_id="U1")
+
+        self.assertEqual(
+            {
+                "damage_scenario_id": "DS1",
+                "name": "冻结损毁场景",
+                "category": "custom",
+            },
+            detail["damage_scenario"],
+        )
+        self.assertEqual("DS1", detail["run_config"]["damage_scenario_id"])
+
+        no_damage = make_snapshot(run_id="R2", cluster_enabled=False)
+        self.runs.create_queued(snapshot=no_damage, owner_user_id="U1")
+        self.assertIsNone(
+            self.service.get_run_detail("R2", actor_user_id="U1")["damage_scenario"]
+        )
+
     def test_r0_r1_r2_comparison_is_service_derived_from_three_successful_runs(self):
         scenario = DamageScenario.from_mapping({
             "damage_scenario_id": "DS1", "name": "Damage", "category": "custom", "events": []

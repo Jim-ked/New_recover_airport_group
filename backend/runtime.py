@@ -3,7 +3,7 @@ from __future__ import annotations
 """Application startup composition.
 
 This is the only module that is allowed to connect deployment settings, schema migration,
-first-user bootstrap, API dependency builders, Flask, logging and the WSGI host.
+first-user bootstrap, API dependency builders, Flask, logging and runtime processes.
 """
 
 import logging
@@ -12,10 +12,13 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable
 
+from backend.services.run_worker_runtime import build_run_worker_loop
 from backend.settings import AppSettings
 from backend.storage.database import initialize_database
+from backend.storage.airport_repository import AirportRepository
 from backend.storage.user_repository import UserRepository
 from backend.web.app import create_app
+from backend.web.user_admin_api import UserAdminApi
 from backend.web.composition import (
     build_account_api,
     build_audit_api,
@@ -105,6 +108,7 @@ def build_application(
         indicator_api=build_indicator_api(db_path),
         account_api=build_account_api(),
         audit_api=build_audit_api(db_path),
+        user_admin_api=UserAdminApi(prepared.user_repository),
         user_repository=prepared.user_repository,
         secret_key=settings.secret_key,
         session_idle_timeout_seconds=settings.session_idle_timeout_seconds,
@@ -135,12 +139,14 @@ def runtime_status(settings: AppSettings) -> dict[str, object]:
     db_exists_before = settings.db_path.exists()
     initialize_database(settings.db_path)
     users = UserRepository(settings.db_path)
+    airports = AirportRepository(settings.db_path)
     return {
         "project_root": str(settings.project_root),
         "runtime_root": str(settings.runtime_root),
         "db_path": str(settings.db_path),
         "db_existed_before_check": db_exists_before,
         "user_count": users.count(),
+        "airport_count": airports.count_airports(),
         "web_secret_configured": bool(settings.secret_key and len(settings.secret_key) >= 32),
         "host": settings.host,
         "port": settings.port,
@@ -148,6 +154,7 @@ def runtime_status(settings: AppSettings) -> dict[str, object]:
         "session_cookie_secure": settings.session_cookie_secure,
         "gis_tile_configured": bool(settings.gis_tile_template),
         "tile_root": str(settings.tile_root),
+        "run_worker_mode": "separate_process",
     }
 
 
@@ -165,6 +172,36 @@ def serve(settings: AppSettings) -> None:
     waitress_serve(app, host=settings.host, port=settings.port, threads=settings.server_threads)
 
 
+def run_worker(
+    settings: AppSettings,
+    *,
+    once: bool = False,
+    poll_interval_s: float = 1.0,
+) -> None:
+    """Run the queue consumer as a process separate from Waitress."""
+    prepare_runtime(settings, require_user=True, bootstrap_if_configured=False)
+    configure_logging(settings)
+    loop = build_run_worker_loop(settings.db_path, poll_interval_s=poll_interval_s)
+    logger = logging.getLogger("airport_group.worker")
+    logger.info(
+        "starting Run worker db=%s mode=%s poll_interval_s=%.3f",
+        settings.db_path,
+        "once" if once else "continuous",
+        float(poll_interval_s),
+    )
+    if once:
+        record = loop.execute_next()
+        if record is None:
+            logger.info("Run worker --once found no claimable queued Run")
+        else:
+            logger.info("Run worker --once completed run_id=%s status=%s", record.run_id, record.status)
+        return
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        logger.info("Run worker stopped by operator")
+
+
 __all__ = [
     "RuntimeStartupError",
     "PreparedRuntime",
@@ -175,4 +212,5 @@ __all__ = [
     "validate_runtime_ready",
     "runtime_status",
     "serve",
+    "run_worker",
 ]

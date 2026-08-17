@@ -1,0 +1,24 @@
+{
+  "baseline": "GitHub main as reviewed 2026-08-17",
+  "mode": "direct_overlay",
+  "files": [
+    "backend/web/flask_audit.py",
+    "original_algorithm_overlay/model/cluster_selector.py",
+    "original_algorithm_overlay/model/model_builder.py",
+    "original_algorithm_overlay/model/model_facts.py",
+    "original_algorithm_overlay/utils/solution_dump.py",
+    "tests/algorithm/test_model_facts_overlay.py",
+    "tests/algorithm/test_soft_demand_contract.py",
+    "tests/web/test_audit_polling_policy.py"
+  ],
+  "syntax_compile": {
+    "tests/web/test_audit_polling_policy.py": "PASS",
+    "tests/algorithm/test_soft_demand_contract.py": "PASS",
+    "tests/algorithm/test_model_facts_overlay.py": "PASS",
+    "backend/web/flask_audit.py": "PASS",
+    "original_algorithm_overlay/utils/solution_dump.py": "PASS",
+    "original_algorithm_overlay/model/cluster_selector.py": "PASS",
+    "original_algorithm_overlay/model/model_builder.py": "PASS",
+    "original_algorithm_overlay/model/model_facts.py": "PASS"
+  }
+}

@@ -9,6 +9,8 @@
     <div class="config-body">
       <div id="pageMessage" class="inline-message hidden" role="status"></div>
 
+      <div class="config-section-label">基础配置</div>
+
       <div class="field required">
         <label for="situationSelect">情境</label>
         <select id="situationSelect" class="control" disabled>
@@ -17,60 +19,64 @@
         <div id="situationMeta" class="field-note"></div>
       </div>
 
-      <div class="field required">
+      <div class="field">
         <label for="damageSelect">损毁场景</label>
         <select id="damageSelect" class="control" disabled>
           <option value="">请先选择情境</option>
         </select>
       </div>
 
-      <div class="field required">
-        <label for="preferenceSelect">优化偏好</label>
-        <select id="preferenceSelect" class="control">
-          <option value="">请选择优化偏好</option>
-          <option value="sortie_max">出动架次优先</option>
-          <option value="resource_min">资源消耗优先</option>
-          <option value="time_min">时间代价优先</option>
-          <option value="custom">自定义权重</option>
-        </select>
-      </div>
+      <fieldset class="field preference-field">
+        <legend>优化偏好</legend>
+        <div id="preferenceGroup" class="segmented-control">
+          <label><input type="radio" name="preferenceMode" value="sortie_max"><span>出动优先</span></label>
+          <label><input type="radio" name="preferenceMode" value="resource_min"><span>资源优先</span></label>
+          <label><input type="radio" name="preferenceMode" value="time_min"><span>时间优先</span></label>
+          <label><input type="radio" name="preferenceMode" value="custom"><span>自定义</span></label>
+        </div>
+      </fieldset>
 
       <div id="customAlpha" class="custom-alpha hidden" aria-label="自定义目标权重">
         <div class="field compact required"><label for="alphaSortie">出动权重</label><input id="alphaSortie" class="control" type="number" min="0" step="0.01"></div>
         <div class="field compact required"><label for="alphaResource">资源权重</label><input id="alphaResource" class="control" type="number" min="0" step="0.01"></div>
         <div class="field compact required"><label for="alphaTime">时间权重</label><input id="alphaTime" class="control" type="number" min="0" step="0.01"></div>
-        <div class="field-note">后端按 canonical 规则归一化；零值按既有非零下限规则处理。</div>
+        <button class="info-button" type="button" title="提交时自动归一化。" aria-label="自定义权重说明">i</button>
       </div>
 
-      <div class="switch-row">
-        <div><strong>是否启用组选</strong><div class="field-note">关闭时不提交组群规模和核心机场。</div></div>
-        <label class="switch" title="启用组选">
-          <input id="clusterEnabled" type="checkbox">
-          <span></span>
-        </label>
-      </div>
-
-      <div class="field required">
-        <label for="clusterSize">组群规模</label>
-        <input id="clusterSize" class="control" type="number" min="1" max="8" step="1" disabled placeholder="启用组选后填写 1–8">
-      </div>
+      <section class="fold cluster-fold" id="clusterFold">
+        <div class="fold-head cluster-fold-head">
+          <button class="fold-toggle" type="button" data-fold="clusterFold" aria-expanded="false" aria-controls="clusterOptions" disabled>
+            <span>机场组群选择</span><span class="fold-chevron">⌄</span>
+          </button>
+          <div id="clusterSummary" class="fold-summary cluster-summary">已关闭</div>
+          <label class="switch" title="机场组群选择">
+            <input id="clusterEnabled" type="checkbox">
+            <span></span>
+          </label>
+        </div>
+        <div id="clusterOptions" class="fold-body cluster-options" aria-hidden="true">
+          <div class="field required">
+            <label for="clusterSize">组群规模</label>
+            <input id="clusterSize" class="control" type="number" min="1" max="8" step="1" placeholder="1–8">
+          </div>
+          <div class="field">
+            <label>核心机场 <span class="label-note">可选，最多 2 个</span></label>
+            <div id="coreAirportOptions" class="choice-grid empty-box">选择情境后可设置</div>
+          </div>
+        </div>
+      </section>
 
       <section class="fold" id="advancedFold">
         <div class="fold-head">
-          <button class="fold-toggle" type="button" data-fold="advancedFold" aria-expanded="false">
+          <button class="fold-toggle" type="button" data-fold="advancedFold" aria-expanded="false" aria-controls="advancedOptions">
             <span>高级设置</span><span>⌄</span>
           </button>
         </div>
-        <div id="advancedSummary" class="fold-summary">求解时限未设置 · 机型权重使用默认 1.0</div>
-        <div class="fold-body">
-          <div class="field">
-            <label>核心机场（最多 2 个）</label>
-            <div id="coreAirportOptions" class="choice-grid empty-box">启用组选并选择情境后可设置</div>
-          </div>
-
+        <div id="advancedSummary" class="fold-summary">120秒 · 机型权重默认1.0</div>
+        <div id="advancedOptions" class="fold-body" aria-hidden="true">
           <div class="field required">
             <label for="mipTimeLimit">求解时限（秒）</label>
-            <input id="mipTimeLimit" class="control" type="number" min="0.001" step="1" placeholder="请输入正数">
+            <input id="mipTimeLimit" class="control" type="number" min="0.001" step="1" value="120">
           </div>
 
           <div class="field">
@@ -82,12 +88,12 @@
 
       <section class="fold" id="validationFold">
         <div class="fold-head">
-          <button class="fold-toggle" type="button" data-fold="validationFold" aria-expanded="false">
+          <button class="fold-toggle" type="button" data-fold="validationFold" aria-expanded="false" aria-controls="validationChecks">
             <span>运行条件校验</span><span>⌄</span>
           </button>
         </div>
-        <div id="validationSummary" class="fold-summary validation-dirty">配置尚未校验</div>
-        <div id="validationChecks" class="fold-body validation-list">
+        <div id="validationSummary" class="fold-summary validation-dirty">尚未校验</div>
+        <div id="validationChecks" class="fold-body validation-list" aria-hidden="true">
           <div class="empty-box">点击“校验运行条件”后显示后端 preflight 结果。</div>
         </div>
       </section>
@@ -103,27 +109,40 @@
     <section class="runtime-block current-block">
       <div class="block-head">
         <div class="current-title"><span id="currentTitle">当前运行</span><button id="returnLiveButton" class="link-button hidden" type="button">返回当前运行</button></div>
-        <div class="view-tabs" role="tablist" aria-label="当前运行视图">
-          <button id="overviewTab" class="active" type="button" role="tab" aria-selected="true">运行概览</button>
-          <button id="logTab" type="button" role="tab" aria-selected="false">实时日志</button>
-        </div>
+        <button id="returnOverviewButton" class="link-button hidden" type="button">返回运行概览</button>
       </div>
       <div id="currentRunPane" class="current-pane">
-        <div id="currentEmpty" class="state-box">当前没有运行中的任务。</div>
-        <div id="currentContent" class="hidden">
-          <div class="run-meta" id="runMeta"></div>
-          <div class="progress-readout"><span id="progressStage">等待事件</span><small id="progressLabel">尚未进入运行阶段</small></div>
-          <div class="stage-flow" id="stageFlow"></div>
-          <div id="activityBar" class="activity-bar"></div>
-          <div id="logTools" class="log-tools hidden" aria-label="日志工具">
-            <label><input id="logAutoScroll" type="checkbox" checked> 自动滚动</label>
-            <span class="spacer"></span>
-            <button id="logLatestButton" class="link-button" type="button">回到最新</button>
-            <button id="logCopyButton" class="link-button" type="button">复制</button>
-            <button id="logExportButton" class="link-button" type="button">导出日志</button>
+        <div id="currentContent">
+          <div id="overviewPane">
+            <div class="run-meta" id="runMeta" aria-label="当前运行元信息">
+              <div class="meta-row"><span>Run ID</span><strong>—</strong></div>
+              <div class="meta-row"><span>情境</span><strong>—</strong></div>
+              <div class="meta-row"><span>损毁场景</span><strong>—</strong></div>
+              <div class="meta-row"><span>开始时间</span><strong>—</strong></div>
+              <div class="meta-row"><span>已运行时间</span><strong id="elapsedValue">—</strong></div>
+              <div class="meta-row"><span>当前状态</span><strong class="status-idle">尚未运行</strong></div>
+            </div>
+            <div class="progress-readout"><strong id="progressPercent">0%</strong><span id="progressStage">尚未开始</span><small id="progressLabel">尚未开始</small></div>
+            <div class="stage-flow" id="stageFlow">
+              <div class="stage pending"><div class="stage-circle">1</div><strong>1. 数据准备</strong><span>未开始</span></div>
+              <div class="stage pending"><div class="stage-circle">2</div><strong>2. 候选搜索</strong><span>未开始</span></div>
+              <div class="stage pending"><div class="stage-circle">3</div><strong>3. 快速评估</strong><span>未开始</span></div>
+              <div class="stage pending"><div class="stage-circle">4</div><strong>4. 精确求解</strong><span>未开始</span></div>
+              <div class="stage pending"><div class="stage-circle">5</div><strong>5. 结果持久化</strong><span>未开始</span></div>
+            </div>
+            <div id="activityBar" class="activity-bar"><span>尚未开始运行</span><button id="viewLogButton" class="link-button" type="button">查看运行日志</button></div>
+            <div id="currentActions" class="current-actions"></div>
           </div>
-          <div id="logBox" class="log-box hidden" aria-live="polite" tabindex="0"></div>
-          <div class="current-actions"><button id="cancelButton" class="btn danger" type="button">取消运行</button></div>
+          <div id="logPane" class="hidden">
+            <div id="logTools" class="log-tools" aria-label="日志工具">
+              <label><input id="logAutoScroll" type="checkbox" checked> 自动滚动</label>
+              <span class="spacer"></span>
+              <button id="logLatestButton" class="link-button" type="button">回到最新</button>
+              <button id="logCopyButton" class="link-button" type="button">复制</button>
+              <button id="logExportButton" class="link-button" type="button">导出日志</button>
+            </div>
+            <div id="logBox" class="log-box" aria-live="polite" tabindex="0"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -132,8 +151,8 @@
       <div class="block-head"><span>排队任务</span><span id="queueCount" class="count-badge">0</span></div>
       <div class="table-wrap">
         <table class="run-table">
-          <thead><tr><th>Run ID</th><th>情境</th><th>损毁场景</th><th>优化偏好</th><th>组群规模</th><th>加入时间</th><th>状态</th></tr></thead>
-          <tbody id="queueBody"><tr><td colspan="7" class="table-empty">暂无排队任务</td></tr></tbody>
+          <thead><tr><th>Run ID</th><th>情境</th><th>损毁场景</th><th>优化偏好</th><th>组群规模</th><th>加入时间</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="queueBody"><tr><td colspan="8" class="table-empty">暂无排队任务</td></tr></tbody>
         </table>
       </div>
     </section>

@@ -28,8 +28,10 @@ from .model_facts import (
     objective_coefficients,
     resolved_alpha,
     resource_use_by_path,
-    validate_hard_demand_paths,
 )
+
+
+DEFAULT_UNMET_DEMAND_PENALTY = 1000.0
 
 
 def _sets(ds: Mapping[str, Any]):
@@ -105,13 +107,25 @@ def _add_capacity(model, ds, maps: PathMaps, run_params, x_path, A, T):
             model.addCons(quicksum(terms) <= float(seq[t]), name=f"CAP__{aid}__{t}")
 
 
-def _add_demand(model, ds, maps: PathMaps, x_path):
-    # demand_rows fails fast when positive demand has no feasible path.
+
+def _add_demand(model, ds, maps: PathMaps, x_path, *, vtype: str):
+    """Add soft baseline-demand constraints.
+
+    executed(mid,f) + unmet(mid,f) >= required(mid,f)
+
+    There is deliberately no ``executed <= required`` constraint.  Once the baseline
+    demand is covered, additional sorties remain available to express regional support
+    capacity subject to the existing aircraft/capacity/resource facts.
+    """
+    unmet: Dict[Tuple[str, str], Any] = {}
     for (mid, f), (required, paths) in demand_rows(ds, maps).items():
+        var = model.addVar(lb=0.0, vtype=vtype, name=f"UNMET__{mid}__{f}")
+        unmet[(mid, f)] = var
         model.addCons(
-            quicksum(x_path[pid] for pid in paths) >= float(required),
+            quicksum(x_path[pid] for pid in paths) + var >= float(required),
             name=f"REQ__{mid}__{f}",
         )
+    return unmet
 
 
 def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T):
@@ -148,7 +162,18 @@ def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T):
                 model.addCons(cumulative <= float(seq[t]), name=f"RES__{aid}__{rid}__{t}")
 
 
-def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path):
+def _resolve_unmet_penalty(runtime: Mapping[str, Any]) -> float:
+    raw = runtime.get("unmet_demand_penalty", DEFAULT_UNMET_DEMAND_PENALTY)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ModelFactError("unmet_demand_penalty must be numeric") from exc
+    if value <= 0:
+        raise ModelFactError("unmet_demand_penalty must be positive")
+    return value
+
+
+def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path, unmet_demand):
     weights = resolved_alpha(runtime)
     coeffs = objective_coefficients(ds, maps, run_params, runtime)
     terms = []
@@ -156,7 +181,13 @@ def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path):
         coef = weights.sortie * row.f1 - weights.resource * row.f2 + weights.time * row.f3
         if coef != 0.0:
             terms.append(coef * x_path[pid])
+
+    unmet_penalty = _resolve_unmet_penalty(runtime)
+    for var in unmet_demand.values():
+        terms.append(-unmet_penalty * var)
+
     model.setObjective(quicksum(terms), "maximize")
+    return unmet_penalty
 
 
 def build_model(
@@ -175,7 +206,6 @@ def build_model(
     """
     if not isinstance(maps, PathMaps):
         raise ModelFactError("maps must be PathMaps")
-    validate_hard_demand_paths(ds, maps)
     A, M, K, T = _sets(ds)
     if T <= 0:
         raise ModelFactError("timeview.T must be positive")
@@ -220,9 +250,11 @@ def build_model(
 
     _add_aircraft_flow(model, ds, maps, x_path, z, A, K, T)
     _add_capacity(model, ds, maps, run_params, x_path, A, T)
-    _add_demand(model, ds, maps, x_path)
+    unmet_demand = _add_demand(model, ds, maps, x_path, vtype=vtype)
     _add_shared_resources(model, ds, maps, run_params, x_path, A, T)
-    _set_objective(model, ds, maps, run_params, runtime, x_path)
+    unmet_penalty = _set_objective(
+        model, ds, maps, run_params, runtime, x_path, unmet_demand
+    )
 
     x_out, x_ret = _aggregate_views(maps, x_path)
     pack = {
@@ -230,10 +262,12 @@ def build_model(
         "x_out": x_out,
         "x_ret": x_ret,
         "z": z,
+        "unmet_demand": unmet_demand,
+        "unmet_demand_penalty": unmet_penalty,
         "path_records": tuple(maps.path_records),
         "sets": {"A": A, "M": M, "K": K, "T": T},
     }
     return model, pack
 
 
-__all__ = ["build_model"]
+__all__ = ["DEFAULT_UNMET_DEMAND_PENALTY", "build_model"]

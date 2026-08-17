@@ -155,7 +155,7 @@ def _resolve_search_plan(
 
 
 def _solution_components(model, pack: Mapping[str, Any], coeffs: Mapping[Tuple, Any]):
-    """Read LP path quantities and report F1/F2/F3 from the shared coefficient table."""
+    """Read LP path quantities and the soft-demand quantity from the shared model."""
     x_path = pack.get("x_path")
     if not isinstance(x_path, dict):
         raise ClusterEvalError("cluster LP pack must expose canonical x_path variables")
@@ -172,7 +172,12 @@ def _solution_components(model, pack: Mapping[str, Any], coeffs: Mapping[Tuple, 
         f1 += float(row.f1) * value
         f2 += float(row.f2) * value
         f3 += float(row.f3) * value
-    return f1, f2, f3, quantities
+
+    unmet = pack.get("unmet_demand") or {}
+    if not isinstance(unmet, dict):
+        raise ClusterEvalError("cluster LP pack.unmet_demand must be a mapping")
+    unmet_total = sum(max(0.0, float(model.getVal(var))) for var in unmet.values())
+    return f1, f2, f3, quantities, unmet_total
 
 
 def _eval_cluster_lp(
@@ -213,6 +218,7 @@ def _eval_cluster_lp(
     except (ModelFactError, ValueError) as exc:
         res = {
             "S": list(S), "F1": 0.0, "F2": 0.0, "F3": 0.0,
+            "Unmet": None,
             "Z": -1e18, "status": "infeasible_precheck", "detail": str(exc),
         }
         cache[key] = res
@@ -231,6 +237,7 @@ def _eval_cluster_lp(
             print(f"[cluster_eval] S={list(S)} LP solve error: {exc}")
         res = {
             "S": list(S), "F1": 0.0, "F2": 0.0, "F3": 0.0,
+            "Unmet": None,
             "Z": -1e18, "status": "error", "detail": str(exc),
         }
         cache[key] = res
@@ -241,15 +248,24 @@ def _eval_cluster_lp(
     except Exception:
         res = {
             "S": list(S), "F1": 0.0, "F2": 0.0, "F3": 0.0,
+            "Unmet": None,
             "Z": -1e18, "status": "no_solution",
         }
         cache[key] = res
         return res
 
     coeffs = objective_coefficients(ds, maps, run_params, rt)
-    f1, f2, f3, _ = _solution_components(model, pack, coeffs)
+    f1, f2, f3, _, unmet_total = _solution_components(model, pack, coeffs)
     weights = resolved_alpha(rt)
-    z_facts = weights.sortie * f1 - weights.resource * f2 + weights.time * f3
+    unmet_penalty = float(pack.get("unmet_demand_penalty") or 0.0)
+    if unmet_penalty <= 0:
+        raise ClusterEvalError("cluster LP pack is missing a positive unmet-demand penalty")
+    z_facts = (
+        weights.sortie * f1
+        - weights.resource * f2
+        + weights.time * f3
+        - unmet_penalty * unmet_total
+    )
     if abs(z_model - z_facts) > _OBJECTIVE_EQ_TOL * (1.0 + abs(z_model)):
         raise ClusterEvalError(
             f"cluster LP objective drift: model={z_model}, shared_facts={z_facts}"
@@ -257,6 +273,7 @@ def _eval_cluster_lp(
 
     res = {
         "S": list(S), "F1": f1, "F2": f2, "F3": f3,
+        "Unmet": unmet_total,
         "Z": z_model, "status": "ok",
     }
     cache[key] = res

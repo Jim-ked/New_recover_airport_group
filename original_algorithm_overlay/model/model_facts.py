@@ -58,11 +58,14 @@ def _mission_requirements(ds: Mapping[str, Any]) -> Dict[Tuple[str, str], int]:
 
 
 def validate_hard_demand_paths(ds: Mapping[str, Any], maps: PathMaps) -> None:
-    available = {(p.mission_id, p.aircraft_type_id) for p in maps.path_records}
-    missing = sorted(key for key in _mission_requirements(ds) if key not in available)
-    if missing:
-        detail = ", ".join(f"{m}/{f}" for m, f in missing[:8])
-        raise ModelFactError(f"positive required_sorties has no feasible path: {detail}")
+    """Compatibility entry retained after required_sorties became soft demand.
+
+    A positive baseline demand with no feasible path is no longer a structural model
+    error.  The optimizer represents that shortage with an explicit UNMET variable.
+    Existing callers may keep invoking this function during migration; it intentionally
+    performs no rejection.
+    """
+    return None
 
 
 def resolved_alpha(runtime: Mapping[str, Any]) -> ObjectiveWeights:
@@ -240,15 +243,18 @@ def objective_coefficients(
 
 
 def demand_rows(ds: Mapping[str, Any], maps: PathMaps) -> Dict[Tuple[str, str], Tuple[int, Tuple[PathKey, ...]]]:
+    """Baseline demand rows used by the soft-demand penalty model.
+
+    Empty path tuples are valid.  In that case the full baseline requirement is carried
+    by the optimizer's UNMET variable rather than turning model construction into a hard
+    infeasibility.
+    """
     by_mf: Dict[Tuple[str, str], list[PathKey]] = {}
     for p in maps.path_records:
         by_mf.setdefault((p.mission_id, p.aircraft_type_id), []).append(p.key)
     rows = {}
     for key, required in _mission_requirements(ds).items():
-        paths = tuple(sorted(by_mf.get(key, [])))
-        if not paths:
-            raise ModelFactError(f"positive required_sorties has no feasible path: {key[0]}/{key[1]}")
-        rows[key] = (required, paths)
+        rows[key] = (required, tuple(sorted(by_mf.get(key, []))))
     return rows
 
 
@@ -291,12 +297,11 @@ def validate_schedule_base(
     integer_required: bool = True,
     tolerance: float = 1e-7,
 ) -> None:
-    """Independent invariant check for a candidate path solution.
+    """Independent physical-invariant check for a candidate path solution.
 
-    This checks the same confirmed path/capacity/aircraft/shared-resource facts used by
-    the model. Fuel demand includes the confirmed reserve formula inside
-    :func:`path_resource_use`, so the validator and optimizer share one coefficient
-    source.
+    Mission ``required_sorties`` is deliberately excluded because it is now a soft
+    planning target handled by the optimization objective.  This validator checks only
+    physical facts: path identity, capacity, aircraft flow and shared resources.
     """
     path_by_key = {p.key: p for p in maps.path_records}
     unknown = sorted(set(quantities) - set(path_by_key))
@@ -311,15 +316,6 @@ def validate_schedule_base(
             raise ModelFactError(f"non-integer sortie quantity: {key}")
         if value > tolerance:
             q[key] = value
-
-    # Hard minimum mission demand.
-    for key, (required, paths) in demand_rows(ds, maps).items():
-        executed = sum(q.get(p, 0.0) for p in paths)
-        if executed + tolerance < required:
-            raise ModelFactError(
-                f"hard demand violated: mission={key[0]}, aircraft={key[1]}, "
-                f"required={required}, executed={executed}"
-            )
 
     # Airport departure+arrival capacity.
     dep_coef, arr_coef = capacity_coefficients(maps, run_params)

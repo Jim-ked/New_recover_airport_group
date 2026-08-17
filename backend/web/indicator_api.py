@@ -27,6 +27,7 @@ class IndicatorApi:
 
     def __init__(self, *, repository: IndicatorRepository) -> None:
         self.repo = repository
+        self.repo.ensure_default_expert()
 
     @staticmethod
     def _handle(call) -> ApiResponse:

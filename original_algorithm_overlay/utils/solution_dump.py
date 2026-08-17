@@ -70,6 +70,7 @@ def _read_integer_quantities(model: Any, pack: Mapping[str, Any], *, tol: float)
     return out
 
 
+
 def build_solution(
     ds: Dict[str, Any],
     maps: PathMaps,
@@ -89,7 +90,9 @@ def build_solution(
         raise SolutionDumpError("solver reported a solution but no positive sortie path was selected")
 
     try:
-        validate_schedule_base(ds, maps, run_params, quantities, integer_required=True, tolerance=tol)
+        validate_schedule_base(
+            ds, maps, run_params, quantities, integer_required=True, tolerance=tol
+        )
     except ModelFactError as exc:
         raise SolutionDumpError(f"solved schedule failed invariant validation: {exc}") from exc
 

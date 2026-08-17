@@ -140,6 +140,21 @@ class RunResultService:
             raise RunResultServiceError("Run snapshot hash drift")
         payload = snapshot.to_dict()
         situation = payload.get("situation") or {}
+        run_config = payload.get("run_config") or {}
+        damage_scenario = None
+        damage_scenario_id = run_config.get("damage_scenario_id")
+        if damage_scenario_id is not None:
+            for candidate in situation.get("damage_scenarios") or []:
+                if (
+                    isinstance(candidate, Mapping)
+                    and candidate.get("damage_scenario_id") == damage_scenario_id
+                ):
+                    damage_scenario = {
+                        "damage_scenario_id": damage_scenario_id,
+                        "name": candidate.get("name"),
+                        "category": candidate.get("category"),
+                    }
+                    break
         out = record.to_dict()
         out["run_config"] = payload.get("run_config")
         out["situation"] = {
@@ -147,6 +162,7 @@ class RunResultService:
             "name": situation.get("name"),
             "content_hash": payload.get("situation_content_hash"),
         }
+        out["damage_scenario"] = damage_scenario
         return out
 
     @staticmethod

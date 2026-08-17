@@ -2,16 +2,17 @@ import { apiFetch, apiDownload, saveBlob, ApiError } from './api-client.js';
 
 const state = {
   workspace: 'damage', runs: [], runById: new Map(), damageCandidates: [], payload: null,
-  chartMode: 'all', chartObjectId: null, bottomMode: 'airports', airportValue: 'sorties',
-  draft: { damageTriple: null, baseRunId: null, selectedRunIds: new Set() },
+  chartMode: 'all', chartObjectId: null, seriesKind: 'departures', bottomMode: 'airports', airportValue: 'sorties',
+  draft: createDraft(),
   canExport: false,
 };
 const $ = (id) => document.getElementById(id);
 const refs = {
   page: $('resultsPage'), top: $('resultsTop'), metrics: $('resultsMetrics'), conditionFacts: $('conditionFacts'),
-  chart: $('resultsChart'), chartTitle: $('resultsChartTitle'), chartModes: $('resultsChartModes'), objectSelect: $('resultsObjectSelect'),
+  chart: $('resultsChart'), chartTitle: $('resultsChartTitle'), chartModes: $('resultsChartModes'), seriesKinds: $('resultsSeriesKind'), objectSelect: $('resultsObjectSelect'),
   legend: $('resultsLegend'), diff: $('resultsDiff'), diffTitle: $('resultsDiffTitle'), table: $('resultsTable'),
-  overlay: $('resultsOverlay'), overlayBody: $('resultsOverlayBody'), apply: $('applyResultsComparison'), error: $('resultsError'),
+  overlay: $('resultsOverlay'), overlayTitle: $('resultsOverlayTitle'), overlayBody: $('resultsOverlayBody'), runSearch: $('resultsRunSearch'), apply: $('applyResultsComparison'), error: $('resultsError'), scopeError: $('resultsScopeError'),
+  changeCondition: $('changeConditionButton'),
   exportButton: $('resultsExportButton'), exportMenu: $('resultsExportMenu'),
 };
 const workspaceButtons = [...document.querySelectorAll('[data-workspace]')];
@@ -19,15 +20,20 @@ const bottomButtons = [...document.querySelectorAll('[data-bottom-mode]')];
 const airportValueButtons = [...document.querySelectorAll('[data-airport-value]')];
 const colors = ['#55a8ed','#ef8d34','#70bd61','#9c78d1','#d6b34e','#58c9c2'];
 
+function createDraft(){return {damageTriple:null,baseRunId:null,selectedRunIds:new Set(),searchText:'',comparableRuns:[],comparableLoading:false};}
 function esc(v){return String(v ?? '—').replace(/[&<>'"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function pct(v){return typeof v==='number'&&Number.isFinite(v)?`${(v*100).toFixed(1)}%`:'—';}
 function number(v,d=0){return typeof v==='number'&&Number.isFinite(v)?v.toFixed(d):'—';}
 function signed(v,{percent=false,unit=''}={}){if(typeof v!=='number'||!Number.isFinite(v))return '—';const x=percent?`${Math.abs(v*100).toFixed(1)}%`:`${Math.abs(v).toFixed(Number.isInteger(v)?0:2)}${unit}`;return `${v>0?'+':v<0?'−':''}${x}`;}
 function showError(err){console.error(err);refs.error.textContent=err instanceof ApiError?err.message:'结果分析加载失败';refs.error.classList.remove('hidden');setTimeout(()=>refs.error.classList.add('hidden'),6500);}
-function runLabel(id){const row=state.runById.get(id);if(!row)return id;const cfg=row.run_config||{};const dmg=cfg.damage_scenario_id||'无损毁';const cluster=cfg.cluster_enabled?'组选开启':'未组选';return `${id} · ${dmg} · ${cluster}`;}
+function clearScopeError(){refs.scopeError.textContent='';refs.scopeError.classList.add('hidden');}
+function showComparisonError(err){console.error(err);const clientError=err instanceof ApiError&&err.status>=400&&err.status<500;refs.scopeError.textContent=clientError?`比较条件不可用：${err.message}`:'比较数据读取失败';refs.scopeError.classList.remove('hidden');}
+function runLabel(id){const row=state.runById.get(id);if(!row)return id;const cfg=row.run_config||{};const situation=row.situation?.name||row.situation_id||'未知情境';const damage=row.damage_scenario?.name||cfg.damage_scenario_id||'无损毁';const cluster=cfg.cluster_enabled?'组选开启':'未组选';return `${situation} · ${damage} · ${cluster} · ${id}`;}
+function runMatchesSearch(row,query){const q=String(query||'').trim().toLocaleLowerCase();if(!q)return true;const cfg=row?.run_config||{};return [row?.run_id,row?.situation?.name,row?.situation_id,row?.damage_scenario?.name,cfg.damage_scenario_id].some((value)=>String(value||'').toLocaleLowerCase().includes(q));}
+function runHref(id){return `/runs/${encodeURIComponent(id)}`;}
 function roleLabel(role){return ({R0:'基准',R1:'损毁',R2:'组选'})[role]||role;}
 function currentRunIds(){if(!state.payload)return[];if(state.workspace==='damage')return ['R0','R1','R2'].map((r)=>state.payload.roles?.[r]).filter(Boolean);return state.payload.run_ids||[];}
-function seriesLabel(id){if(state.workspace==='damage'){const role=Object.entries(state.payload?.roles||{}).find(([,rid])=>rid===id)?.[0];return role?`${role} ${roleLabel(role)}`:id;}return id===state.payload?.baseline_run_id?`${id} 基准`:id;}
+function seriesLabel(id){if(state.workspace==='damage'){const role=Object.entries(state.payload?.roles||{}).find(([,rid])=>rid===id)?.[0];return role?`${role} ${roleLabel(role)}`:id;}return id===state.payload?.baseline_run_id?`基准 · ${runLabel(id)}`:runLabel(id);}
 
 async function loadInitial(){
   const [runs, damage] = await Promise.all([
@@ -37,33 +43,31 @@ async function loadInitial(){
   renderEmpty();
 }
 function renderEmpty(){
-  state.payload=null;updateExportState();refs.top.className='results-top empty-panel';refs.top.textContent='请选择比较条件';refs.metrics.innerHTML='';
-  refs.chart.innerHTML='<div class="results-placeholder">暂无比较数据</div>';refs.legend.innerHTML='';
+  state.payload=null;refs.page.classList.add('no-comparison');clearScopeError();updateExportState();refs.top.className='results-top hidden';refs.top.textContent='';refs.metrics.innerHTML='';
+  refs.chart.innerHTML='<div class="results-placeholder">选择比较条件后显示时序比较。</div>';refs.legend.innerHTML='';
   refs.diff.innerHTML='<div class="results-placeholder">比较后显示确定性差异</div>';refs.table.innerHTML='<div class="results-placeholder">暂无比较数据</div>';
-  refs.conditionFacts.textContent='尚未选择可比 Run';updateTitles();
+  refs.conditionFacts.textContent='尚未选择比较条件';refs.changeCondition.textContent='选择比较条件';updateTitles();
 }
 function updateTitles(){
-  if(state.workspace==='damage'){refs.chartTitle.textContent='三状态任务调度时序比较';refs.diffTitle.textContent='规则提示';}
-  else if(state.workspace==='multi'){refs.chartTitle.textContent='多场景任务调度时序比较';refs.diffTitle.textContent='场景差异概览';}
-  else{refs.chartTitle.textContent='多方案任务调度时序比较';refs.diffTitle.textContent='方案差异概览';}
+  refs.chartTitle.textContent=chartTitleText();refs.diffTitle.textContent='关键差异';
 }
 function setWorkspace(mode){
-  state.workspace=mode;state.chartMode='all';state.chartObjectId=null;state.bottomMode='airports';state.airportValue='sorties';state.draft={damageTriple:null,baseRunId:null,selectedRunIds:new Set()};
+  state.workspace=mode;state.chartMode='all';state.chartObjectId=null;state.seriesKind='departures';state.bottomMode='airports';state.airportValue='sorties';state.draft=createDraft();
   workspaceButtons.forEach((b)=>b.classList.toggle('active',b.dataset.workspace===mode));
   bottomButtons.forEach((b)=>b.classList.toggle('active',b.dataset.bottomMode==='airports'));
   airportValueButtons.forEach((b)=>b.classList.toggle('active',b.dataset.airportValue==='sorties'));
   renderEmpty();openOverlay();
 }
 
-function openOverlay(){renderOverlay();refs.overlay.classList.add('open');refs.overlay.setAttribute('aria-hidden','false');}
+function openOverlay(){clearScopeError();refs.overlayTitle.textContent=state.payload?'修改比较条件':'选择比较条件';refs.runSearch.value=state.draft.searchText;renderOverlay();refs.overlay.classList.add('open');refs.overlay.setAttribute('aria-hidden','false');}
 function closeOverlay(){refs.overlay.classList.remove('open');refs.overlay.setAttribute('aria-hidden','true');}
 function renderOverlay(){
   if(state.workspace==='damage')renderDamageOverlay();
   else renderComparableOverlay(state.workspace==='multi'?'multi_scenario':'configuration');
 }
 function renderDamageOverlay(){
-  const rows=state.damageCandidates;
-  refs.overlayBody.innerHTML=`<div class="overlay-section"><span class="overlay-title">后端已验证的 R0 / R1 / R2 组合</span><div class="candidate-list">${rows.length?rows.map((x,i)=>`<label class="candidate-row${state.draft.damageTriple===i?' selected':''}"><input type="radio" name="damageTriple" value="${i}" ${state.draft.damageTriple===i?'checked':''}><span><b>R0 ${esc(x.r0_run_id)} → R1 ${esc(x.r1_run_id)} → R2 ${esc(x.r2_run_id)}</b><small>损毁 ${esc(x.damage_scenario_id)} · 偏好 ${esc(x.preference_mode)}</small></span></label>`).join(''):'<div class="candidate-row"><span></span><span>当前没有满足固定 R0/R1/R2 规则的成功 Run 组合。</span></div>'}</div></div><div class="candidate-check">这里只显示后端已通过同一冻结 Situation、同一算法种子/时限、R0 无损毁未组选、R1 同配置损毁未组选、R2 同损毁组选开启等规则的组合。页面不会自动评选或替换 Run。</div>`;
+  const rows=state.damageCandidates.map((row,index)=>({row,index})).filter(({row})=>[row.r0_run_id,row.r1_run_id,row.r2_run_id].some((id)=>runMatchesSearch(state.runById.get(id)||{run_id:id},state.draft.searchText)));
+  refs.overlayBody.innerHTML=`<div class="overlay-section"><span class="overlay-title">后端已验证的 R0 / R1 / R2 组合</span><div class="candidate-list">${rows.length?rows.map(({row:x,index:i})=>`<label class="candidate-row${state.draft.damageTriple===i?' selected':''}"><input type="radio" name="damageTriple" value="${i}" ${state.draft.damageTriple===i?'checked':''}><span><b>R0 ${esc(x.r0_run_id)} → R1 ${esc(x.r1_run_id)} → R2 ${esc(x.r2_run_id)}</b><small>${esc(runLabel(x.r1_run_id))} · 偏好 ${esc(x.preference_mode)}</small></span></label>`).join(''):`<div class="candidate-row"><span></span><span>${state.damageCandidates.length?'没有匹配的合法比较组合。':'当前没有满足固定 R0/R1/R2 规则的成功 Run 组合。'}</span></div>`}</div></div><div class="candidate-check">这里只显示后端已通过同一冻结 Situation、同一算法种子/时限、R0 无损毁未组选、R1 同配置损毁未组选、R2 同损毁组选开启等规则的组合。页面不会自动评选或替换 Run。</div>`;
   refs.overlayBody.querySelectorAll('input[name="damageTriple"]').forEach((el)=>el.addEventListener('change',()=>{state.draft.damageTriple=Number(el.value);renderDamageOverlay();}));
   refs.apply.disabled=state.draft.damageTriple===null;
 }
@@ -72,21 +76,23 @@ async function loadComparable(baseRunId,mode){
   const q=new URLSearchParams({base_run_id:baseRunId,mode});
   const data=await apiFetch(`/api/results/comparable-runs?${q.toString()}`);return data.items||[];
 }
-async function renderComparableOverlay(mode){
+function renderComparableOverlay(mode){
   const base=state.draft.baseRunId;
-  refs.overlayBody.innerHTML=`<div class="overlay-section"><label>${mode==='multi_scenario'?'比较基准 Run':'基准方案 Run'}</label><select id="comparisonBaseRun" class="overlay-select"><option value="">请选择成功 Run</option>${state.runs.map((r)=>`<option value="${esc(r.run_id)}" ${base===r.run_id?'selected':''}>${esc(runLabel(r.run_id))}</option>`).join('')}</select></div><div id="comparableRunArea" class="overlay-section"><span class="overlay-title">可比成功 Run</span><div class="candidate-list"><div class="candidate-row"><span></span><span>${base?'正在读取后端可比 Run…':'先选择基准 Run'}</span></div></div></div><div class="candidate-check">可比性由后端判断。多场景只允许损毁场景不同；方案配置比较固定 Situation、损毁、算法种子与求解时限，只允许业务配置差异。</div>`;
-  $('comparisonBaseRun').addEventListener('change',async(e)=>{state.draft.baseRunId=e.target.value||null;state.draft.selectedRunIds=new Set(state.draft.baseRunId?[state.draft.baseRunId]:[]);await renderComparableOverlay(mode);});
-  if(!base){refs.apply.disabled=true;return;}
-  try{
-    const items=await loadComparable(base,mode);const all=[state.runById.get(base),...items].filter(Boolean);const area=$('comparableRunArea');
-    area.innerHTML=`<span class="overlay-title">可比成功 Run（${mode==='multi_scenario'?'选择 2–6 个':'选择 2–5 个'}）</span><div class="candidate-list">${all.map((r)=>{const id=r.run_id;const checked=state.draft.selectedRunIds.has(id);return `<label class="candidate-row${checked?' selected':''}"><input type="checkbox" data-run-id="${esc(id)}" ${checked?'checked':''} ${id===base?'disabled':''}><span><b>${esc(runLabel(id))}</b><small>${id===base?(mode==='configuration'?'基准方案':'比较基准'):'后端判定可比'}</small></span></label>`}).join('')}</div>`;
-    area.querySelectorAll('input[type="checkbox"]').forEach((el)=>el.addEventListener('change',()=>{const id=el.dataset.runId;if(el.checked)state.draft.selectedRunIds.add(id);else state.draft.selectedRunIds.delete(id);renderComparableOverlay(mode);}));
-    const count=state.draft.selectedRunIds.size;refs.apply.disabled=mode==='multi_scenario'?!((count>=2)&&(count<=6)):!((count>=2)&&(count<=5));
-  }catch(err){showError(err);refs.apply.disabled=true;}
+  const baseRows=state.runs.filter((row)=>row.run_id===base||runMatchesSearch(row,state.draft.searchText));
+  const all=[state.runById.get(base),...state.draft.comparableRuns].filter((row,index,items)=>row&&items.findIndex((item)=>item.run_id===row.run_id)===index).filter((row)=>row.run_id===base||runMatchesSearch(state.runById.get(row.run_id)||row,state.draft.searchText));
+  const comparableContent=!base?'先选择基准 Run':state.draft.comparableLoading?'正在读取后端可比 Run…':all.length?all.map((r)=>{const id=r.run_id;const checked=state.draft.selectedRunIds.has(id);return `<label class="candidate-row${checked?' selected':''}"><input type="checkbox" data-run-id="${esc(id)}" ${checked?'checked':''} ${id===base?'disabled':''}><span><b>${esc(runLabel(id))}</b><small>${id===base?(mode==='configuration'?'基准方案':'比较基准'):'后端判定可比'}</small></span></label>`}).join(''):'没有匹配的后端可比 Run。';
+  refs.overlayBody.innerHTML=`<div class="overlay-section"><label>${mode==='multi_scenario'?'比较基准 Run':'基准方案 Run'}</label><select id="comparisonBaseRun" class="overlay-select"><option value="">请选择成功 Run</option>${baseRows.map((r)=>`<option value="${esc(r.run_id)}" ${base===r.run_id?'selected':''}>${esc(runLabel(r.run_id))}</option>`).join('')}</select></div><div id="comparableRunArea" class="overlay-section"><span class="overlay-title">可比成功 Run（${mode==='multi_scenario'?'选择 2–6 个':'选择 2–5 个'}）</span><div class="candidate-list">${all.length&&!state.draft.comparableLoading?comparableContent:`<div class="candidate-row"><span></span><span>${comparableContent}</span></div>`}</div></div><div class="candidate-check">搜索只过滤后端已批准的候选。多场景只允许损毁场景不同；方案配置比较固定 Situation、损毁、算法种子与求解时限。</div>`;
+  $('comparisonBaseRun').addEventListener('change',async(e)=>{const next=e.target.value||null;const requestDraft=state.draft;state.draft.baseRunId=next;state.draft.selectedRunIds=new Set(next?[next]:[]);state.draft.comparableRuns=[];state.draft.comparableLoading=Boolean(next);clearScopeError();renderComparableOverlay(mode);if(!next)return;try{const items=await loadComparable(next,mode);if(state.draft!==requestDraft||state.draft.baseRunId!==next)return;state.draft.comparableRuns=items;}catch(err){if(state.draft!==requestDraft||state.draft.baseRunId!==next)return;showComparisonError(err);}finally{if(state.draft===requestDraft&&state.draft.baseRunId===next){state.draft.comparableLoading=false;renderComparableOverlay(mode);}}});
+  refs.overlayBody.querySelectorAll('input[type="checkbox"]').forEach((el)=>el.addEventListener('change',()=>{const id=el.dataset.runId;if(el.checked)state.draft.selectedRunIds.add(id);else state.draft.selectedRunIds.delete(id);renderComparableOverlay(mode);}));
+  const count=state.draft.selectedRunIds.size;
+  const maximum=mode==='multi_scenario'?6:5;
+  refs.apply.disabled=state.draft.comparableLoading||count<2||count>maximum;
 }
 
 async function applyComparison(){
-  refs.apply.disabled=true;
+  const requestWorkspace=state.workspace;
+  const requestDraft=state.draft;
+  refs.apply.disabled=true;clearScopeError();
   try{
     let payload;
     if(state.workspace==='damage'){
@@ -97,8 +103,10 @@ async function applyComparison(){
     }else{
       payload=await apiFetch('/api/results/config-comparison',{method:'POST',body:{run_ids:[...state.draft.selectedRunIds],baseline_run_id:state.draft.baseRunId}});
     }
-    state.payload=payload;state.chartMode='all';state.chartObjectId=null;closeOverlay();renderComparison();
-  }catch(err){showError(err);refs.apply.disabled=false;}
+    if(state.workspace!==requestWorkspace)return;
+    if(state.draft!==requestDraft)return;
+    state.payload=payload;state.chartMode='all';state.chartObjectId=null;state.seriesKind='departures';closeOverlay();renderComparison();
+  }catch(err){if(state.workspace!==requestWorkspace)return;if(state.draft!==requestDraft)return;showComparisonError(err);refs.apply.disabled=false;}
 }
 
 
@@ -129,17 +137,17 @@ async function exportResults(format){
   finally{ refs.exportButton.textContent='导出'; updateExportState(); }
 }
 
-function renderComparison(){updateExportState();updateTitles();renderConditions();renderTop();renderMetrics();renderChartControls();renderChart();renderDiff();renderBottom();}
+function renderComparison(){refs.page.classList.remove('no-comparison');clearScopeError();updateExportState();updateTitles();renderConditions();renderTop();renderMetrics();renderChartControls();renderChart();renderDiff();renderBottom();}
 function renderConditions(){
-  const ids=currentRunIds();const items=ids.map((id)=>runLabel(id));refs.conditionFacts.textContent=items.join('　|　');
+  const ids=currentRunIds();const items=ids.map((id)=>runLabel(id));refs.conditionFacts.textContent=items.join('　|　');refs.changeCondition.textContent='修改条件';
 }
 function renderTop(){
   if(state.workspace==='damage'){
     const roles=state.payload.roles||{};refs.top.className='results-top results-roles';
-    refs.top.innerHTML=['R0','R1','R2'].map((r,i)=>`${i?'<div class="role-arrow">→</div>':''}<div class="result-role"><h3 style="color:${colors[i]}">${r} ${roleLabel(r)} · ${esc(roles[r])}</h3><p>${esc(runLabel(roles[r]))}</p></div>`).join('');return;
+    refs.top.innerHTML=['R0','R1','R2'].map((r,i)=>`${i?'<div class="role-arrow">→</div>':''}<div class="result-role"><h3 style="color:${colors[i]}">${r} ${roleLabel(r)}</h3><p title="${esc(roles[r])}">${esc(runLabel(roles[r]))}</p><a class="run-drilldown" href="${esc(runHref(roles[r]))}">查看单次结果</a></div>`).join('');return;
   }
   const ids=state.payload.run_ids||[];refs.top.className='results-top results-run-cards';
-  refs.top.innerHTML=ids.map((id,i)=>`<div class="results-run-card"><strong>${state.workspace==='configuration'&&id===state.payload.baseline_run_id?'基准方案 · ':state.workspace==='multi'?`场景 ${i+1} · `:`方案 ${i+1} · `}${esc(id)}</strong><span>${esc(runLabel(id))}</span></div>`).join('');
+  refs.top.innerHTML=ids.map((id,i)=>`<div class="results-run-card"><strong>${state.workspace==='configuration'&&id===state.payload.baseline_run_id?'基准方案':state.workspace==='multi'?`场景 ${i+1}`:`方案 ${i+1}`}</strong><span title="${esc(id)}">${esc(runLabel(id))}</span><a class="run-drilldown" href="${esc(runHref(id))}">查看单次结果</a></div>`).join('');
 }
 function summaryFor(id){
   if(state.workspace==='damage'){const role=Object.entries(state.payload.roles||{}).find(([,rid])=>rid===id)?.[0];return state.payload.comparison_summary?.[role]||{};}
@@ -161,29 +169,67 @@ function timelineObjectBlock(){
 }
 function renderChartControls(){
   [...refs.chartModes.querySelectorAll('button')].forEach((b)=>b.classList.toggle('active',b.dataset.chartMode===state.chartMode));
+  [...refs.seriesKinds.querySelectorAll('button')].forEach((b)=>b.classList.toggle('active',b.dataset.seriesKind===state.seriesKind));
   if(state.chartMode==='all'){refs.objectSelect.classList.add('hidden');return;}
   const block=timelineObjectBlock();const ids=Object.keys(block||{});if(!ids.includes(state.chartObjectId))state.chartObjectId=ids[0]||null;
   refs.objectSelect.innerHTML=ids.map((id)=>`<option value="${esc(id)}" ${id===state.chartObjectId?'selected':''}>${esc(id)}</option>`).join('');refs.objectSelect.classList.toggle('hidden',!ids.length);
 }
+function chartTitleText(){const kind=state.seriesKind==='returns'?'返航':'出动';const object=state.chartMode==='all'?'':` · ${state.chartObjectId||'—'}`;return `${kind}架次时序比较${object}`;}
+function objectModeLabel(){return ({airport:'机场',mission:'任务',aircraft:'机型'})[state.chartMode]||'对象';}
 function comparisonSeries(){
   const t=state.payload.timeline||{},ids=currentRunIds();
   if(state.chartMode==='all'){
-    if(state.workspace==='damage')return ids.map((id)=>{const role=Object.entries(state.payload.roles||{}).find(([,rid])=>rid===id)?.[0];return {id,label:seriesLabel(id),values:t.departures?.[role]||[]};});
-    if(state.workspace==='configuration')return ids.map((id)=>({id,label:seriesLabel(id),values:t.departures?.[id]?.values||[]}));
-    return ids.map((id)=>({id,label:seriesLabel(id),values:t.departures?.[id]||[]}));
+    if(state.workspace==='damage')return ids.map((id)=>{const role=Object.entries(state.payload.roles||{}).find(([,rid])=>rid===id)?.[0];return {id,label:seriesLabel(id),values:t[state.seriesKind]?.[role]};});
+    if(state.workspace==='configuration')return ids.map((id)=>({id,label:seriesLabel(id),values:t[state.seriesKind]?.[id]?.values}));
+    return ids.map((id)=>({id,label:seriesLabel(id),values:t[state.seriesKind]?.[id]}));
   }
   const row=(timelineObjectBlock()||{})[state.chartObjectId]||{};
-  return ids.map((id)=>({id,label:seriesLabel(id),values:row[id]?.departures||[]}));
+  return ids.map((id)=>({id,label:seriesLabel(id),values:row[id]?.[state.seriesKind]}));
+}
+function normalizeChartValue(value){
+  if(value===null||value===undefined||typeof value==='boolean'||(typeof value==='string'&&!value.trim()))return null;
+  const numeric=Number(value);return Number.isFinite(numeric)?numeric:null;
+}
+function validateChartData(windows,series,context){
+  context=context||{};
+  const invalid='时序数据无效，无法绘制比较图表。';
+  const mismatch='比较时序轴不一致，无法绘制。';
+  const fail=(message,detail)=>{console.error('Results chart data validation failed',{...context,...detail});return {ok:false,message};};
+  if(!Array.isArray(windows))return fail(invalid,{series:'windows',value:windows,reason:'windows_not_array'});
+  if(!Array.isArray(series))return fail(invalid,{series:'visible_series',value:series,reason:'series_not_array'});
+  const normalizedWindows=[];
+  for(let index=0;index<windows.length;index+=1){
+    const value=normalizeChartValue(windows[index]);
+    if(value===null)return fail(invalid,{series:'windows',index,value:windows[index],reason:'invalid_window'});
+    normalizedWindows.push(value);
+  }
+  const normalizedSeries=[];
+  for(const row of series){
+    if(!Array.isArray(row?.values))return fail(invalid,{run_id:row?.id,series:context.series,value:row?.values,reason:'values_not_array'});
+    if(row.values.length!==windows.length)return fail(mismatch,{run_id:row.id,series:context.series,expected:windows.length,actual:row.values.length,reason:'length_mismatch'});
+    const values=[];
+    for(let index=0;index<row.values.length;index+=1){
+      const value=normalizeChartValue(row.values[index]);
+      if(value===null||value<0)return fail(invalid,{run_id:row.id,series:context.series,index,value:row.values[index],reason:'invalid_value'});
+      values.push(value);
+    }
+    normalizedSeries.push({...row,values});
+  }
+  return {ok:true,windows:normalizedWindows,series:normalizedSeries};
 }
 function renderChart(){
   if(!state.payload){refs.chart.innerHTML='<div class="results-placeholder">暂无比较数据</div>';return;}
-  const windows=state.payload.timeline?.windows||[];
-  const series=comparisonSeries();
-  const max=Math.max(1,...series.flatMap((s)=>s.values.map((v)=>Number(v)||0)));
+  refs.chartTitle.textContent=chartTitleText();
+  if(state.chartMode!=='all'&&!state.chartObjectId){refs.chart.innerHTML=`<div class="results-placeholder">当前比较无可用${objectModeLabel()}时序</div>`;refs.legend.innerHTML='';return;}
+  const checked=validateChartData(state.payload.timeline?.windows,comparisonSeries(),{workspace:state.workspace,series:state.seriesKind,chart_mode:state.chartMode,object_id:state.chartObjectId});
+  if(!checked.ok){refs.chart.innerHTML=`<div class="results-placeholder chart-error">${esc(checked.message)}</div>`;refs.legend.innerHTML='';return;}
+  const {windows,series}=checked;
+  if(!windows.length||!series.length){refs.chart.innerHTML='<div class="results-placeholder">当前比较无可用时序数据</div>';refs.legend.innerHTML='';return;}
+  const max=Math.max(1,...series.flatMap((s)=>s.values));
   const w=900,h=265,pad={l:48,r:18,t:18,b:34};
   const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
   const x=(i)=>pad.l+(windows.length<=1?0:(i/(windows.length-1))*plotW);
-  const y=(v)=>h-pad.b-(Number(v||0)/max)*plotH;
+  const y=(v)=>h-pad.b-(v/max)*plotH;
   const paths=series.map((s,i)=>{
     const pts=s.values.map((v,j)=>`${x(j)},${y(v)}`).join(' ');
     return `<polyline points="${pts}" fill="none" stroke="${colors[i%colors.length]}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
@@ -197,7 +243,7 @@ function renderChart(){
     for(let i=0;i<count;i+=1)tickIndexes.push(Math.round(i*(windows.length-1)/Math.max(1,count-1)));
   }
   const xTicks=[...new Set(tickIndexes)].map((i)=>`<text x="${x(i)}" y="${h-9}" text-anchor="middle" fill="#7894a6" font-size="10">T${windows[i]}</text>`).join('');
-  refs.chart.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="任务调度时序比较"><g>${yTicks}</g><path d="M${pad.l} ${h-pad.b}H${w-pad.r}M${pad.l} ${pad.t}V${h-pad.b}" stroke="#48687b"/>${paths}<line class="results-hover-line" x1="${pad.l}" x2="${pad.l}" y1="${pad.t}" y2="${h-pad.b}" visibility="hidden"/>${xTicks}</svg><div class="results-chart-tooltip hidden" role="status"></div>`;
+  refs.chart.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(chartTitleText())}"><g>${yTicks}</g><path d="M${pad.l} ${h-pad.b}H${w-pad.r}M${pad.l} ${pad.t}V${h-pad.b}" stroke="#48687b"/>${paths}<line class="results-hover-line" x1="${pad.l}" x2="${pad.l}" y1="${pad.t}" y2="${h-pad.b}" visibility="hidden"/>${xTicks}</svg><div class="results-chart-tooltip hidden" role="status"></div>`;
   const svg=refs.chart.querySelector('svg');
   const hover=refs.chart.querySelector('.results-hover-line');
   const tooltip=refs.chart.querySelector('.results-chart-tooltip');
@@ -210,7 +256,7 @@ function renderChart(){
       const index=Math.max(0,Math.min(windows.length-1,Math.round(ratio*(windows.length-1))));
       const xx=x(index);
       hover.setAttribute('x1',String(xx));hover.setAttribute('x2',String(xx));hover.setAttribute('visibility','visible');
-      tooltip.innerHTML=`<strong>T${esc(windows[index])}</strong>${series.map((row,i)=>`<span><i style="background:${colors[i%colors.length]}"></i>${esc(row.label)} <b>${esc(number(Number(row.values[index]||0)))}</b></span>`).join('')}`;
+      tooltip.innerHTML=`<strong>T${esc(windows[index])}</strong>${series.map((row,i)=>`<span><i style="background:${colors[i%colors.length]}"></i>${esc(row.label)} <b>${esc(number(row.values[index]))}</b></span>`).join('')}`;
       tooltip.classList.remove('hidden');
       const px=(xx/w)*rect.width;
       tooltip.style.left=`${Math.min(Math.max(px+10,8),Math.max(8,rect.width-190))}px`;
@@ -219,7 +265,6 @@ function renderChart(){
     svg.addEventListener('mouseleave',hideTip);
   }
   refs.legend.innerHTML=series.map((s,i)=>`<span><i style="background:${colors[i%colors.length]}"></i>${esc(s.label)}</span>`).join('');
-  refs.chartTitle.textContent=`${state.workspace==='damage'?'三状态':state.workspace==='multi'?'多场景':'多方案'}任务调度时序比较${state.chartMode==='all'?'':` · ${state.chartObjectId||'—'}`}`;
 }
 function renderDiff(){
   if(state.workspace==='damage'){
@@ -265,8 +310,10 @@ function renderBottom(){
 }
 
 workspaceButtons.forEach((b)=>b.addEventListener('click',()=>setWorkspace(b.dataset.workspace)));
-$('changeConditionButton').addEventListener('click',openOverlay);$('closeResultsOverlay').addEventListener('click',closeOverlay);$('cancelResultsOverlay').addEventListener('click',closeOverlay);refs.apply.addEventListener('click',applyComparison);
+refs.changeCondition.addEventListener('click',openOverlay);$('closeResultsOverlay').addEventListener('click',closeOverlay);$('cancelResultsOverlay').addEventListener('click',closeOverlay);refs.apply.addEventListener('click',applyComparison);
+refs.runSearch.addEventListener('input',()=>{state.draft.searchText=refs.runSearch.value;renderOverlay();});
 refs.chartModes.addEventListener('click',(e)=>{const b=e.target.closest('[data-chart-mode]');if(!b||!state.payload)return;state.chartMode=b.dataset.chartMode;state.chartObjectId=null;renderChartControls();renderChart();});
+refs.seriesKinds.addEventListener('click',(e)=>{const b=e.target.closest('[data-series-kind]');if(!b||!state.payload||b.dataset.seriesKind===state.seriesKind)return;state.seriesKind=b.dataset.seriesKind;renderChartControls();renderChart();});
 refs.objectSelect.addEventListener('change',()=>{state.chartObjectId=refs.objectSelect.value||null;renderChart();});
 bottomButtons.forEach((b)=>b.addEventListener('click',()=>{if(!state.payload)return;state.bottomMode=b.dataset.bottomMode;renderBottom();}));airportValueButtons.forEach((b)=>b.addEventListener('click',()=>{if(!state.payload)return;state.airportValue=b.dataset.airportValue;renderBottom();}));
 

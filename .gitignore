@@ -40,3 +40,7 @@ resources/tiles/*
 # Delivery archives: handoff packages are not repo source
 airport_cluster_refactor_contracts.zip
 codex_handoff.zip
+
+# Temporary UI review snapshots (deploy/windows)
+deploy/windows/snapshot_*.png
+deploy/windows/snapshot_report.txt

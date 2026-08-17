@@ -12,7 +12,7 @@ from backend.services.run_submission_service import (
     SolverProbe,
     default_solver_probe,
 )
-from backend.storage.airport_repository import AirportRepository
+from backend.storage.workspace_airport_repository import WorkspaceAirportRepository
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.storage.situation_repository import SituationRepository
@@ -35,13 +35,7 @@ def build_run_api(
     run_id_factory: RunIdFactory = default_run_id_factory,
     solver_probe: SolverProbe = default_solver_probe,
 ) -> RunApi:
-    """Construct Run API dependencies against one already-migrated SQLite authority.
-
-    Schema migration remains an explicit startup/deployment responsibility; this function
-    never creates/drops/migrates tables as a side effect of request binding.
-    """
-
-    airports = AirportRepository(db_path)
+    airports = WorkspaceAirportRepository(db_path)
     situations = SituationRepository(db_path)
     snapshots = RunSnapshotRepository(db_path)
     runs = RunRepository(db_path)
@@ -87,14 +81,14 @@ def build_results_api(db_path: str | Path) -> ResultsApi:
 def build_situation_api(db_path: str | Path) -> SituationApi:
     return SituationApi(
         situation_repository=SituationRepository(db_path),
-        airport_repository=AirportRepository(db_path),
+        airport_repository=WorkspaceAirportRepository(db_path),
         mission_repository=MissionRepository(db_path),
     )
 
 
 def build_catalog_api(db_path: str | Path) -> CatalogApi:
     return CatalogApi(
-        airport_repository=AirportRepository(db_path),
+        airport_repository=WorkspaceAirportRepository(db_path),
         mission_repository=MissionRepository(db_path),
         run_repository=RunRepository(db_path),
         snapshot_repository=RunSnapshotRepository(db_path),
@@ -107,7 +101,6 @@ def build_indicator_api(db_path: str | Path) -> IndicatorApi:
 
 def build_account_api() -> AccountApi:
     return AccountApi()
-
 
 
 def build_user_repository(db_path: str | Path) -> UserRepository:

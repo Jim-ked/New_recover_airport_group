@@ -29,17 +29,37 @@ def derive_resource_target(path: str) -> Tuple[Optional[str], Optional[str]]:
     return resource_type, resource_id
 
 
+def should_skip_polling_audit(*, method: str, path: str, status: int) -> bool:
+    """Skip successful high-frequency Run polling reads only.
+
+    Mutations, denied/error responses, Metrics/Solution/GIS Runtime reads and Results
+    requests remain auditable.
+    """
+    if str(method).upper() != "GET" or int(status) >= 400:
+        return False
+    clean = str(path).split("?", 1)[0].rstrip("/")
+    if clean == "/api/runs":
+        return True
+    parts = [part for part in clean.split("/") if part]
+    if len(parts) == 3 and parts[:2] == ["api", "runs"]:
+        return True
+    if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "events":
+        return True
+    return False
+
+
 def install_audit_hook(
     app: Any,
     *,
     repository: AuditRepository,
     principal_resolver: PrincipalResolver,
 ) -> None:
-    """Record API outcomes after Flask has produced the response.
+    """Record meaningful API outcomes after Flask has produced the response.
 
     Auditing is best-effort with respect to the user response: an audit storage failure is
-    logged by Flask but must not replace an already-computed business response.  Deployment
-    monitoring should still alert on those storage failures.
+    logged by Flask but must not replace an already-computed business response. Successful
+    high-frequency Run polling reads are deliberately excluded to avoid meaningless audit
+    growth and SQLite write contention.
     """
 
     @app.after_request
@@ -49,13 +69,19 @@ def install_audit_hook(
 
             if not request.path.startswith("/api/"):
                 return response
+            status = int(response.status_code)
+            if should_skip_polling_audit(
+                method=request.method,
+                path=request.path,
+                status=status,
+            ):
+                return response
             try:
                 principal = principal_resolver(request)
             except Exception:
                 principal = None
             rule = request.url_rule.rule if request.url_rule is not None else request.path
             resource_type, resource_id = derive_resource_target(request.path)
-            status = int(response.status_code)
             outcome = "success" if status < 400 else ("denied" if status in {401, 403} else "error")
             repository.append(
                 actor_user_id=(principal.user_id if isinstance(principal, Principal) else None),
@@ -110,4 +136,9 @@ def create_audit_blueprint(*, api: AuditApi, principal_resolver: PrincipalResolv
     return bp
 
 
-__all__ = ["create_audit_blueprint", "install_audit_hook", "derive_resource_target"]
+__all__ = [
+    "create_audit_blueprint",
+    "install_audit_hook",
+    "derive_resource_target",
+    "should_skip_polling_audit",
+]

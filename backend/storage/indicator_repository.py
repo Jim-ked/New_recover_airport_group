@@ -8,6 +8,10 @@ from backend.domain.indicator import Expert, ExpertScore, IndicatorNode, Indicat
 from backend.storage.database import initialize_database
 
 
+DEFAULT_EXPERT_ID = "default"
+DEFAULT_EXPERT_NAME = "专家"
+
+
 class IndicatorRepositoryError(RuntimeError):
     pass
 
@@ -58,6 +62,19 @@ class IndicatorRepository:
 
     def init_schema(self) -> None:
         initialize_database(self.db_path)
+
+    def ensure_default_expert(self) -> Dict[str, Any]:
+        """Create the stable single-expert UI authority once and reuse it thereafter."""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO indicator_experts (expert_id,name) VALUES (?,?)",
+                (DEFAULT_EXPERT_ID, DEFAULT_EXPERT_NAME),
+            )
+            row = conn.execute(
+                "SELECT * FROM indicator_experts WHERE expert_id=?",
+                (DEFAULT_EXPERT_ID,),
+            ).fetchone()
+            return dict(row)
 
     @staticmethod
     def _set_from_row(row: sqlite3.Row) -> IndicatorSet:

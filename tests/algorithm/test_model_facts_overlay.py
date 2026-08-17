@@ -26,11 +26,13 @@ class ModelFactsOverlayTests(unittest.TestCase):
         self.assertEqual(2, rows[("M1", "fighter")][0])
         self.assertTrue(rows[("M1", "fighter")][1])
 
-    def test_no_path_for_positive_demand_fails_fast(self):
+    def test_no_path_for_positive_demand_is_soft_shortfall_not_model_error(self):
         b, maps = self._fixture()
         maps.path_records = []
-        with self.assertRaisesRegex(mf.ModelFactError, "no feasible path"):
-            mf.validate_hard_demand_paths(b.ds, maps)
+        mf.validate_hard_demand_paths(b.ds, maps)
+        rows = mf.demand_rows(b.ds, maps)
+        self.assertEqual(2, rows[("M1", "fighter")][0])
+        self.assertEqual((), rows[("M1", "fighter")][1])
 
     def test_resource_consumption_uses_complete_sortie_flight_and_work(self):
         b, maps = self._fixture()
@@ -40,14 +42,12 @@ class ModelFactsOverlayTests(unittest.TestCase):
         self.assertAlmostEqual((1.5 * expected_hours) / (1.0 - 0.2), rows["FUEL-A"])
         self.assertAlmostEqual(0.5, rows["MAT-1"])
 
-
     def test_fuel_reserve_ratio_is_applied_to_demand_not_stock_limit(self):
         b, maps = self._fixture()
         p = next(x for x in maps.path_records if x.origin_airport_id == "A1" and x.return_airport_id == "A1" and x.depart_slot == 0)
         hours = (p.outbound_flight_slots + p.tau_work_windows + p.return_flight_slots) * 0.25
         base = 1.5 * hours
         actual = base / (1.0 - 0.2)
-        # Pick stock strictly between base and reserve-adjusted demand: it must fail.
         limit = (2.0 * base + 2.0 * actual) / 2.0
         b.ds["timeview"]["resources"]["A1"]["FUEL-A"] = [limit] * b.ds["timeview"]["T"]
         with self.assertRaisesRegex(mf.ModelFactError, "shared resource violated"):
@@ -79,20 +79,18 @@ class ModelFactsOverlayTests(unittest.TestCase):
         rows = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)
         p = next(x for x in maps.path_records if x.origin_airport_id == "A1")
         c = rows[p.key]
-        # A1 is core -> 2.0; fighter user weight = 1.2.
         self.assertAlmostEqual(2.4, c.f1)
         self.assertGreaterEqual(c.f2, 0.0)
         self.assertLessEqual(c.f3, 1.0)
         weights = mf.resolved_alpha(b.runtime)
         self.assertEqual((0.8, 0.1, 0.1), (weights.sortie, weights.resource, weights.time))
 
-    def test_independent_schedule_validator_checks_confirmed_invariants(self):
+    def test_independent_schedule_validator_checks_physical_invariants_not_soft_demand(self):
         b, maps = self._fixture()
         p = next(x for x in maps.path_records if x.origin_airport_id == "A1" and x.return_airport_id == "A1" and x.depart_slot == 0)
         mf.validate_schedule_base(b.ds, maps, b.run_params, {p.key: 2})
-
-        with self.assertRaisesRegex(mf.ModelFactError, "hard demand violated"):
-            mf.validate_schedule_base(b.ds, maps, b.run_params, {p.key: 1})
+        # One sortie is below baseline demand=2 but physically valid, so it must pass.
+        mf.validate_schedule_base(b.ds, maps, b.run_params, {p.key: 1})
 
         b.ds["timeview"]["cap"]["A1"][0] = 1
         with self.assertRaisesRegex(mf.ModelFactError, "capacity violated"):
@@ -104,7 +102,6 @@ class ModelFactsOverlayTests(unittest.TestCase):
         b.ds["timeview"]["resources"]["A1"]["FUEL-A"] = [1.0] * b.ds["timeview"]["T"]
         with self.assertRaisesRegex(mf.ModelFactError, "shared resource violated"):
             mf.validate_schedule_base(b.ds, maps, b.run_params, {p.key: 2})
-
 
     def test_replenishment_capacity_alone_does_not_create_stock_but_actual_schedule_does(self):
         from backend.domain.situation import ResourceReplenishment
