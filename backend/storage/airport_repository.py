@@ -894,6 +894,30 @@ class AirportRepository:
                 conn.execute("DELETE FROM airports WHERE airport_id=?", (airport_id,))
         return self._summary_counts(old_ids, set(ids))
 
+    def replace_airport_bases_preserving_profiles(
+        self, airports: Sequence[AirportBase]
+    ) -> Dict[str, int]:
+        """Atomically replace the current airport base dataset from a master document.
+
+        The airport_master_v1 document only carries AirportBase facts.  Base rows of
+        surviving airports are overwritten, while their existing operational
+        profiles are preserved (a missing profile in the input never means
+        "delete the stored profile").  Airports absent from the new dataset follow
+        the existing replace-current-state deletion rules; their profile rows are
+        removed together with the airport row via the FK cascade.
+        """
+        ids = [airport.airport_id for airport in airports]
+        if len(ids) != len(set(ids)):
+            raise CatalogConflictError("bulk airport import contains duplicate airport_id")
+        with self.connect() as conn:
+            old_ids = {str(r[0]) for r in conn.execute("SELECT airport_id FROM airports").fetchall()}
+            for airport in airports:
+                self._write_airport(conn, airport, is_create=(airport.airport_id not in old_ids))
+            new_ids = set(ids)
+            for airport_id in sorted(old_ids - new_ids):
+                conn.execute("DELETE FROM airports WHERE airport_id=?", (airport_id,))
+        return self._summary_counts(old_ids, set(ids))
+
     def replace_aircraft_types_current(self, items: Sequence[AircraftType]) -> Dict[str, int]:
         ids = [x.aircraft_type_id for x in items]
         if len(ids) != len(set(ids)):

@@ -114,19 +114,18 @@ class BaseDataImportService:
         return self._replace(dataset, raw_items, source_format="json")
 
     def replace_airport_master_document(self, raw: Any) -> BaseDataReplaceResult:
-        """Replace the current airport dataset from a full airport_master_v1 document.
+        """Replace the current airport base dataset from a full airport_master_v1 document.
 
         Shares ``parse_airport_master_document`` with the seed bootstrap path.  The
-        master document only carries airport base facts, so operational profiles of
-        the replaced dataset are reset (same replace-current-state semantics as the
-        generic JSON import).
+        master document only carries AirportBase facts, so existing operational
+        profiles of surviving airports are preserved; only airports removed from
+        the dataset follow the replace-current-state deletion rules.
         """
         try:
             airports = parse_airport_master_document(raw)
         except (AirportMasterParseError, AirportValidationError) as exc:
             raise BaseDataImportError(f"airport master document is invalid: {exc}") from exc
-        bundles = [(airport, None) for airport in airports]
-        summary = self.airports.replace_airport_bundles_current(bundles)
+        summary = self.airports.replace_airport_bases_preserving_profiles(airports)
         return BaseDataReplaceResult(
             dataset="airports", source_format="airport_master_v1", **summary
         )
