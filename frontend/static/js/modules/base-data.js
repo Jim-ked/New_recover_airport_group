@@ -85,18 +85,34 @@ function renderFilterPopover(col){
   const body=rows.map(([k,n])=>`<label class="filter-option"><input type="checkbox" value="${esc(k)}" ${filterDraft.includes(k)?'checked':''}> <span>${esc(n)}</span></label>`).join('');
   refs.popover.innerHTML=`
     <div class="filter-popover-title">${col==='role'?'机场类型':'所属区域'}</div>
-    ${col==='region'?'<div class="filter-popover-search"><input id="filterRegionSearch" class="control" placeholder="搜索区域..."></div>':''}
+    ${col==='region'?'<div class="filter-popover-search"><input id="filterRegionSearch" class="control" placeholder="搜索区域……"></div>':''}
+    <label class="filter-option filter-select-all"><input id="filterSelectAll" type="checkbox" ${all.length?'':'disabled'}> <span>全选</span></label>
+    <div class="filter-option-divider" aria-hidden="true"></div>
     <div class="filter-options">${body}</div>
     <div class="filter-popover-footer">
       <button id="filterPopoverCancel" class="btn ghost" type="button">取消</button>
       <button id="filterPopoverApply" class="btn primary" type="button">应用</button>
     </div>`;
-  refs.popover.querySelectorAll('.filter-option input').forEach(cb=>cb.onchange=()=>{
+  const optionInputs=[...refs.popover.querySelectorAll('.filter-options .filter-option input')];
+  const selectAll=$('filterSelectAll');
+  const syncSelectAll=()=>{
+    const selectedCount=all.filter(value=>filterDraft.includes(value)).length;
+    selectAll.checked=all.length>0&&selectedCount===all.length;
+    selectAll.indeterminate=selectedCount>0&&selectedCount<all.length;
+  };
+  optionInputs.forEach(cb=>cb.onchange=()=>{
     const v=cb.value;
     filterDraft=cb.checked?[...new Set([...filterDraft,v])]:filterDraft.filter(x=>x!==v);
+    syncSelectAll();
   });
+  selectAll.onchange=()=>{
+    filterDraft=selectAll.checked?all.slice():[];
+    optionInputs.forEach(cb=>{cb.checked=selectAll.checked});
+    selectAll.indeterminate=false;
+  };
+  syncSelectAll();
   const s=$('filterRegionSearch');
-  if(s)s.oninput=()=>{ const n=s.value.trim().toLowerCase(); refs.popover.querySelectorAll('.filter-option').forEach(el=>el.classList.toggle('hidden',n!==''&&!(el.textContent||'').toLowerCase().includes(n))); };
+  if(s)s.oninput=()=>{ const n=s.value.trim().toLowerCase(); refs.popover.querySelectorAll('.filter-options .filter-option').forEach(el=>el.classList.toggle('hidden',n!==''&&!(el.textContent||'').toLowerCase().includes(n))); };
   $('filterPopoverCancel').onclick=closeFilterPopover;
   $('filterPopoverApply').onclick=()=>{ closeFilterPopover(); if(filterCol==='role')applyColumnFilters(filterDraft,regions()).catch(e=>showMessage(fieldError(e),'error')); else applyColumnFilters(roles(),filterDraft).catch(e=>showMessage(fieldError(e),'error')); };
   refs.popover.classList.remove('hidden');

@@ -8,22 +8,25 @@
       data-workspace="base-data"
       data-workspace-module="{{ url_for('static', filename='js/modules/base-data.js') }}">
   <header class="workspace-head">
-    <div class="workspace-title">
-      <a class="back-link" href="{{ url_for('ui_v1.situations_page') }}" data-workspace-link>‹ 返回情境构建</a>
-      <div>
+    <div class="workspace-navigation">
+      <div class="workspace-title">
         <h1>基础数据管理</h1>
-        <p>维护系统当前有效数据。已保存情境保留自己的机场与任务快照，不随这里的后续修改自动变化。</p>
+        <span class="workspace-info" role="img" tabindex="0"
+              aria-label="已保存情境使用独立快照，不随基础数据后续修改自动变化。"
+              title="已保存情境使用独立快照，不随基础数据后续修改自动变化。">
+          <svg class="ui-icon"><use href="#i-info"></use></svg>
+        </span>
       </div>
-      <span class="badge info">当前有效态</span>
+      <span class="workspace-divider" aria-hidden="true"></span>
+      <nav class="data-tabs" id="baseDataTabs" aria-label="基础数据类型">
+        <button class="active" type="button" data-tab="airports">机场</button>
+        <button type="button" data-tab="missions">任务模板</button>
+        <button type="button" data-tab="aircraft_types">机型</button>
+        <button type="button" data-tab="resource_types">保障资源</button>
+      </nav>
     </div>
+    <span class="badge info workspace-state">当前有效态</span>
   </header>
-
-  <nav class="data-tabs segmented" id="baseDataTabs" aria-label="基础数据类型">
-    <button class="active" type="button" data-tab="airports">机场</button>
-    <button type="button" data-tab="missions">任务模板</button>
-    <button type="button" data-tab="aircraft_types">机型</button>
-    <button type="button" data-tab="resource_types">保障资源</button>
-  </nav>
 
   <section class="data-toolbar">
     <div class="search-box">
