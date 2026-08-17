@@ -1,7 +1,11 @@
-import { apiFetch, apiText, ApiError } from './api-client.js';
+import { apiFetch as requestJson, apiText as requestText, ApiError } from './api-client.js';
 
-const $ = (id) => document.getElementById(id);
-const state = {
+let pageRoot = null;
+let lifecycleController = null;
+let mounted = false;
+const $ = (id) => pageRoot?.querySelector(`#${CSS.escape(id)}`) || document.getElementById(id);
+
+function initialState() { return {
   tab:'airports', page:0, limit:30, total:0, items:[],
   selected:null, detail:null, detailError:null,
   me:null, editing:false, creating:false, editorDirty:false,
@@ -14,8 +18,14 @@ const state = {
     resource_types:{ q:'' },
   },
   listSeq:0, detailSeq:0,
-};
-const refs = { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), searchClear:$('baseDataSearchClear'), chips:$('baseDataFilterChips'), popover:$('baseDataFilterPopover'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') };
+}; }
+const state = initialState();
+const refs = {};
+
+function bindRefs(){ Object.assign(refs, { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), searchClear:$('baseDataSearchClear'), chips:$('baseDataFilterChips'), popover:$('baseDataFilterPopover'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') }); }
+function wasAborted(error){ return error?.name==='AbortError'||error?.body?.name==='AbortError'; }
+async function apiFetch(path,options={}){try{return await requestJson(path,{...options,signal:options.signal||lifecycleController?.signal});}catch(error){if(!mounted&&wasAborted(error))return new Promise(()=>{});throw error;}}
+async function apiText(path,options={}){try{return await requestText(path,{...options,signal:options.signal||lifecycleController?.signal});}catch(error){if(!mounted&&wasAborted(error))return new Promise(()=>{});throw error;}}
 const TAB_META = {
   airports:{title:'机场基础库', singular:'机场', empty:'选择一条机场查看详细信息', searchPlaceholder:'搜索机场编号或名称', endpoint:'/api/airports'},
   missions:{title:'任务模板库', singular:'任务模板', empty:'选择一条任务模板查看详细信息', searchPlaceholder:'搜索任务编号或名称', endpoint:'/api/missions'},
@@ -29,7 +39,7 @@ const val = (v) => v === null || v === undefined ? '' : String(v);
 const num = (v) => v === '' || v === null || v === undefined ? null : Number(v);
 const int = (v) => v === '' || v === null || v === undefined ? null : Number.parseInt(v,10);
 const writable = () => state.me?.permissions?.includes('catalog.write');
-function showMessage(text,type='info'){ refs.msg.textContent=text; refs.msg.className=`workspace-message ${type}`; refs.msg.classList.remove('hidden'); clearTimeout(showMessage.t); showMessage.t=setTimeout(()=>refs.msg.classList.add('hidden'),4200); }
+function showMessage(text,type='info'){ if(!mounted||!refs.msg)return; refs.msg.textContent=text; refs.msg.className=`workspace-message ${type}`; refs.msg.classList.remove('hidden'); clearTimeout(showMessage.t); showMessage.t=setTimeout(()=>refs.msg?.classList.add('hidden'),4200); }
 function fieldError(error){ return error instanceof ApiError ? `${error.message}${error.field?`（${error.field}）`:''}` : '操作失败'; }
 function setModal(el,open){ el.classList.toggle('open',open); el.setAttribute('aria-hidden',open?'false':'true'); }
 function confirmAction(text, label='确认'){ return new Promise(resolve=>{ refs.confirmBody.innerHTML=`<div class="inline-message warning">${esc(text)}</div>`; refs.confirmAction.textContent=label; setModal(refs.confirmModal,true); const done=(v)=>{setModal(refs.confirmModal,false); refs.confirmAction.onclick=null; refs.confirmCancel.onclick=null; resolve(v)}; refs.confirmAction.onclick=()=>done(true); refs.confirmCancel.onclick=()=>done(false); }); }
@@ -315,7 +325,7 @@ async function allRowsForTab(){if(state.tab==='airports'||state.tab==='missions'
 function exportRows(rows){let items;if(state.tab==='airports')items=rows.map(x=>({airport:x.airport,operational_profile:x.operational_profile}));else if(state.tab==='missions')items=rows.map(x=>x.mission);else if(state.tab==='aircraft_types')items=rows.map(x=>x.aircraft_type);else items=rows.map(x=>x.resource_type);downloadBlob(`${state.tab}-current.json`,JSON.stringify({dataset:state.tab,exported_at:new Date().toISOString(),items},null,2),'application/json;charset=utf-8');}
 async function exportCurrent(){try{const rows=await allRowsForTab();exportRows(rows);showMessage('已导出当前数据集 JSON。','success');}catch(e){showMessage(fieldError(e),'error');}}
 
-function bind(){
+function bind(signal){
   refs.tabs.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
     if(!(await canLeaveEditor()))return;
     refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
@@ -330,8 +340,8 @@ function bind(){
   refs.search.onkeydown=e=>{ if(e.key==='Enter')refs.searchBtn.click(); };
   refs.search.oninput=()=>updateSearchClear();
   refs.searchClear.onclick=async()=>{ refs.search.value=''; updateSearchClear(); if(appliedFilters().q){ await submitSearch().catch(e=>showMessage(fieldError(e),'error')); } };
-  document.addEventListener('pointerdown',(e)=>{ if(refs.popover&&!refs.popover.classList.contains('hidden')&&!refs.popover.contains(e.target)&&!e.target.closest?.('.col-filter'))closeFilterPopover(); });
-  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape')closeFilterPopover(); });
+  document.addEventListener('pointerdown',(e)=>{ if(refs.popover&&!refs.popover.classList.contains('hidden')&&!refs.popover.contains(e.target)&&!e.target.closest?.('.col-filter'))closeFilterPopover(); },{signal});
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape')closeFilterPopover(); },{signal});
   refs.prev.onclick=async()=>{ if(state.page>0&&await canLeaveEditor()){ state.page--; load().catch(e=>showMessage(fieldError(e),'error')); } };
   refs.next.onclick=async()=>{ if(await canLeaveEditor()){ state.page++; load().catch(e=>showMessage(fieldError(e),'error')); } };
   refs.edit.onclick=async()=>{ if(!state.detail||state.editing||state.creating)return; await ensureLookups(); state.editing=true; state.editorDirty=false; renderDetail(); };
@@ -341,14 +351,14 @@ function bind(){
   refs.importCancel.onclick=()=>setModal(refs.importModal,false);
   refs.importConfirm.onclick=doImport;
   refs.exportBtn.onclick=exportCurrent;
-  window.addEventListener('beforeunload',e=>{ if(state.editing&&state.editorDirty){ e.preventDefault(); e.returnValue=''; } });
+  window.addEventListener('beforeunload',e=>{ if(state.editing&&state.editorDirty){ e.preventDefault(); e.returnValue=''; } },{signal});
 }
 
-async function init(){
+async function init(context){
   try{
     state.me=await apiFetch('/api/me');
-    bind();
-    const params=new URLSearchParams(window.location.search);
+    bind(lifecycleController.signal);
+    const params=new URL(context?.url||window.location.href,window.location.href).searchParams;
     const requestedTab=params.get('tab'); const requestedId=params.get('id');
     if(requestedTab&&TAB_META[requestedTab]){ state.tab=requestedTab; refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x.dataset.tab===state.tab)); }
     syncToolbarFromFilters();
@@ -357,4 +367,31 @@ async function init(){
     ensureLookups();
   }catch(e){ showMessage(fieldError(e),'error'); refs.wrap.innerHTML='<div class="empty-state">基础数据加载失败。</div>'; }
 }
-init();
+
+export async function mount(root, context = {}){
+  if(mounted)unmount();
+  pageRoot=root;
+  Object.assign(state,initialState());
+  bindRefs();
+  lifecycleController=new AbortController();
+  mounted=true;
+  await init(context);
+}
+
+export async function beforeLeave(){
+  if(!mounted)return true;
+  return canLeaveEditor();
+}
+
+export function unmount(){
+  if(!mounted)return;
+  mounted=false;
+  state.listSeq++;
+  state.detailSeq++;
+  lifecycleController?.abort();
+  clearTimeout(showMessage.t);
+  closeFilterPopover();
+  lifecycleController=null;
+  pageRoot=null;
+  for(const key of Object.keys(refs))delete refs[key];
+}

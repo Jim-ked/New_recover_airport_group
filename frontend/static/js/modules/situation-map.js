@@ -8,15 +8,17 @@ const externalCache = { airports: null, missions: null };
 let map = null;
 let fallback = false;
 let callbacks = {};
+let requestSignal = null;
 
 export function configureMap(nextCallbacks) {
   callbacks = { ...callbacks, ...nextCallbacks };
+  requestSignal = nextCallbacks.signal || requestSignal;
 }
 
 function clearMapLayers() {
   for (const layer of mapLayers) layer.remove?.();
   mapLayers.length = 0;
-  refs.fallbackObjects.replaceChildren();
+  refs.fallbackObjects?.replaceChildren();
 }
 
 function damagedAirportIds() {
@@ -269,7 +271,7 @@ async function fetchPaged(path) {
   const items = [];
   while (offset < total) {
     const separator = path.includes('?') ? '&' : '?';
-    const response = await apiFetch(`${path}${separator}limit=500&offset=${offset}`);
+    const response = await apiFetch(`${path}${separator}limit=500&offset=${offset}`, { signal: requestSignal });
     items.push(...(response.items || []));
     total = Number(response.total || 0);
     offset += 500;
@@ -337,4 +339,18 @@ export async function initMap() {
   addTileLayer();
   map.setView([34, 108], 4);
   drawMap();
+}
+
+export function destroyMap() {
+  clearMapLayers();
+  clearExternalLayer('airports');
+  clearExternalLayer('missions');
+  if (map) {
+    map.off();
+    map.remove();
+    map = null;
+  }
+  fallback = false;
+  callbacks = {};
+  requestSignal = null;
 }

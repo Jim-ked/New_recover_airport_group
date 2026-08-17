@@ -130,7 +130,7 @@
 
   <aside class="sidebar" aria-label="主导航">
     <nav>
-      <a class="nav{% if active_nav|default('run') == 'situation' and not base_data_active|default(false) %} active{% endif %}" href="{{ url_for('ui_v1.situations_page') }}"{% if active_nav|default('run') == 'situation' and not base_data_active|default(false) %} aria-current="page"{% endif %}>
+      <a class="nav{% if active_nav|default('run') == 'situation' and not base_data_active|default(false) %} active{% endif %}" href="{{ url_for('ui_v1.situations_page') }}" data-workspace-link{% if active_nav|default('run') == 'situation' and not base_data_active|default(false) %} aria-current="page"{% endif %}>
         <svg class="ui-icon nav-icon"><use href="#i-situation"></use></svg><span>情境构建</span>
       </a>
       <a class="nav{% if active_nav|default('run') == 'indicators' %} active{% endif %}" href="{{ url_for('ui_v1.indicators_page') }}"{% if active_nav|default('run') == 'indicators' %} aria-current="page"{% endif %}>
@@ -145,7 +145,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <a class="nav secondary-nav{% if base_data_active|default(false) %} active{% endif %}" href="{{ url_for('ui_v1.base_data_page') }}"{% if base_data_active|default(false) %} aria-current="page"{% endif %}>
+      <a class="nav secondary-nav{% if base_data_active|default(false) %} active{% endif %}" href="{{ url_for('ui_v1.base_data_page') }}" data-workspace-link{% if base_data_active|default(false) %} aria-current="page"{% endif %}>
         <svg class="ui-icon nav-icon"><use href="#i-database"></use></svg><span>基础数据</span>
       </a>
       <a class="nav secondary-nav{% if active_nav|default('run') == 'settings' %} active{% endif %}" href="{{ url_for('ui_v1.settings_page') }}"{% if active_nav|default('run') == 'settings' %} aria-current="page"{% endif %}>
@@ -184,5 +184,6 @@
 
 {% block scripts %}{% endblock %}
 <script type="module" src="{{ url_for('static', filename='js/modules/shell.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/modules/workspace-navigation.js') }}"></script>
 </body>
 </html>

@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block title %}基础数据管理 · 机场群顽存能力仿真系统{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base-data.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base-data.css') }}" data-workspace-asset="style">
 {% endblock %}
 {% block content %}
-<main class="base-data-page shell-content" id="baseDataPage">
+<main class="base-data-page shell-content" id="baseDataPage"
+      data-workspace="base-data"
+      data-workspace-module="{{ url_for('static', filename='js/modules/base-data.js') }}">
   <header class="workspace-head">
     <div class="workspace-title">
-      <a class="back-link" href="{{ url_for('ui_v1.situations_page') }}">‹ 返回情境构建</a>
+      <a class="back-link" href="{{ url_for('ui_v1.situations_page') }}" data-workspace-link>‹ 返回情境构建</a>
       <div>
         <h1>基础数据管理</h1>
         <p>维护系统当前有效数据。已保存情境保留自己的机场与任务快照，不随这里的后续修改自动变化。</p>
@@ -103,7 +105,4 @@
     </section>
   </div>
 </main>
-{% endblock %}
-{% block scripts %}
-<script type="module" src="{{ url_for('static', filename='js/modules/base-data.js') }}"></script>
 {% endblock %}

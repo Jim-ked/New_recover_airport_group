@@ -17,14 +17,16 @@
 {% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/situations.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}" data-workspace-asset="style">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/situations.css') }}" data-workspace-asset="style">
 {% endblock %}
 
 {% block content %}
 <main
   class="situation-page shell-content inspector-collapsed"
   id="situationPage"
+  data-workspace="situations"
+  data-workspace-module="{{ url_for('static', filename='js/modules/situations.js') }}"
   data-mode="select"
   data-tile-template="{{ tile_template|default('') }}"
   data-base-data-url="{{ url_for('ui_v1.base_data_page') }}"
@@ -184,6 +186,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
-<script type="module" src="{{ url_for('static', filename='js/modules/situations.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}" data-workspace-asset="script"></script>
 {% endblock %}

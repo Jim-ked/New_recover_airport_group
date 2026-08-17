@@ -4,13 +4,13 @@ import { escapeHtml, refs, state } from './situation-state.js';
 let callbacks = {};
 
 export function configurePanels(nextCallbacks) {
-  callbacks = { ...callbacks, ...nextCallbacks };
+  callbacks = { ...nextCallbacks };
 }
 
 export function setInspectorOpen(open) {
   refs.inspector.classList.toggle('closed', !open);
   refs.inspector.setAttribute('aria-hidden', String(!open));
-  document.getElementById('situationPage').classList.toggle('inspector-collapsed', !open);
+  refs.inspector.closest('.situation-page')?.classList.toggle('inspector-collapsed', !open);
 }
 
 export function collapseOverview() {
@@ -100,7 +100,7 @@ function closeSearch() {
   document.getElementById('searchToggleButton').setAttribute('aria-expanded', 'false');
 }
 
-function initSearch() {
+function initSearch(signal) {
   const toggle = document.getElementById('searchToggleButton');
   toggle.addEventListener('click', () => {
     const opening = refs.searchPanel.classList.contains('hidden');
@@ -110,16 +110,16 @@ function initSearch() {
       refs.search.value = '';
       refs.search.focus();
     }
-  });
-  refs.search.addEventListener('input', renderSearchResults);
+  }, { signal });
+  refs.search.addEventListener('input', renderSearchResults, { signal });
   document.addEventListener('click', (event) => {
     if (!event.target.closest('#situationSearchPanel') && !event.target.closest('#searchToggleButton')) {
       closeSearch();
     }
-  });
+  }, { signal });
 }
 
-function initLayers() {
+function initLayers(signal) {
   const button = document.getElementById('layerScopeButton');
   const panel = document.getElementById('layerScopePanel');
   const status = document.getElementById('layerScopeStatus');
@@ -132,8 +132,8 @@ function initLayers() {
     panel.classList.toggle('hidden', !opening);
     button.setAttribute('aria-expanded', String(opening));
     if (opening) status.textContent = '当前情境对象始终显示。';
-  });
-  document.getElementById('closeLayerScope').addEventListener('click', close);
+  }, { signal });
+  document.getElementById('closeLayerScope').addEventListener('click', close, { signal });
   for (const [id, kind, label] of [
     ['showAllAirports', 'airports', '基础机场'],
     ['showAllMissions', 'missions', '任务模板'],
@@ -148,27 +148,31 @@ function initLayers() {
         await setCatalogLayer(kind, false);
         status.textContent = error?.message || `${label}读取失败。`;
       }
-    });
+    }, { signal });
   }
   document.addEventListener('click', (event) => {
     if (!event.target.closest('#layerScopePanel') && !event.target.closest('#layerScopeButton')) close();
-  });
+  }, { signal });
 }
 
-export function initPanels() {
-  initSearch();
-  initLayers();
+export function initPanels({ signal }) {
+  initSearch(signal);
+  initLayers(signal);
   refs.emptyAction.addEventListener('click', () => {
     if (refs.emptyAction.dataset.action === 'airport') callbacks.setMode?.('airport');
     else refs.newBtn.click();
-  });
+  }, { signal });
   document.getElementById('overviewEditSituationInfo').addEventListener('click', () => {
     callbacks.editSituationInfo?.();
-  });
-  document.getElementById('keepLocalConflict').addEventListener('click', clearConflict);
+  }, { signal });
+  document.getElementById('keepLocalConflict').addEventListener('click', clearConflict, { signal });
   document.getElementById('reloadConflict').addEventListener('click', async () => {
     clearConflict();
     await callbacks.reloadSituation?.();
-  });
+  }, { signal });
   syncWorkspaceChrome();
+}
+
+export function destroyPanels() {
+  callbacks = {};
 }

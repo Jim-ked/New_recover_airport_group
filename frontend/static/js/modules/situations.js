@@ -1,6 +1,7 @@
-import { apiFetch, ApiError } from './api-client.js';
+import { apiFetch as requestJson, ApiError } from './api-client.js';
 import {
   airportItem,
+  bindSituationDom,
   byId as $,
   clone as deep,
   damageScenario,
@@ -10,6 +11,8 @@ import {
   missionItem,
   numberValue as num,
   refs,
+  releaseSituationDom,
+  resetSituationState,
   state,
   writable,
 } from './situation-state.js';
@@ -20,17 +23,35 @@ import {
   fitMap,
   focusObject,
   initMap,
+  destroyMap,
 } from './situation-map.js';
 import {
   clearConflict,
   collapseOverview,
   configurePanels,
+  destroyPanels,
   initPanels,
   setInspectorOpen,
   showConflict,
   syncWorkspaceChrome,
 } from './situation-panels.js';
-function showMessage(text,type='info'){refs.msg.textContent=text;refs.msg.className=`workspace-message ${type}`;refs.msg.classList.remove('hidden');clearTimeout(showMessage.t);showMessage.t=setTimeout(()=>refs.msg.classList.add('hidden'),4200)}
+let lifecycleController = null;
+let mounted = false;
+
+function wasAborted(error) {
+  return error?.name === 'AbortError' || error?.body?.name === 'AbortError';
+}
+
+async function apiFetch(path, options = {}) {
+  try {
+    return await requestJson(path, { ...options, signal: options.signal || lifecycleController?.signal });
+  } catch (error) {
+    if (!mounted && wasAborted(error)) return new Promise(() => {});
+    throw error;
+  }
+}
+
+function showMessage(text,type='info'){if(!mounted||!refs.msg)return;refs.msg.textContent=text;refs.msg.className=`workspace-message ${type}`;refs.msg.classList.remove('hidden');clearTimeout(showMessage.t);showMessage.t=setTimeout(()=>refs.msg?.classList.add('hidden'),4200)}
 function errText(e){return e instanceof ApiError?`${e.message}${e.field?`（${e.field}）`:''}`:'操作失败'}
 function setModal(el,open){el.classList.toggle('open',open);el.setAttribute('aria-hidden',open?'false':'true')}
 function confirmAction(text,label='确认'){return new Promise(resolve=>{refs.confirmBody.innerHTML=`<div class="inline-message warning">${esc(text)}</div>`;refs.confirmAction.textContent=label;setModal(refs.confirmModal,true);const done=v=>{setModal(refs.confirmModal,false);refs.confirmAction.onclick=null;refs.confirmCancel.onclick=null;resolve(v)};refs.confirmAction.onclick=()=>done(true);refs.confirmCancel.onclick=()=>done(false)})}
@@ -335,23 +356,23 @@ async function applyDamageScenario(oldId){const id=$('damageScenarioId').value.t
 function visibleCandidateAirports(){if(state.mode!=='airport')return[];const existing=new Set((state.working?.airports||[]).map(x=>x.airport.airport_id));return state.airportCatalog.filter(x=>!existing.has(x.airport_id)&&(!state.candidateQuery||`${x.airport_id} ${x.airport_name}`.toLowerCase().includes(state.candidateQuery))&&(!state.candidateRole||x.role===state.candidateRole)&&(!state.candidateRegion||String(x.region||'')===state.candidateRegion))}
 function toggleCandidate(id){const row=state.airportCatalog.find(x=>x.airport_id===id);if(!row)return;if(state.tempAirportIds.has(id))state.tempAirportIds.delete(id);else state.tempAirportIds.add(id);const input=refs.body.querySelector(`#airportCandidateList input[value="${CSS.escape(id)}"]`);if(input){input.checked=state.tempAirportIds.has(id);input.closest('.candidate-row')?.classList.toggle('selected',input.checked)}const add=$('addAirportsToSituation');if(add)add.textContent=`加入当前情境（${state.tempAirportIds.size}）`;drawMap()}
 async function selectObject(type,id,{locate=false}={}){if(!(await canDiscardPanelDraft()))return;clearPanelDraft();collapseOverview();state.mode='select';refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));state.selected={type,id};renderInspector();drawMap();if(locate)focusObject(type,id)}
-function bind() {
-  refs.select.addEventListener('change', () => openSituation(refs.select.value));
-  refs.newBtn.addEventListener('click', newSituation);
-  refs.newCancel.addEventListener('click', () => setModal(refs.createModal, false));
-  refs.newConfirm.addEventListener('click', createWorking);
-  refs.save.addEventListener('click', saveSituation);
+function bind(signal) {
+  refs.select.addEventListener('change', () => openSituation(refs.select.value), { signal });
+  refs.newBtn.addEventListener('click', newSituation, { signal });
+  refs.newCancel.addEventListener('click', () => setModal(refs.createModal, false), { signal });
+  refs.newConfirm.addEventListener('click', createWorking, { signal });
+  refs.save.addEventListener('click', saveSituation, { signal });
   refs.del.addEventListener('click', async () => {
     if (!(await canDiscardPanelDraft())) return;
     clearPanelDraft();
     await deleteSituation();
-  });
+  }, { signal });
   refs.tools.querySelectorAll('[data-mode]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!(await canDiscardPanelDraft())) return;
       clearPanelDraft();
       setMode(button.dataset.mode);
-    });
+    }, { signal });
   });
   refs.close.addEventListener('click', async () => {
     if (!(await canDiscardPanelDraft())) return;
@@ -361,22 +382,22 @@ function bind() {
     refs.tools.querySelectorAll('[data-mode]').forEach((button) => button.classList.remove('active'));
     setInspectorOpen(false);
     drawMap();
-  });
+  }, { signal });
   refs.overviewTrigger.addEventListener('click', () => {
     const open = !refs.overview.classList.contains('open');
     refs.overview.classList.toggle('open', open);
     refs.overviewTrigger.setAttribute('aria-expanded', String(open));
-  });
+  }, { signal });
   window.addEventListener('beforeunload', (event) => {
     if (state.dirty || state.panelDraftDirty) {
       event.preventDefault();
       event.returnValue = '';
     }
-  });
+  }, { signal });
 }
 
-async function init() {
-  configureMap({ selectObject, toggleCandidate, visibleCandidateAirports, message: showMessage });
+async function init(signal) {
+  configureMap({ selectObject, toggleCandidate, visibleCandidateAirports, message: showMessage, signal });
   configurePanels({
     selectObject,
     setMode,
@@ -390,7 +411,7 @@ async function init() {
     },
     reloadSituation: () => state.working ? openSituation(state.working.situation_id, { force: true }) : Promise.resolve(),
   });
-  initPanels();
+  initPanels({ signal });
   try {
     state.me = await apiFetch('/api/me');
     const [aircraft, resources] = await Promise.all([
@@ -399,7 +420,7 @@ async function init() {
     ]);
     state.aircraft = aircraft.items || [];
     state.resources = resources.items || [];
-    bind();
+    bind(signal);
     await loadSituationList();
     await initMap();
     renderAll();
@@ -409,4 +430,29 @@ async function init() {
     renderAll();
   }
 }
-init();
+
+export async function mount(root) {
+  if (mounted) unmount();
+  resetSituationState();
+  bindSituationDom(root);
+  lifecycleController = new AbortController();
+  mounted = true;
+  await init(lifecycleController.signal);
+}
+
+export async function beforeLeave() {
+  if (!mounted || (!state.dirty && !state.panelDraftDirty)) return true;
+  return confirmAction('当前情境有尚未保存的修改。离开会丢弃这些修改。', '放弃修改并离开');
+}
+
+export function unmount() {
+  if (!mounted) return;
+  mounted = false;
+  lifecycleController?.abort();
+  clearTimeout(showMessage.t);
+  destroyPanels();
+  destroyMap();
+  resetSituationState();
+  releaseSituationDom();
+  lifecycleController = null;
+}
