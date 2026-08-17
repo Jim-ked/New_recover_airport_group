@@ -203,9 +203,12 @@ class SituationApi:
             airport_id = required_nonblank_string(body, "airport_id")
             try:
                 airport = self.airports.get_airport(airport_id)
+            except KeyError:
+                return ApiResponse(error_body("CATALOG_NOT_FOUND", f"airport base not found: {airport_id}"), 404)
+            try:
                 profile = self.airports.get_operational_profile(airport_id)
             except KeyError:
-                return ApiResponse(error_body("CATALOG_NOT_FOUND", f"airport base not found or incomplete: {airport_id}"), 404)
+                profile = None
             updated = copy_airport_into_situation(
                 Situation.from_mapping(raw_situation), airport, profile
             )

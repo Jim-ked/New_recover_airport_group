@@ -1,43 +1,155 @@
 {% extends "base.html" %}
 {% block title %}情境构建 · 机场群顽存能力仿真系统{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/situations.css') }}">{% endblock %}
+
+{% block topbar_context %}
+<div class="situation-top-actions" aria-label="情境操作">
+  <button id="newSituationButton" class="btn ghost top-action" type="button">
+    <svg class="ui-icon"><use href="#i-plus"></use></svg><span>新建</span>
+  </button>
+  <button id="saveSituationButton" class="btn primary top-action" type="button" disabled>
+    <svg class="ui-icon"><use href="#i-save"></use></svg><span>保存</span>
+  </button>
+  <button id="deleteSituationButton" class="btn danger top-action" type="button" disabled>
+    <svg class="ui-icon"><use href="#i-trash"></use></svg><span>删除</span>
+  </button>
+  <span id="situationSaveState" class="situation-save-state">未打开</span>
+</div>
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/situations.css') }}">
+{% endblock %}
+
 {% block content %}
-<main class="situation-page shell-content" id="situationPage" data-tile-template="{{ tile_template|default('') }}">
+<main
+  class="situation-page shell-content inspector-collapsed"
+  id="situationPage"
+  data-mode="select"
+  data-tile-template="{{ tile_template|default('') }}"
+  data-base-data-url="{{ url_for('ui_v1.base_data_page') }}"
+>
   <div id="situationMap" class="situation-map" aria-label="情境空间工作区"></div>
-  <div id="situationFallbackMap" class="situation-fallback-map hidden" aria-label="无底图坐标视图"><div class="fallback-grid"></div><div id="fallbackObjects" class="fallback-objects"></div><span>无底图坐标视图 · 本地 Leaflet 就位后自动切换正式地图</span></div>
+  <div id="situationFallbackMap" class="situation-fallback-map hidden" aria-label="无底图坐标视图">
+    <div class="fallback-grid"></div>
+    <div id="fallbackObjects" class="fallback-objects"></div>
+    <span>无底图坐标视图</span>
+  </div>
 
-  <header class="situation-head overlay-surface">
-    <div class="situation-heading">
-      <div><h1>情境构建</h1><div id="situationMeta" class="situation-meta">打开或创建情境后开始编辑</div></div>
-      <span id="situationSaveState" class="badge">未打开</span>
-    </div>
-    <div class="situation-picker"><label for="situationSelect">当前情境</label><select id="situationSelect" class="control"><option value="">选择情境…</option></select></div>
-    <div class="situation-actions">
-      <button id="newSituationButton" class="btn" type="button">新建</button>
-      <button id="saveSituationButton" class="btn primary" type="button" disabled>保存</button>
-      <button id="deleteSituationButton" class="btn danger" type="button" disabled>删除</button>
-      <a class="btn" href="{{ url_for('ui_v1.base_data_page') }}">数据管理</a>
-    </div>
-  </header>
+  <section class="situation-tools overlay-surface" aria-label="情境编辑工具">
+    <button class="tool-button" data-mode="airport" type="button" title="机场">
+      <svg class="ui-icon"><use href="#i-airport"></use></svg>
+      <span>机场</span>
+    </button>
+    <button class="tool-button" data-mode="mission" type="button" title="任务">
+      <svg class="ui-icon"><use href="#i-task"></use></svg>
+      <span>任务</span>
+    </button>
+    <button class="tool-button" data-mode="damage" type="button" title="损毁">
+      <svg class="ui-icon"><use href="#i-damage"></use></svg>
+      <span>损毁</span>
+    </button>
 
-  <section class="situation-tools overlay-surface" aria-label="地图工具">
-    <button class="tool-button active" data-mode="select" type="button"><b>↖</b><span>选择</span></button>
-    <button class="tool-button" data-mode="airport" type="button"><b>◎</b><span>机场</span></button>
-    <button class="tool-button" data-mode="mission" type="button"><b>◆</b><span>任务</span></button>
-    <button class="tool-button" data-mode="damage" type="button"><b>✦</b><span>损毁</span></button>
-    <button class="tool-button" data-mode="layers" type="button"><b>▤</b><span>图层</span></button>
+    <span class="tool-divider" aria-hidden="true"></span>
+
+    <button id="layerScopeButton" class="tool-button utility" type="button" title="显示图层" aria-expanded="false">
+      <svg class="ui-icon"><use href="#i-layers"></use></svg>
+      <span>图层</span>
+    </button>
+    <button id="searchToggleButton" class="tool-button utility" type="button" title="搜索当前情境" aria-expanded="false">
+      <svg class="ui-icon"><use href="#i-search"></use></svg>
+      <span>搜索</span>
+    </button>
   </section>
 
-  <section class="situation-search overlay-surface"><input id="situationSearch" class="control" type="search" placeholder="搜索当前情境对象"><button id="fitSituationButton" class="btn" type="button">适应范围</button></section>
+  <section id="situationSearchPanel" class="situation-search overlay-surface hidden" aria-label="当前情境对象搜索">
+    <div class="search-field-wrap">
+      <svg class="ui-icon search-prefix"><use href="#i-search"></use></svg>
+      <input id="situationSearch" class="control" type="search" placeholder="搜索机场或任务" autocomplete="off">
+      <div id="situationSearchResults" class="situation-search-results hidden" role="listbox"></div>
+    </div>
+  </section>
 
-  <aside id="situationInspector" class="situation-inspector overlay-surface">
-    <header class="inspector-head"><div><strong id="inspectorTitle">情境对象</strong><small id="inspectorSubtitle">选择地图对象或切换工具</small></div><button id="closeInspector" class="icon-button" type="button" aria-label="收起面板">×</button></header>
-    <div id="inspectorBody" class="inspector-content"><div class="empty-state">当前没有选中对象。</div></div>
+  <section id="layerScopePanel" class="layer-scope-panel overlay-surface hidden" aria-label="图层显示范围">
+    <header>
+      <strong>显示图层</strong>
+      <button id="closeLayerScope" class="icon-button" type="button" aria-label="关闭"><svg class="ui-icon"><use href="#i-close"></use></svg></button>
+    </header>
+    <div class="layer-scope-body">
+      <div class="layer-scope-row current">
+        <span>
+          <svg class="ui-icon"><use href="#i-info"></use></svg>
+          当前情境对象
+        </span>
+        <em>始终显示</em>
+      </div>
+      <label class="layer-scope-row">
+        <span><svg class="ui-icon"><use href="#i-airport"></use></svg>全部基础机场</span>
+        <input id="showAllAirports" type="checkbox">
+      </label>
+      <label class="layer-scope-row">
+        <span><svg class="ui-icon"><use href="#i-task"></use></svg>全部任务模板</span>
+        <input id="showAllMissions" type="checkbox">
+      </label>
+      <label class="layer-scope-row">
+        <span><svg class="ui-icon"><use href="#i-damage"></use></svg>其他已保存情境损毁</span>
+        <input id="showAllDamage" type="checkbox" disabled aria-describedby="otherDamageUnavailable">
+      </label>
+      <p id="otherDamageUnavailable" class="layer-unavailable">缺少既定 projection endpoint，本轮不可用。</p>
+      <div id="layerScopeStatus" class="layer-scope-status"></div>
+    </div>
+  </section>
+
+  <aside id="situationInspector" class="situation-inspector overlay-surface closed" aria-label="当前任务工作区" aria-hidden="true">
+    <header class="inspector-head">
+      <div>
+        <strong id="inspectorTitle"></strong>
+        <small id="inspectorSubtitle"></small>
+      </div>
+      <button id="closeInspector" class="icon-button" type="button" aria-label="收起工作区"><svg class="ui-icon"><use href="#i-close"></use></svg></button>
+    </header>
+    <div id="inspectorBody" class="inspector-content"></div>
   </aside>
 
   <section id="situationOverview" class="situation-overview overlay-surface">
-    <button id="overviewTrigger" class="overview-trigger" type="button" aria-expanded="false"><span><strong>情境总览</strong><small id="overviewCounts">机场 0 · 任务 0 · 损毁场景 0</small></span><span class="chevron">⌃</span></button>
-    <div class="overview-body"><div><div id="overviewContent" class="overview-content"></div></div></div>
+    <div class="overview-head">
+      <button id="overviewTrigger" class="overview-toggle" type="button" aria-expanded="false" title="展开/收起情境信息">
+        <svg class="ui-icon"><use href="#i-info"></use></svg>
+        <span>情境</span>
+        <svg class="ui-icon chevron"><use href="#i-chevron"></use></svg>
+      </button>
+
+      <select id="situationSelect" class="control overview-situation-select" aria-label="切换情境">
+        <option value="">选择情境…</option>
+      </select>
+
+      <span id="overviewCounts" class="overview-counts">机场 0 · 任务 0 · 损毁场景 0</span>
+    </div>
+
+    <div class="overview-body">
+      <div class="overview-meta-row">
+        <span id="situationMeta" class="overview-meta"></span>
+        <button id="overviewEditSituationInfo" class="btn ghost compact-action" type="button">编辑情境信息</button>
+      </div>
+      <div id="overviewContent" class="overview-content"></div>
+    </div>
+  </section>
+
+  <section id="situationEmptyGuide" class="situation-empty-guide hidden" aria-live="polite">
+    <strong id="situationEmptyTitle">开始构建情境</strong>
+    <p id="situationEmptyText">选择已有情境，或新建一个情境。</p>
+    <button id="situationEmptyAction" class="btn primary" type="button">新建情境</button>
+  </section>
+
+  <section id="situationConflictBar" class="situation-conflict hidden" role="alert">
+    <div>
+      <strong>保存版本已变化</strong>
+      <span>当前本地修改仍保留。</span>
+    </div>
+    <div class="conflict-actions">
+      <button id="keepLocalConflict" class="btn ghost" type="button">保留本地</button>
+      <button id="reloadConflict" class="btn danger" type="button">重新加载</button>
+    </div>
   </section>
 
   <div id="situationMessage" class="workspace-message hidden" role="alert"></div>
@@ -45,14 +157,33 @@
   <div id="situationCreateModal" class="shell-modal-backdrop" aria-hidden="true">
     <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationCreateTitle">
       <header><strong id="situationCreateTitle">新建情境</strong></header>
-      <div class="body"><div class="field required"><label>情境编号</label><input id="newSituationId" class="control" placeholder="例如 SITUATION-01"></div><div class="field required"><label>名称</label><input id="newSituationName" class="control"></div><div class="field"><label>说明</label><textarea id="newSituationDescription" class="control textarea-control" rows="3"></textarea></div><div id="newSituationMessage" class="inline-message hidden"></div></div>
-      <footer><button id="newSituationCancel" class="btn ghost" type="button">取消</button><button id="newSituationConfirm" class="btn primary" type="button">创建工作副本</button></footer>
+      <div class="body">
+        <div class="field required"><label>情境编号</label><input id="newSituationId" class="control" placeholder="例如 SITUATION-01"></div>
+        <div class="field required"><label>名称</label><input id="newSituationName" class="control"></div>
+        <div class="field"><label>说明</label><textarea id="newSituationDescription" class="control textarea-control" rows="3"></textarea></div>
+        <div id="newSituationMessage" class="inline-message hidden"></div>
+      </div>
+      <footer>
+        <button id="newSituationCancel" class="btn ghost" type="button">取消</button>
+        <button id="newSituationConfirm" class="btn primary" type="button">创建</button>
+      </footer>
     </section>
   </div>
 
   <div id="situationConfirmModal" class="shell-modal-backdrop" aria-hidden="true">
-    <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationConfirmTitle"><header><strong id="situationConfirmTitle">确认操作</strong></header><div id="situationConfirmBody" class="body"></div><footer><button id="situationConfirmCancel" class="btn ghost" type="button">取消</button><button id="situationConfirmAction" class="btn danger" type="button">确认</button></footer></section>
+    <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationConfirmTitle">
+      <header><strong id="situationConfirmTitle">确认操作</strong></header>
+      <div id="situationConfirmBody" class="body"></div>
+      <footer>
+        <button id="situationConfirmCancel" class="btn ghost" type="button">取消</button>
+        <button id="situationConfirmAction" class="btn danger" type="button">确认</button>
+      </footer>
+    </section>
   </div>
 </main>
 {% endblock %}
-{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/modules/situations.js') }}"></script>{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/modules/situations.js') }}"></script>
+{% endblock %}

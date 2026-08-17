@@ -8,6 +8,10 @@ const roleLabel = document.getElementById('accountRole');
 const summaryName = document.getElementById('accountSummaryName');
 const summaryRole = document.getElementById('accountSummaryRole');
 const logoutAction = document.getElementById('logoutAction');
+const accountInfoAction = document.getElementById('accountInfoAction');
+const accountInfoModal = document.getElementById('accountInfoModal');
+const accountInfoBody = document.getElementById('accountInfoBody');
+const accountInfoClose = document.getElementById('accountInfoClose');
 const changePasswordAction = document.getElementById('changePasswordAction');
 const passwordModal = document.getElementById('passwordModal');
 const passwordCancel = document.getElementById('passwordCancel');
@@ -57,6 +61,39 @@ function openPasswordModal() {
 function closePasswordModal() {
   passwordModal.classList.remove('open'); passwordModal.setAttribute('aria-hidden', 'true');
 }
+function openAccountInfo() {
+  closeAccount();
+  if (!account) return;
+  const permissions = (account.permissions || []).map((permission) => {
+    const item = document.createElement('span');
+    item.className = 'account-permission';
+    item.textContent = permission;
+    return item;
+  });
+  accountInfoBody.replaceChildren();
+  const facts = document.createElement('dl');
+  facts.className = 'account-facts';
+  for (const [label, value] of [
+    ['用户编号', account.user_id || '—'],
+    ['账户角色', roleText(account.role)],
+  ]) {
+    const row = document.createElement('div');
+    const term = document.createElement('dt'); term.textContent = label;
+    const detail = document.createElement('dd'); detail.textContent = value;
+    row.append(term, detail); facts.append(row);
+  }
+  const permissionList = document.createElement('div');
+  permissionList.className = 'account-permissions';
+  permissionList.append(...permissions);
+  accountInfoBody.append(facts, permissionList);
+  accountInfoModal.classList.add('open');
+  accountInfoModal.setAttribute('aria-hidden', 'false');
+  accountInfoClose.focus();
+}
+function closeAccountInfo() {
+  accountInfoModal.classList.remove('open');
+  accountInfoModal.setAttribute('aria-hidden', 'true');
+}
 function roleText(role) {
   return ({ viewer: '查看用户', operator: '运行操作员', admin: '系统管理员' })[role] || role || '查看用户';
 }
@@ -83,8 +120,11 @@ document.addEventListener('click', (event) => {
   if (!accountPopover?.contains(event.target) && !accountTrigger?.contains(event.target)) closeAccount();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') { closeAccount(); closePasswordModal(); }
+  if (event.key === 'Escape') { closeAccount(); closeAccountInfo(); closePasswordModal(); }
 });
+accountInfoAction?.addEventListener('click', openAccountInfo);
+accountInfoClose?.addEventListener('click', closeAccountInfo);
+accountInfoModal?.addEventListener('click', (event) => { if (event.target === accountInfoModal) closeAccountInfo(); });
 changePasswordAction?.addEventListener('click', openPasswordModal);
 passwordCancel?.addEventListener('click', closePasswordModal);
 passwordModal?.addEventListener('click', (event) => { if (event.target === passwordModal) closePasswordModal(); });

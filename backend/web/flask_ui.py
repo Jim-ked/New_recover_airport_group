@@ -53,6 +53,7 @@ def create_ui_blueprint():
             "pages/base_data.html",
             session_user=session.get("user"),
             active_nav="situation",
+            base_data_active=True,
         )
 
     @bp.get("/indicators")
@@ -107,6 +108,17 @@ def create_ui_blueprint():
             "pages/results.html",
             session_user=session.get("user"),
             active_nav="results",
+        )
+
+    @bp.get("/settings")
+    def settings_page():
+        denied = _require_login()
+        if denied is not None:
+            return denied
+        return render_template(
+            "pages/settings.html",
+            session_user=session.get("user"),
+            active_nav="settings",
         )
 
     return bp
