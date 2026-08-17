@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.storage.database import initialize_database
+from backend.storage.database import _MIGRATIONS, connect, initialize_database
 
 
 class DatabaseMigrationTests(unittest.TestCase):
@@ -32,7 +32,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            self.assertEqual(16, migration_count)
+            self.assertEqual(17, migration_count)
             self.assertEqual(1, airport_count)
             self.assertIn("situations", tables)
             self.assertIn("situation_damage_scenarios", tables)
@@ -146,7 +146,213 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertEqual(0, canonical_count)
             self.assertEqual(0, scenario_count)
             self.assertEqual("unchanged", sentinel)
-            self.assertEqual(16, migrations)
+            self.assertEqual(17, migrations)
+
+    def test_v017_upgrades_v016_stocks_without_reinterpreting_zero_or_losing_children(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "v016.sqlite"
+            with connect(path) as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE schema_migrations (
+                        migration_id TEXT PRIMARY KEY,
+                        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                for migration_id, apply in _MIGRATIONS:
+                    if migration_id == "v017_nullable_replenishment":
+                        break
+                    apply(conn)
+                    conn.execute(
+                        "INSERT INTO schema_migrations (migration_id) VALUES (?)",
+                        (migration_id,),
+                    )
+
+            with connect(path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO airports (
+                        airport_id, airport_name, facility_type, role, longitude,
+                        latitude, scheduled_service, runways_known
+                    ) VALUES ('A1', 'Airport', 'small_airport', 'military', 110, 30, 0, 0)
+                    """
+                )
+                conn.executemany(
+                    "INSERT INTO resource_types (resource_type_id, name, category, unit) VALUES (?,?,?,?)",
+                    [
+                        ("R1", "Resource 1", "material", "unit"),
+                        ("R2", "Resource 2", "material", "unit"),
+                    ],
+                )
+                conn.execute(
+                    """
+                    INSERT INTO airport_operational_profiles (
+                        airport_id, configuration_complete, capacity_per_window, support_level
+                    ) VALUES ('A1', 0, 8, NULL)
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO airport_resource_stocks (
+                        airport_id, resource_type_id, quantity, replenishment_capacity_per_window
+                    ) VALUES ('A1', 'R1', 100, 0)
+                    """
+                )
+                conn.execute(
+                    "INSERT INTO situations (situation_id, name, description) VALUES ('S1', 'Situation', NULL)"
+                )
+                conn.execute(
+                    """
+                    INSERT INTO situation_airports (
+                        situation_id, airport_id, airport_name, facility_type, role,
+                        longitude, latitude, scheduled_service, runways_known,
+                        configuration_complete, capacity_per_window, support_level
+                    ) VALUES ('S1', 'A1', 'Airport', 'small_airport', 'military',
+                              110, 30, 0, 0, 0, 8, NULL)
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO situation_resource_stocks (
+                        situation_id, airport_id, resource_type_id, quantity,
+                        replenishment_capacity_per_window
+                    ) VALUES ('S1', 'A1', 'R1', 90, 0)
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO situation_resource_replenishments (
+                        situation_id, airport_id, resource_type_id, slot, quantity
+                    ) VALUES ('S1', 'A1', 'R1', 3, 5)
+                    """
+                )
+
+            initialize_database(path)
+
+            with connect(path) as conn:
+                airport_zero = conn.execute(
+                    """
+                    SELECT replenishment_capacity_per_window
+                    FROM airport_resource_stocks
+                    WHERE airport_id='A1' AND resource_type_id='R1'
+                    """
+                ).fetchone()[0]
+                situation_zero = conn.execute(
+                    """
+                    SELECT replenishment_capacity_per_window
+                    FROM situation_resource_stocks
+                    WHERE situation_id='S1' AND airport_id='A1' AND resource_type_id='R1'
+                    """
+                ).fetchone()[0]
+                child_row = tuple(conn.execute(
+                    """
+                    SELECT situation_id, airport_id, resource_type_id, slot, quantity
+                    FROM situation_resource_replenishments
+                    """
+                ).fetchone())
+
+                conn.execute(
+                    """
+                    INSERT INTO airport_resource_stocks (
+                        airport_id, resource_type_id, quantity, replenishment_capacity_per_window
+                    ) VALUES ('A1', 'R2', 50, NULL)
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO situation_resource_stocks (
+                        situation_id, airport_id, resource_type_id, quantity,
+                        replenishment_capacity_per_window
+                    ) VALUES ('S1', 'A1', 'R2', 40, NULL)
+                    """
+                )
+                airport_unknown = conn.execute(
+                    """
+                    SELECT replenishment_capacity_per_window
+                    FROM airport_resource_stocks
+                    WHERE airport_id='A1' AND resource_type_id='R2'
+                    """
+                ).fetchone()[0]
+                situation_unknown = conn.execute(
+                    """
+                    SELECT replenishment_capacity_per_window
+                    FROM situation_resource_stocks
+                    WHERE situation_id='S1' AND airport_id='A1' AND resource_type_id='R2'
+                    """
+                ).fetchone()[0]
+                with self.assertRaises(sqlite3.IntegrityError):
+                    conn.execute(
+                        """
+                        UPDATE airport_resource_stocks
+                        SET replenishment_capacity_per_window=-1
+                        WHERE airport_id='A1' AND resource_type_id='R2'
+                        """
+                    )
+                with self.assertRaises(sqlite3.IntegrityError):
+                    conn.execute(
+                        """
+                        UPDATE situation_resource_stocks
+                        SET replenishment_capacity_per_window=-1
+                        WHERE situation_id='S1' AND airport_id='A1' AND resource_type_id='R2'
+                        """
+                    )
+
+                airport_columns = {
+                    row[1]: (row[2], row[3], row[5])
+                    for row in conn.execute("PRAGMA table_info(airport_resource_stocks)")
+                }
+                situation_columns = {
+                    row[1]: (row[2], row[3], row[5])
+                    for row in conn.execute("PRAGMA table_info(situation_resource_stocks)")
+                }
+                airport_foreign_keys = {
+                    (row[3], row[2], row[4], row[6])
+                    for row in conn.execute("PRAGMA foreign_key_list(airport_resource_stocks)")
+                }
+                situation_foreign_keys = {
+                    (row[3], row[2], row[4], row[6])
+                    for row in conn.execute("PRAGMA foreign_key_list(situation_resource_stocks)")
+                }
+                foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+
+            self.assertEqual(0, airport_zero)
+            self.assertEqual(0, situation_zero)
+            self.assertEqual(("S1", "A1", "R1", 3, 5.0), child_row)
+            self.assertIsNone(airport_unknown)
+            self.assertIsNone(situation_unknown)
+            self.assertEqual([], foreign_key_errors)
+            self.assertIn("quantity", airport_columns)
+            self.assertNotIn("initial_quantity", airport_columns)
+            self.assertIn("quantity", situation_columns)
+            self.assertNotIn("initial_quantity", situation_columns)
+            self.assertEqual(("REAL", 0, 0), airport_columns["replenishment_capacity_per_window"])
+            self.assertEqual(("REAL", 0, 0), situation_columns["replenishment_capacity_per_window"])
+            self.assertEqual(1, airport_columns["airport_id"][2])
+            self.assertEqual(2, airport_columns["resource_type_id"][2])
+            self.assertEqual(1, situation_columns["situation_id"][2])
+            self.assertEqual(2, situation_columns["airport_id"][2])
+            self.assertEqual(3, situation_columns["resource_type_id"][2])
+            self.assertIn(
+                ("airport_id", "airport_operational_profiles", "airport_id", "CASCADE"),
+                airport_foreign_keys,
+            )
+            self.assertIn(
+                ("resource_type_id", "resource_types", "resource_type_id", "RESTRICT"),
+                airport_foreign_keys,
+            )
+            self.assertIn(
+                ("situation_id", "situation_airports", "situation_id", "CASCADE"),
+                situation_foreign_keys,
+            )
+            self.assertIn(
+                ("airport_id", "situation_airports", "airport_id", "CASCADE"),
+                situation_foreign_keys,
+            )
+            self.assertIn(
+                ("resource_type_id", "resource_types", "resource_type_id", "RESTRICT"),
+                situation_foreign_keys,
+            )
 
     def test_damage_migration_fails_fast_if_legacy_preservation_table_already_exists(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -20,6 +20,7 @@ from backend.storage.migrations.v013_catalog_metadata import apply as apply_v013
 from backend.storage.migrations.v014_indicators import apply as apply_v014
 from backend.storage.migrations.v015_audit_events import SCHEMA_SQL as V015_SQL
 from backend.storage.migrations.v016_users import SCHEMA_SQL as V016_SQL
+from backend.storage.migrations.v017_nullable_replenishment import apply as apply_v017
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -63,6 +64,7 @@ _MIGRATIONS: Tuple[Tuple[str, Callable[[sqlite3.Connection], None]], ...] = (
     ("v014_indicators", apply_v014),
     ("v015_audit_events", _script(V015_SQL)),
     ("v016_users", _script(V016_SQL)),
+    ("v017_nullable_replenishment", apply_v017),
 )
 
 
