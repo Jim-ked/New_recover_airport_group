@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% block title %}基础数据管理 · 机场群顽存能力仿真系统{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/base-data.css') }}">{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base-data.css') }}">
+{% endblock %}
 {% block content %}
 <main class="base-data-page shell-content" id="baseDataPage">
   <header class="workspace-head">
     <div class="workspace-title">
       <a class="back-link" href="{{ url_for('ui_v1.situations_page') }}">‹ 返回情境构建</a>
-      <div><h1>基础数据管理</h1><p>维护系统当前基础数据。情境中的机场配置与任务快照不会随这里的后续修改自动变化。</p></div>
-      <span class="badge info">单一当前态</span>
-    </div>
-    <div class="head-actions">
-      <button id="baseDataImportButton" class="btn" type="button">覆盖导入</button>
-      <button id="baseDataExportButton" class="btn" type="button">导出当前数据集</button>
-      <button id="baseDataAddButton" class="btn primary" type="button">新增</button>
+      <div>
+        <h1>基础数据管理</h1>
+        <p>维护系统当前有效数据。已保存情境保留自己的机场与任务快照，不随这里的后续修改自动变化。</p>
+      </div>
+      <span class="badge info">当前有效态</span>
     </div>
   </header>
 
@@ -24,24 +24,53 @@
   </nav>
 
   <section class="data-toolbar surface">
-    <div class="search-box"><input id="baseDataSearch" class="control" type="search" placeholder="搜索编号或名称"><button id="baseDataSearchButton" class="btn" type="button">搜索</button></div>
-    <div id="airportFilters" class="filter-row">
-      <select id="airportRoleFilter" class="control"><option value="">全部类型</option><option value="military">军用</option><option value="joint">军民合用</option><option value="civil">民用</option></select>
-      <input id="airportRegionFilter" class="control" placeholder="所属区域">
+    <div class="search-box">
+      <input id="baseDataSearch" class="control" type="search" name="base-data-q"
+             autocomplete="off" spellcheck="false" placeholder="搜索编号或名称">
+      <button id="baseDataSearchButton" class="btn" type="button">查询</button>
+      <button id="baseDataResetButton" class="btn ghost" type="button">重置</button>
     </div>
-    <div class="toolbar-note" id="baseDataSummary">正在读取…</div>
+    <div id="airportFilters" class="filter-row">
+      <select id="airportRoleFilter" class="control" name="base-data-role" autocomplete="off">
+        <option value="">全部类型</option>
+        <option value="military">军用</option>
+        <option value="joint">军民合用</option>
+        <option value="civil">民用</option>
+      </select>
+      <input id="airportRegionFilter" class="control" name="base-data-region"
+             autocomplete="off" spellcheck="false" placeholder="所属区域">
+    </div>
+    <div class="data-toolbar-spacer"></div>
+    <button id="baseDataImportButton" class="btn" type="button">导入</button>
+    <button id="baseDataExportButton" class="btn" type="button">导出</button>
+    <button id="baseDataAddButton" class="btn primary" type="button">新增</button>
   </section>
 
   <section class="data-workspace">
     <div class="data-list panel">
-      <div class="panel-head"><strong id="baseDataTableTitle">机场基础库</strong><span id="baseDataCount" class="muted">—</span></div>
+      <div class="panel-head">
+        <strong id="baseDataTableTitle">机场基础库</strong>
+        <span id="baseDataCount" class="muted">—</span>
+      </div>
       <div id="baseDataTableWrap" class="table-scroll data-table-wrap"></div>
-      <footer class="pager"><button id="baseDataPrev" class="btn ghost" type="button">上一页</button><span id="baseDataPageInfo">—</span><button id="baseDataNext" class="btn ghost" type="button">下一页</button></footer>
+      <footer class="pager">
+        <button id="baseDataPrev" class="btn ghost" type="button">上一页</button>
+        <span id="baseDataPageInfo">—</span>
+        <button id="baseDataNext" class="btn ghost" type="button">下一页</button>
+      </footer>
     </div>
 
     <aside class="data-detail panel" id="baseDataDetail">
-      <div class="panel-head"><strong id="baseDataDetailTitle">数据详情</strong><div class="detail-actions"><button id="baseDataEditButton" class="btn" type="button">编辑</button><button id="baseDataDeleteButton" class="btn danger" type="button">删除</button></div></div>
-      <div id="baseDataDetailBody" class="data-detail-body"><div class="empty-state">从左侧选择一条基础数据。</div></div>
+      <div class="panel-head">
+        <strong id="baseDataDetailTitle">数据详情</strong>
+        <div class="detail-actions">
+          <button id="baseDataEditButton" class="btn" type="button">编辑</button>
+          <button id="baseDataDeleteButton" class="btn danger" type="button">删除</button>
+        </div>
+      </div>
+      <div id="baseDataDetailBody" class="data-detail-body">
+        <div class="detail-empty">选择一条数据查看详细信息。</div>
+      </div>
     </aside>
   </section>
 
@@ -49,18 +78,21 @@
 
   <div id="baseDataImportModal" class="shell-modal-backdrop" aria-hidden="true">
     <section class="shell-modal import-modal" role="dialog" aria-modal="true" aria-labelledby="baseDataImportTitle">
-      <header><strong id="baseDataImportTitle">覆盖导入当前基础数据</strong></header>
+      <header><strong id="baseDataImportTitle">导入并替换当前基础数据</strong></header>
       <div class="body">
         <div class="inline-message warning">导入会先完整校验，再以一个事务替换所选数据集当前内容；不生成可选择的历史版本。操作摘要会进入统一行为日志。</div>
         <div class="import-grid">
-          <div class="field"><label>数据集</label><select id="importDataset" class="control"><option value="airports">机场</option><option value="missions">任务模板</option><option value="aircraft_types">机型</option><option value="resource_types">保障资源</option><option value="aircraft_resource_requirements">机型资源消耗关系</option></select></div>
-          <div class="field"><label>格式</label><select id="importFormat" class="control"><option value="json">JSON</option><option value="csv">CSV</option></select></div>
+          <div class="field"><label>数据集</label><select id="importDataset" class="control" autocomplete="off" name="base-data-import-dataset"><option value="airports">机场</option><option value="missions">任务模板</option><option value="aircraft_types">机型</option><option value="resource_types">保障资源</option><option value="aircraft_resource_requirements">机型资源消耗关系</option></select></div>
+          <div class="field"><label>格式</label><select id="importFormat" class="control" autocomplete="off" name="base-data-import-format"><option value="json">JSON</option><option value="csv">CSV</option></select></div>
         </div>
         <div class="field"><label>选择文件</label><input id="importFile" class="control file-control" type="file" accept=".json,.csv,application/json,text/csv"></div>
-        <div id="importFileInfo" class="field-note">JSON 支持对象数组或 {"items": [...]}；CSV 使用对应数据集的标准表头。</div>
+        <div id="importFileInfo" class="field-note">JSON 支持 airport_master_v1 主数据文档（原样直传）、对象数组或 {"items": [...]}；CSV 使用对应数据集的标准表头。</div>
         <div id="importMessage" class="inline-message hidden"></div>
       </div>
-      <footer><button id="importCancel" class="btn ghost" type="button">取消</button><button id="importConfirm" class="btn danger" type="button">校验并覆盖</button></footer>
+      <footer>
+        <button id="importCancel" class="btn ghost" type="button">取消</button>
+        <button id="importConfirm" class="btn danger" type="button">校验并替换</button>
+      </footer>
     </section>
   </div>
 
@@ -68,9 +100,14 @@
     <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="baseDataConfirmTitle">
       <header><strong id="baseDataConfirmTitle">确认操作</strong></header>
       <div id="baseDataConfirmBody" class="body"></div>
-      <footer><button id="baseDataConfirmCancel" class="btn ghost" type="button">取消</button><button id="baseDataConfirmAction" class="btn danger" type="button">确认</button></footer>
+      <footer>
+        <button id="baseDataConfirmCancel" class="btn ghost" type="button">取消</button>
+        <button id="baseDataConfirmAction" class="btn danger" type="button">确认</button>
+      </footer>
     </section>
   </div>
 </main>
 {% endblock %}
-{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/modules/base-data.js') }}"></script>{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/modules/base-data.js') }}"></script>
+{% endblock %}

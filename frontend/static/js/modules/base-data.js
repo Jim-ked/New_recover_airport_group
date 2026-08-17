@@ -1,11 +1,25 @@
 import { apiFetch, apiText, ApiError } from './api-client.js';
 
 const $ = (id) => document.getElementById(id);
-const state = { tab:'airports', page:0, limit:30, total:0, items:[], selected:null, detail:null, me:null, editing:false, creating:false, aircraft:[], resources:[], requirements:[], editorDirty:false, lookupsLoaded:false };
-const refs = { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), role:$('airportRoleFilter'), region:$('airportRegionFilter'), filters:$('airportFilters'), summary:$('baseDataSummary'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') };
+const state = {
+  tab:'airports', page:0, limit:30, total:0, items:[],
+  selected:null, detail:null, detailError:null,
+  me:null, editing:false, creating:false, editorDirty:false,
+  aircraft:[], resources:[], requirements:[], lookupsLoaded:false,
+  filters:{
+    airports:{ q:'', role:'', region:'' },
+    missions:{ q:'' },
+    aircraft_types:{ q:'' },
+    resource_types:{ q:'' },
+  },
+  listSeq:0, detailSeq:0,
+};
+const refs = { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), resetBtn:$('baseDataResetButton'), role:$('airportRoleFilter'), region:$('airportRegionFilter'), filters:$('airportFilters'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') };
 const TAB_META = {
-  airports:{title:'机场基础库', singular:'机场', endpoint:'/api/airports'}, missions:{title:'任务模板库',singular:'任务模板',endpoint:'/api/missions'},
-  aircraft_types:{title:'机型基础库',singular:'机型',endpoint:'/api/aircraft-types'}, resource_types:{title:'保障资源类型',singular:'资源类型',endpoint:'/api/resource-types'},
+  airports:{title:'机场基础库', singular:'机场', empty:'选择一条机场查看详细信息', endpoint:'/api/airports'},
+  missions:{title:'任务模板库', singular:'任务模板', empty:'选择一条任务模板查看详细信息', endpoint:'/api/missions'},
+  aircraft_types:{title:'机型基础库', singular:'机型', empty:'选择一条机型查看详细信息', endpoint:'/api/aircraft-types'},
+  resource_types:{title:'保障资源类型', singular:'资源类型', empty:'选择一条资源类型查看详细信息', endpoint:'/api/resource-types'},
 };
 const esc = (v) => String(v ?? '—').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const val = (v) => v === null || v === undefined ? '' : String(v);
@@ -20,23 +34,152 @@ function downloadBlob(name,text,type){ const a=document.createElement('a'); a.hr
 function bindEditorDirty(){refs.detail.querySelectorAll('input,select,textarea').forEach(el=>{const mark=()=>{state.editorDirty=true};el.addEventListener('input',mark);el.addEventListener('change',mark)})}
 async function canLeaveEditor(){if(!(state.editing&&state.editorDirty))return true;return confirmAction('当前基础数据表单有未保存修改。继续会放弃这些编辑。','放弃修改')}
 
-function endpointQuery(){ const p=new URLSearchParams(); if(['airports','missions'].includes(state.tab)){p.set('limit',state.limit);p.set('offset',state.page*state.limit); if(refs.search.value.trim())p.set('q',refs.search.value.trim());} if(state.tab==='airports'){if(refs.role.value)p.append('role',refs.role.value);if(refs.region.value.trim())p.append('region',refs.region.value.trim());} return p.toString(); }
+/* ---- applied query state: the ONLY source for list requests ---- */
+function appliedFilters(){ return state.filters[state.tab]; }
+function syncToolbarFromFilters(){ const f=appliedFilters(); refs.search.value=f.q||''; refs.role.value=f.role||''; refs.region.value=f.region||''; }
+function submitFilters(){ const f=appliedFilters(); f.q=refs.search.value.trim(); if(state.tab==='airports'){ f.role=refs.role.value; f.region=refs.region.value.trim(); } state.page=0; return load(); }
+function resetFilters(){ const f=appliedFilters(); f.q=''; f.role=''; f.region=''; refs.search.value=''; refs.role.value=''; refs.region.value=''; state.page=0; return load(); }
+function endpointQuery(){ const f=appliedFilters(); const p=new URLSearchParams(); if(['airports','missions'].includes(state.tab)){ p.set('limit',state.limit); p.set('offset',state.page*state.limit); if(f.q)p.set('q',f.q); } if(state.tab==='airports'){ if(f.role)p.append('role',f.role); if(f.region)p.append('region',f.region); } return p.toString(); }
+
+/* ---- lookups: optional for the list, loaded on editor/detail demand ---- */
 async function loadLookups(){ const [a,r,q]=await Promise.all([apiFetch('/api/aircraft-types'),apiFetch('/api/resource-types'),apiFetch('/api/aircraft-resource-requirements')]); state.aircraft=a.items||[];state.resources=r.items||[];state.requirements=q.items||[]; }
 async function ensureLookups(){ if(state.lookupsLoaded)return; try{ await loadLookups(); state.lookupsLoaded=true; }catch(e){ state.lookupsLoaded=false; } }
-async function load(){ state.selected=null;state.detail=null;state.editing=false;state.editorDirty=false; refs.detail.innerHTML='<div class="empty-state">正在读取…</div>'; const meta=TAB_META[state.tab]; const q=endpointQuery(); const data=await apiFetch(`${meta.endpoint}${q?`?${q}`:''}`); let items=data.items||[];if(['aircraft_types','resource_types'].includes(state.tab)&&refs.search.value.trim()){const needle=refs.search.value.trim().toLowerCase();items=items.filter(x=>{const obj=state.tab==='aircraft_types'?x.aircraft_type:x.resource_type;const id=state.tab==='aircraft_types'?obj.aircraft_type_id:obj.resource_type_id;return `${id} ${obj.name}`.toLowerCase().includes(needle)});}state.items=items;state.total=Number.isFinite(data.total)&&!['aircraft_types','resource_types'].includes(state.tab)?data.total:state.items.length; render(); }
+
+/* ---- list loading: seq-guarded, selection never triggers it ---- */
+async function load(){
+  const seq=++state.listSeq; const meta=TAB_META[state.tab]; const f=appliedFilters();
+  try{
+    let items=[]; let total=0;
+    if(['airports','missions'].includes(state.tab)){
+      const q=endpointQuery(); const data=await apiFetch(`${meta.endpoint}${q?`?${q}`:''}`);
+      items=data.items||[]; total=Number.isFinite(data.total)?data.total:items.length;
+    }else{
+      const data=await apiFetch(meta.endpoint);
+      items=data.items||[];
+      if(f.q){ const needle=f.q.toLowerCase(); items=items.filter(x=>{ const obj=state.tab==='aircraft_types'?x.aircraft_type:x.resource_type; const id=state.tab==='aircraft_types'?obj.aircraft_type_id:obj.resource_type_id; return `${id} ${obj.name}`.toLowerCase().includes(needle); }); }
+      total=items.length;
+    }
+    if(seq!==state.listSeq)return;
+    state.items=items; state.total=total;
+    state.selected=null; state.detail=null; state.detailError=null; state.editing=false; state.editorDirty=false;
+    render();
+  }catch(e){
+    if(seq!==state.listSeq)return;
+    showMessage(fieldError(e),'error');
+    refs.wrap.innerHTML='<div class="empty-state">列表加载失败。</div>';
+  }
+}
+
+/* ---- selection: only selected/detail/editing state, never list/filters ---- */
 function itemId(row){ if(state.tab==='airports')return row.airport_id;if(state.tab==='missions')return row.mission?.mission_id;if(state.tab==='aircraft_types')return row.aircraft_type?.aircraft_type_id;return row.resource_type?.resource_type_id; }
-function renderTable(){ let heads=[], body=[]; if(state.tab==='airports'){heads=['编号','名称','类型','区域','容量/窗','支持机型','更新时间']; body=state.items.map(x=>[x.airport_id,x.airport_name,x.role,x.region||'—',x.capacity_per_window??'—',x.supported_aircraft_type_count,x.updated_at||'—']);}
- else if(state.tab==='missions'){heads=['编号','名称','任务窗','需求机型','更新时间'];body=state.items.map(x=>[x.mission.mission_id,x.mission.name,`T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`,x.mission.aircraft_requirements.length,x.metadata.updated_at||'—']);}
- else if(state.tab==='aircraft_types'){heads=['编号','名称','速度 km/h','最大航程 km','安全余油','更新时间'];body=state.items.map(x=>[x.aircraft_type.aircraft_type_id,x.aircraft_type.name,x.aircraft_type.speed_kmh??'—',x.aircraft_type.max_range_km??'—',x.aircraft_type.reserve_ratio==null?'—':`${(x.aircraft_type.reserve_ratio*100).toFixed(1)}%`,x.metadata.updated_at||'—']);}
- else {heads=['编号','名称','类别','单位','更新时间'];body=state.items.map(x=>[x.resource_type.resource_type_id,x.resource_type.name,x.resource_type.category,x.resource_type.unit,x.metadata.updated_at||'—']);}
- refs.wrap.innerHTML=`<table class="data-table"><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.map((cols,i)=>`<tr data-index="${i}" class="${itemId(state.items[i])===state.selected?'selected':''}">${cols.map(v=>`<td title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`; refs.wrap.querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>selectIndex(Number(tr.dataset.index))); }
-function render(){ const meta=TAB_META[state.tab]; refs.title.textContent=meta.title; refs.count.textContent=`${state.total} 条`;refs.summary.textContent=`${meta.title} · 当前数据 ${state.total} 条 · 修改后只保留当前态`;refs.filters.classList.toggle('hidden',state.tab!=='airports'); refs.add.textContent=`新增${meta.singular}`; refs.add.disabled=!writable();refs.importBtn.disabled=!writable();refs.edit.disabled=!writable()||!state.detail;refs.del.disabled=!writable()||!state.detail;renderTable(); const pages=Math.max(1,Math.ceil(state.total/state.limit));refs.pageInfo.textContent=`第 ${Math.min(state.page+1,pages)} / ${pages} 页`;refs.prev.disabled=state.page<=0;refs.next.disabled=(state.page+1)*state.limit>=state.total || !['airports','missions'].includes(state.tab); if(!state.detail&&!state.creating)refs.detail.innerHTML='<div class="empty-state">从左侧选择一条基础数据。</div>'; }
-async function selectIndex(i){if(!(await canLeaveEditor()))return; const row=state.items[i];if(!row)return;state.selected=itemId(row);state.creating=false;state.editing=false; if(state.tab==='airports')state.detail=await apiFetch(`/api/airports/${encodeURIComponent(state.selected)}`);else if(state.tab==='missions')state.detail=await apiFetch(`/api/missions/${encodeURIComponent(state.selected)}`);else {if(state.tab==='aircraft_types')await ensureLookups();state.detail=row;}renderDetail();render(); }
+async function selectIndex(i){
+  if(!(await canLeaveEditor()))return;
+  const row=state.items[i]; if(!row)return;
+  state.selected=itemId(row); state.creating=false; state.editing=false; state.detailError=null;
+  const seq=++state.detailSeq;
+  try{
+    let detail=row;
+    if(state.tab==='airports') detail=await apiFetch(`/api/airports/${encodeURIComponent(state.selected)}`);
+    else if(state.tab==='missions') detail=await apiFetch(`/api/missions/${encodeURIComponent(state.selected)}`);
+    else if(state.tab==='aircraft_types') await ensureLookups();
+    if(seq!==state.detailSeq)return;
+    state.detail=detail; renderDetail(); render();
+  }catch(e){
+    if(seq!==state.detailSeq)return;
+    state.detail=null; state.detailError=fieldError(e); renderDetail(); render();
+  }
+}
+
+/* ---- table ---- */
+function renderTable(){
+  let heads=[], body=[];
+  if(state.tab==='airports'){heads=['编号','名称','类型','区域','容量/窗','支持机型','更新时间']; body=state.items.map(x=>[x.airport_id,x.airport_name,x.role,x.region||'—',x.capacity_per_window??'—',x.supported_aircraft_type_count,x.updated_at||'—']);}
+  else if(state.tab==='missions'){heads=['编号','名称','任务窗','需求机型','更新时间'];body=state.items.map(x=>[x.mission.mission_id,x.mission.name,`T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`,x.mission.aircraft_requirements.length,x.metadata.updated_at||'—']);}
+  else if(state.tab==='aircraft_types'){heads=['编号','名称','速度 km/h','最大航程 km','安全余油','更新时间'];body=state.items.map(x=>[x.aircraft_type.aircraft_type_id,x.aircraft_type.name,x.aircraft_type.speed_kmh??'—',x.aircraft_type.max_range_km??'—',x.aircraft_type.reserve_ratio==null?'—':`${(x.aircraft_type.reserve_ratio*100).toFixed(1)}%`,x.metadata.updated_at||'—']);}
+  else {heads=['编号','名称','类别','单位','更新时间'];body=state.items.map(x=>[x.resource_type.resource_type_id,x.resource_type.name,x.resource_type.category,x.resource_type.unit,x.metadata.updated_at||'—']);}
+  refs.wrap.innerHTML=`<table class="data-table"><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.map((cols,i)=>`<tr data-index="${i}" class="${itemId(state.items[i])===state.selected?'selected':''}">${cols.map(v=>`<td title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  refs.wrap.querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>selectIndex(Number(tr.dataset.index)));
+}
+function render(){
+  const meta=TAB_META[state.tab];
+  refs.title.textContent=meta.title;
+  refs.count.textContent=`${state.total} 条 · 当前态`;
+  refs.filters.classList.toggle('hidden',state.tab!=='airports');
+  refs.add.textContent=`新增${meta.singular}`;
+  refs.add.disabled=!writable(); refs.importBtn.disabled=!writable(); refs.exportBtn.disabled=false;
+  refs.edit.disabled=!writable()||!state.detail||state.editing||state.creating;
+  refs.del.disabled=!writable()||!state.detail||state.editing||state.creating;
+  renderTable();
+  const pages=Math.max(1,Math.ceil(state.total/state.limit));
+  refs.pageInfo.textContent=`第 ${Math.min(state.page+1,pages)} / ${pages} 页`;
+  refs.prev.disabled=state.page<=0;
+  refs.next.disabled=(state.page+1)*state.limit>=state.total || !['airports','missions'].includes(state.tab);
+  if(!state.editing&&!state.creating)renderDetail();
+}
+
+/* ---- detail ---- */
 function kv(rows){return `<dl class="detail-grid">${rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`}
-function renderDetail(){ const x=state.detail;if(!x)return;if(state.editing||state.creating){renderEditor();return;} let html=''; if(state.tab==='airports'){const a=x.airport,p=x.operational_profile,m=x.metadata;html=`<section class="detail-section"><h3>${esc(a.airport_name)}</h3>${kv([['编号',a.airport_id],['设施类型',a.facility_type],['机场角色',a.role],['ICAO',a.icao_code],['IATA',a.iata_code],['区域',a.region],['城市',a.municipality],['经纬度',`${a.longitude}, ${a.latitude}`],['高程 m',a.elevation_m],['定期服务',a.scheduled_service?'是':'否'],['跑道',a.runway_count==null?'未知':`${a.runway_count} 条`]])}</section><section class="detail-section"><h3>基础运行配置</h3>${p?kv([['配置完整',p.configuration_complete?'是':'否'],['容量/窗',p.capacity_per_window],['保障等级',p.support_level],['支持机型',p.aircraft_support.length],['资源库存',p.resource_stocks.length]]):'<div class="field-note">尚未建立运行配置。</div>'}</section><section class="detail-section"><h3>维护信息</h3>${kv([['revision',m.revision],['更新时间',m.updated_at]])}</section>`;}
- else if(state.tab==='missions'){const m=x.mission;html=`<section class="detail-section"><h3>${esc(m.name)}</h3>${kv([['编号',m.mission_id],['经纬度',`${m.longitude}, ${m.latitude}`],['任务窗',`T${m.window_start_slot}–T${m.window_end_slot} [start,end)`],['更新时间',x.metadata.updated_at]])}</section><section class="detail-section"><h3>机型需求</h3>${m.aircraft_requirements.length?m.aircraft_requirements.map(r=>`<div class="overview-item"><span>${esc(r.aircraft_type_id)}</span><span>${r.required_sorties} 架次 · 作业 ${r.tau_work_windows} 窗</span></div>`).join(''):'<div class="field-note">暂无需求行。</div>'}</section>`;}
- else if(state.tab==='aircraft_types'){const a=x.aircraft_type;const req=state.requirements.filter(r=>r.aircraft_type_id===a.aircraft_type_id);html=`<section class="detail-section"><h3>${esc(a.name)}</h3>${kv([['编号',a.aircraft_type_id],['速度 km/h',a.speed_kmh],['最大航程 km',a.max_range_km],['安全余油',a.reserve_ratio],['离场容量占用',a.departure_capacity_occupancy_factor],['到场容量占用',a.arrival_capacity_occupancy_factor],['更新时间',x.metadata.updated_at]])}</section><section class="detail-section"><h3>资源消耗关系</h3>${req.length?req.map(r=>`<div class="overview-item"><span>${esc(r.resource_type_id)} / ${esc(r.basis)}</span><span>${esc(r.quantity)}</span></div>`).join(''):'<div class="field-note">暂无消耗关系。</div>'}</section>`;}
- else {const r=x.resource_type;html=`<section class="detail-section"><h3>${esc(r.name)}</h3>${kv([['编号',r.resource_type_id],['类别',r.category],['单位',r.unit],['更新时间',x.metadata.updated_at]])}</section>`;}refs.detailTitle.textContent=`${TAB_META[state.tab].singular}详情`;refs.detail.innerHTML=html; }
+function paneTabs(activePane='basic'){
+  return `<div class="airport-data-panes" role="tablist">
+    <button type="button" class="${activePane==='basic'?'active':''}" data-airport-pane="basic">基础信息</button>
+    <button type="button" class="${activePane==='operations'?'active':''}" data-airport-pane="operations">运行保障数据</button>
+  </div>`;
+}
+function bindAirportPanes(){
+  const tabs=refs.detail.querySelector('.airport-data-panes'); if(!tabs)return;
+  tabs.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
+    refs.detail.querySelectorAll('[data-airport-section]').forEach(s=>s.classList.toggle('hidden',s.dataset.airportSection!==b.dataset.airportPane));
+  });
+  refs.detail.querySelectorAll('[data-airport-section="operations"]').forEach(s=>s.classList.add('hidden'));
+}
+function detailAirports(x){
+  const a=x.airport,p=x.operational_profile,m=x.metadata;
+  const runways=a.runways==null?'<div class="field-note">跑道结构数据未知。</div>'
+    :(a.runways.length?`<div>${a.runways.map(r=>`<div class="overview-item"><span>${esc(r.runway_id)}</span><span>${esc(r.length_m!=null?`${r.length_m} m`:'' )} ${esc(r.surface||'')}</span></div>`).join('')}</div>`:'<div class="field-note">已确认无跑道。</div>');
+  const ops=p?`${kv([['配置完整',p.configuration_complete?'是':'否'],['容量/窗',p.capacity_per_window],['保障等级',p.support_level]])}
+    <h4>支持机型</h4>${p.aircraft_support.length?p.aircraft_support.map(r=>`<div class="overview-item"><span>${esc(r.aircraft_type_id)}</span><span>${r.initial_quantity} 架 · 整备 ${r.tau_reset_windows} 窗</span></div>`).join(''):'<div class="field-note">暂无支持机型。</div>'}
+    <h4>资源库存与补给能力</h4>${p.resource_stocks.length?p.resource_stocks.map(r=>`<div class="overview-item"><span>${esc(r.resource_type_id)}</span><span>库存 ${r.initial_quantity} · 补给 ${r.replenishment_capacity_per_window}/窗</span></div>`).join(''):'<div class="field-note">暂无资源库存。</div>'}`
+    :`<div class="field-note">尚未建立运行配置。</div><button class="btn primary configure-operations-action" type="button">配置运行保障数据</button>`;
+  return paneTabs('basic')
+    + `<section class="detail-section" data-airport-section="basic"><h3>基本信息</h3>${kv([['编号',a.airport_id],['名称',a.airport_name],['设施类型',a.facility_type],['机场角色',a.role],['ICAO',a.icao_code],['IATA',a.iata_code],['区域',a.region],['城市',a.municipality],['经纬度',`${a.longitude}, ${a.latitude}`],['高程 m',a.elevation_m],['定期服务',a.scheduled_service?'是':'否']])}</section>`
+    + `<section class="detail-section" data-airport-section="basic"><h3>跑道</h3>${runways}</section>`
+    + `<section class="detail-section" data-airport-section="operations"><h3>运行保障配置</h3>${ops}</section>`
+    + `<section class="detail-section" data-airport-section="basic"><h3>维护信息</h3>${kv([['revision',m.revision],['更新时间',m.updated_at]])}</section>`;
+}
+function detailMissions(x){
+  const m=x.mission;
+  return `<section class="detail-section"><h3>基本信息</h3>${kv([['编号',m.mission_id],['名称',m.name],['经纬度',`${m.longitude}, ${m.latitude}`],['更新时间',x.metadata.updated_at]])}</section>`
+    + `<section class="detail-section"><h3>任务窗</h3>${kv([['开始窗',`T${m.window_start_slot}`],['结束窗（不含）',`T${m.window_end_slot}`]])}</section>`
+    + `<section class="detail-section"><h3>机型需求</h3>${m.aircraft_requirements.length?m.aircraft_requirements.map(r=>`<div class="overview-item"><span>${esc(r.aircraft_type_id)}</span><span>${r.required_sorties} 架次 · 作业 ${r.tau_work_windows} 窗</span></div>`).join(''):'<div class="field-note">暂无需求行。</div>'}</section>`;
+}
+function detailAircraftTypes(x){
+  const a=x.aircraft_type; const req=state.requirements.filter(r=>r.aircraft_type_id===a.aircraft_type_id);
+  return `<section class="detail-section"><h3>基本信息</h3>${kv([['编号',a.aircraft_type_id],['名称',a.name],['更新时间',x.metadata.updated_at]])}</section>`
+    + `<section class="detail-section"><h3>性能参数</h3>${kv([['速度 km/h',a.speed_kmh],['最大航程 km',a.max_range_km],['安全余油',a.reserve_ratio],['离场容量占用',a.departure_capacity_occupancy_factor],['到场容量占用',a.arrival_capacity_occupancy_factor]])}</section>`
+    + `<section class="detail-section"><h3>资源消耗关系</h3>${req.length?req.map(r=>`<div class="overview-item"><span>${esc(r.resource_type_id)} / ${esc(r.basis)}</span><span>${esc(r.quantity)}</span></div>`).join(''):'<div class="field-note">暂无消耗关系。</div>'}</section>`;
+}
+function detailResourceTypes(x){
+  const r=x.resource_type;
+  return `<section class="detail-section"><h3>基本信息</h3>${kv([['编号',r.resource_type_id],['名称',r.name],['类别',r.category],['单位',r.unit],['更新时间',x.metadata.updated_at]])}</section>`;
+}
+function renderDetail(){
+  const meta=TAB_META[state.tab];
+  refs.detailTitle.textContent=`${meta.singular}详情`;
+  if(state.editing||state.creating){ refs.detailTitle.textContent=`${state.creating?'新增':'编辑'}${meta.singular}`; renderEditor(); return; }
+  if(state.detailError){ refs.detail.innerHTML=`<div class="detail-error">详情加载失败：${esc(state.detailError)}</div>`; return; }
+  const x=state.detail;
+  if(!x){ refs.detail.innerHTML=`<div class="detail-empty">${meta.empty}</div>`; return; }
+  let html='';
+  if(state.tab==='airports')html=detailAirports(x);
+  else if(state.tab==='missions')html=detailMissions(x);
+  else if(state.tab==='aircraft_types')html=detailAircraftTypes(x);
+  else html=detailResourceTypes(x);
+  refs.detail.innerHTML=html;
+  if(state.tab==='airports'){ bindAirportPanes(); const cta=refs.detail.querySelector('.configure-operations-action'); if(cta)cta.onclick=()=>refs.edit.click(); }
+}
+
+/* ---- editor ---- */
 function options(items,idKey,nameKey,current=''){return `<option value="">请选择…</option>${items.map(x=>{const v=x[idKey]??x.aircraft_type?.[idKey]??x.resource_type?.[idKey], n=x[nameKey]??x.aircraft_type?.[nameKey]??x.resource_type?.[nameKey];return `<option value="${esc(v)}" ${String(v)===String(current)?'selected':''}>${esc(n||v)}（${esc(v)}）</option>`}).join('')}`}
 function inputField(label,id,value='',type='text',wide=false,extra=''){return `<div class="field ${wide?'wide':''}"><label>${esc(label)}</label><input id="${id}" class="control" type="${type}" value="${esc(val(value))}" ${extra}></div>`}
 function selectField(label,id,opts,current,wide=false){return `<div class="field ${wide?'wide':''}"><label>${esc(label)}</label><select id="${id}" class="control">${opts.map(([v,n])=>`<option value="${esc(v)}" ${String(v)===String(current)?'selected':''}>${esc(n)}</option>`).join('')}</select></div>`}
@@ -46,10 +189,29 @@ function runwayEndFields(prefix,end={}){return `<div class="runway-end"><strong>
 function rowRunway(r={}){return `<details class="runway-row"><summary><span>${esc(r.runway_id||'新跑道')}</span><button class="mini-button remove-runway" type="button" aria-label="删除跑道">×</button></summary><div class="runway-editor"><div class="edit-grid"><div class="field"><label>跑道编号</label><input class="control rw-id" value="${esc(val(r.runway_id))}"></div><div class="field"><label>道面</label><input class="control rw-surface" value="${esc(val(r.surface))}"></div><div class="field"><label>长度 m</label><input class="control rw-length" type="number" min="0" step="any" value="${esc(val(r.length_m))}"></div><div class="field"><label>宽度 m</label><input class="control rw-width" type="number" min="0" step="any" value="${esc(val(r.width_m))}"></div><div class="field wide"><label>灯光</label><select class="control rw-lighted"><option value="" ${r.lighted==null?'selected':''}>未知</option><option value="true" ${r.lighted===true?'selected':''}>有</option><option value="false" ${r.lighted===false?'selected':''}>无</option></select></div></div>${runwayEndFields('low',r.low_end)}${runwayEndFields('high',r.high_end)}</div></details>`}
 function rowMissionReq(r={}){return `<div class="dynamic-row requirement mission-req-row"><div class="field"><label>机型</label><select class="control row-aircraft">${options(state.aircraft,'aircraft_type_id','name',r.aircraft_type_id)}</select></div><div class="field"><label>需求架次</label><input class="control row-sorties" type="number" min="1" value="${esc(val(r.required_sorties))}"></div><div class="field"><label>作业/窗</label><input class="control row-work" type="number" min="0" value="${esc(val(r.tau_work_windows))}"></div><button class="mini-button remove-row" type="button">×</button></div>`}
 function rowAircraftResource(r={}){return `<div class="dynamic-row requirement aircraft-res-row"><div class="field"><label>资源</label><select class="control row-resource">${options(state.resources,'resource_type_id','name',r.resource_type_id)}</select></div><div class="field"><label>计量基础</label><select class="control row-basis"><option value="per_sortie" ${r.basis==='per_sortie'?'selected':''}>每架次</option><option value="per_hour" ${r.basis==='per_hour'?'selected':''}>每飞行小时</option></select></div><div class="field"><label>数量</label><input class="control row-quantity" type="number" min="0" step="any" value="${esc(val(r.quantity))}"></div><button class="mini-button remove-row" type="button">×</button></div>`}
-function renderEditor(){let html='';const create=state.creating; if(state.tab==='airports'){const a=state.detail?.airport||{},p=state.detail?.operational_profile||{airport_id:a.airport_id||'',configuration_complete:false,aircraft_support:[],resource_stocks:[]}; html=`<div class="edit-grid">${inputField('机场编号','edAirportId',a.airport_id,'text',false,create?'':'readonly')}${inputField('名称','edAirportName',a.airport_name)}${selectField('设施类型','edFacilityType',[['large_airport','大型机场'],['medium_airport','中型机场'],['small_airport','小型机场']],a.facility_type||'medium_airport')}${selectField('机场角色','edAirportRole',[['military','军用'],['joint','军民合用'],['civil','民用']],a.role||'military')}${inputField('ICAO','edIcao',a.icao_code)}${inputField('IATA','edIata',a.iata_code)}${inputField('区域','edRegion',a.region)}${inputField('城市','edMunicipality',a.municipality)}${inputField('经度','edLon',a.longitude,'number',false,'step="any"')}${inputField('纬度','edLat',a.latitude,'number',false,'step="any"')}${inputField('高程 m','edElevation',a.elevation_m,'number',false,'step="any"')}${selectField('定期服务','edScheduled',[['true','是'],['false','否']],String(a.scheduled_service??false))}</div><div class="form-section"><div class="form-section-head"><strong>跑道基础数据</strong><div><label><input id="edRunwaysKnown" type="checkbox" ${a.runways!==null?'checked':''}> 结构已知</label> <button id="addRunwayRow" class="btn ghost" type="button">+ 添加跑道</button></div></div><div id="runwayRows">${(a.runways||[]).map(rowRunway).join('')}</div><div class="field-note">取消“结构已知”表示跑道结构数据未知，不等同于机场无跑道。</div></div><div class="form-section"><div class="form-section-head"><strong>基础运行配置</strong><label><input id="edConfigComplete" type="checkbox" ${p.configuration_complete?'checked':''}> 配置完整</label></div><div class="edit-grid">${inputField('容量/时间窗','edCapacity',p.capacity_per_window,'number')}${inputField('保障等级','edSupportLevel',p.support_level)}</div><div class="form-section-head"><strong>支持机型</strong><button id="addSupportRow" class="btn ghost" type="button">+ 添加</button></div><div id="supportRows">${(p.aircraft_support||[]).map(rowAirportSupport).join('')}</div><div class="form-section-head"><strong>资源库存与补给能力</strong><button id="addStockRow" class="btn ghost" type="button">+ 添加</button></div><div id="stockRows">${(p.resource_stocks||[]).map(rowResourceStock).join('')}</div></div>`;}
- else if(state.tab==='missions'){const m=state.detail?.mission||{};html=`<div class="edit-grid">${inputField('任务编号','edMissionId',m.mission_id,'text',false,create?'':'readonly')}${inputField('名称','edMissionName',m.name)}${inputField('经度','edMissionLon',m.longitude,'number',false,'step="any"')}${inputField('纬度','edMissionLat',m.latitude,'number',false,'step="any"')}${inputField('开始时间窗','edMissionStart',m.window_start_slot,'number')}${inputField('结束时间窗（不含）','edMissionEnd',m.window_end_slot,'number')}</div><div class="form-section"><div class="form-section-head"><strong>机型需求</strong><button id="addMissionReq" class="btn ghost" type="button">+ 添加</button></div><div id="missionReqRows">${(m.aircraft_requirements||[]).map(rowMissionReq).join('')}</div></div>`;}
- else if(state.tab==='aircraft_types'){const a=state.detail?.aircraft_type||{};const req=state.detail?state.requirements.filter(r=>r.aircraft_type_id===a.aircraft_type_id):[];html=`<div class="edit-grid">${inputField('机型编号','edAircraftId',a.aircraft_type_id,'text',false,create?'':'readonly')}${inputField('名称','edAircraftName',a.name)}${inputField('速度 km/h','edSpeed',a.speed_kmh,'number',false,'step="any"')}${inputField('最大航程 km','edRange',a.max_range_km,'number',false,'step="any"')}${inputField('安全余油比例','edReserve',a.reserve_ratio,'number',false,'min="0" max="0.999999" step="0.01"')}${inputField('离场容量占用因子','edDepFactor',a.departure_capacity_occupancy_factor,'number',false,'step="any"')}${inputField('到场容量占用因子','edArrFactor',a.arrival_capacity_occupancy_factor,'number',false,'step="any"')}</div><div class="form-section"><div class="form-section-head"><strong>资源消耗关系</strong><button id="addAircraftRes" class="btn ghost" type="button">+ 添加</button></div><div id="aircraftResRows">${req.map(rowAircraftResource).join('')}</div></div>`;}
- else {const r=state.detail?.resource_type||{};html=`<div class="edit-grid">${inputField('资源编号','edResourceId',r.resource_type_id,'text',false,create?'':'readonly')}${inputField('名称','edResourceName',r.name)}${selectField('类别','edResourceCategory',[['fuel','燃油'],['material','航材'],['munition','航弹']],r.category||'fuel')}${inputField('单位','edResourceUnit',r.unit)}</div>`;} refs.detailTitle.textContent=`${create?'新增':'编辑'}${TAB_META[state.tab].singular}`;refs.detail.innerHTML=html+`<div id="editorMessage" class="inline-message hidden"></div><div class="editor-footer"><button id="editorCancel" class="btn ghost" type="button">取消</button><button id="editorSave" class="btn primary" type="button">保存</button></div>`;bindEditorRows();bindEditorDirty();$('editorCancel').onclick=()=>{state.editorDirty=false;state.editing=false;if(state.creating){state.creating=false;state.detail=null;}renderDetail();render();};$('editorSave').onclick=saveEditor;}
+function editorAirports(create){
+  const a=state.detail?.airport||{},p=state.detail?.operational_profile||{airport_id:a.airport_id||'',configuration_complete:false,aircraft_support:[],resource_stocks:[]};
+  const basic=`<div class="edit-grid">${inputField('机场编号','edAirportId',a.airport_id,'text',false,create?'':'readonly')}${inputField('名称','edAirportName',a.airport_name)}${selectField('设施类型','edFacilityType',[['large_airport','大型机场'],['medium_airport','中型机场'],['small_airport','小型机场']],a.facility_type||'medium_airport')}${selectField('机场角色','edAirportRole',[['military','军用'],['joint','军民合用'],['civil','民用']],a.role||'military')}${inputField('ICAO','edIcao',a.icao_code)}${inputField('IATA','edIata',a.iata_code)}${inputField('区域','edRegion',a.region)}${inputField('城市','edMunicipality',a.municipality)}${inputField('经度','edLon',a.longitude,'number',false,'step="any"')}${inputField('纬度','edLat',a.latitude,'number',false,'step="any"')}${inputField('高程 m','edElevation',a.elevation_m,'number',false,'step="any"')}${selectField('定期服务','edScheduled',[['true','是'],['false','否']],String(a.scheduled_service??false))}</div>`;
+  const runway=`<div class="form-section"><div class="form-section-head"><strong>跑道基础数据</strong><div><label><input id="edRunwaysKnown" type="checkbox" ${a.runways!==null?'checked':''}> 结构已知</label> <button id="addRunwayRow" class="btn ghost" type="button">+ 添加跑道</button></div></div><div id="runwayRows">${(a.runways||[]).map(rowRunway).join('')}</div><div class="field-note">取消“结构已知”表示跑道结构数据未知，不等同于机场无跑道。</div></div>`;
+  const missing=[]; if(!state.aircraft.length)missing.push('机型'); if(!state.resources.length)missing.push('保障资源');
+  const operations=`<div class="form-section"><div class="form-section-head"><strong>运行保障数据</strong><label><input id="edConfigComplete" type="checkbox" ${p.configuration_complete?'checked':''}> 配置完整</label></div><div class="edit-grid">${inputField('容量/时间窗','edCapacity',p.capacity_per_window,'number')}${inputField('保障等级','edSupportLevel',p.support_level)}</div><div class="form-section-head"><strong>支持机型</strong><button id="addSupportRow" class="btn ghost" type="button">+ 添加</button></div><div id="supportRows">${(p.aircraft_support||[]).map(rowAirportSupport).join('')}</div><div class="form-section-head"><strong>资源库存与补给能力</strong><button id="addStockRow" class="btn ghost" type="button">+ 添加</button></div><div id="stockRows">${(p.resource_stocks||[]).map(rowResourceStock).join('')}</div></div>`;
+  const note=missing.length?`<div class="operations-dependency-note">${missing.join('、')}基础库为空。先在上方对应页签建立类型，随后即可在本机场运行保障数据中引用。</div>`:'';
+  return paneTabs('basic')
+    + `<div class="airport-data-pane-body" data-airport-section="basic">${basic}${runway}</div>`
+    + `<div class="airport-data-pane-body" data-airport-section="operations">${note}<div class="operations-explainer"><strong>可复用运行基线</strong><span>容量、保障等级、支持机型、初始数量、整备用时、资源库存和补给能力在这里维护；复制到 Situation 后成为独立 Working Copy。</span></div>${operations}</div>`;
+}
+function renderEditor(){
+  let html=''; const create=state.creating;
+  if(state.tab==='airports')html=editorAirports(create);
+  else if(state.tab==='missions'){const m=state.detail?.mission||{};html=`<div class="edit-grid">${inputField('任务编号','edMissionId',m.mission_id,'text',false,create?'':'readonly')}${inputField('名称','edMissionName',m.name)}${inputField('经度','edMissionLon',m.longitude,'number',false,'step="any"')}${inputField('纬度','edMissionLat',m.latitude,'number',false,'step="any"')}${inputField('开始时间窗','edMissionStart',m.window_start_slot,'number')}${inputField('结束时间窗（不含）','edMissionEnd',m.window_end_slot,'number')}</div><div class="form-section"><div class="form-section-head"><strong>机型需求</strong><button id="addMissionReq" class="btn ghost" type="button">+ 添加</button></div><div id="missionReqRows">${(m.aircraft_requirements||[]).map(rowMissionReq).join('')}</div></div>`;}
+  else if(state.tab==='aircraft_types'){const a=state.detail?.aircraft_type||{};const req=state.detail?state.requirements.filter(r=>r.aircraft_type_id===a.aircraft_type_id):[];html=`<div class="edit-grid">${inputField('机型编号','edAircraftId',a.aircraft_type_id,'text',false,create?'':'readonly')}${inputField('名称','edAircraftName',a.name)}${inputField('速度 km/h','edSpeed',a.speed_kmh,'number',false,'step="any"')}${inputField('最大航程 km','edRange',a.max_range_km,'number',false,'step="any"')}${inputField('安全余油比例','edReserve',a.reserve_ratio,'number',false,'min="0" max="0.999999" step="0.01"')}${inputField('离场容量占用因子','edDepFactor',a.departure_capacity_occupancy_factor,'number',false,'step="any"')}${inputField('到场容量占用因子','edArrFactor',a.arrival_capacity_occupancy_factor,'number',false,'step="any"')}</div><div class="form-section"><div class="form-section-head"><strong>资源消耗关系</strong><button id="addAircraftRes" class="btn ghost" type="button">+ 添加</button></div><div id="aircraftResRows">${req.map(rowAircraftResource).join('')}</div></div>`;}
+  else {const r=state.detail?.resource_type||{};html=`<div class="edit-grid">${inputField('资源编号','edResourceId',r.resource_type_id,'text',false,create?'':'readonly')}${inputField('名称','edResourceName',r.name)}${selectField('类别','edResourceCategory',[['fuel','燃油'],['material','航材'],['munition','航弹']],r.category||'fuel')}${inputField('单位','edResourceUnit',r.unit)}</div>`;}
+  refs.detail.innerHTML=html+`<div id="editorMessage" class="inline-message hidden"></div><div class="editor-footer"><button id="editorCancel" class="btn ghost" type="button">取消</button><button id="editorSave" class="btn primary" type="button">保存</button></div>`;
+  if(state.tab==='airports')bindAirportPanes();
+  bindEditorRows(); bindEditorDirty();
+  $('editorCancel').onclick=()=>{state.editorDirty=false;state.editing=false;if(state.creating){state.creating=false;state.detail=null;}renderDetail();render();};
+  $('editorSave').onclick=saveEditor;
+}
 function bindEditorRows(){const add=(id,target,fn)=>{const b=$(id);if(b)b.onclick=()=>{state.editorDirty=true;$(target).insertAdjacentHTML('beforeend',fn({}));bindRemoves();};};add('addSupportRow','supportRows',rowAirportSupport);add('addStockRow','stockRows',rowResourceStock);const ar=$('addRunwayRow');if(ar)ar.onclick=()=>{state.editorDirty=true;$('runwayRows').insertAdjacentHTML('beforeend',rowRunway({}));bindRemoves();};add('addMissionReq','missionReqRows',rowMissionReq);add('addAircraftRes','aircraftResRows',rowAircraftResource);bindRemoves();}
 function bindRemoves(){refs.detail.querySelectorAll('.remove-row').forEach(b=>b.onclick=()=>{state.editorDirty=true;b.closest('.dynamic-row').remove()});refs.detail.querySelectorAll('.remove-runway').forEach(b=>b.onclick=(e)=>{e.preventDefault();state.editorDirty=true;b.closest('.runway-row').remove();});}
 function rows(selector, mapper){return [...refs.detail.querySelectorAll(selector)].map(mapper);}
@@ -70,6 +232,42 @@ async function doImport(){refs.importMsg.classList.add('hidden');const file=refs
 async function allRowsForTab(){if(state.tab==='airports'||state.tab==='missions'){let out=[],offset=0,total=1;while(offset<total){const p=new URLSearchParams({limit:'500',offset:String(offset)});const d=await apiFetch(`${TAB_META[state.tab].endpoint}?${p}`);out.push(...(d.items||[]));total=d.total||0;offset+=500;}if(state.tab==='airports'){const full=[];for(const row of out)full.push(await apiFetch(`/api/airports/${encodeURIComponent(row.airport_id)}`));return full;}return out;}return state.items;}
 function exportRows(rows){let items;if(state.tab==='airports')items=rows.map(x=>({airport:x.airport,operational_profile:x.operational_profile}));else if(state.tab==='missions')items=rows.map(x=>x.mission);else if(state.tab==='aircraft_types')items=rows.map(x=>x.aircraft_type);else items=rows.map(x=>x.resource_type);downloadBlob(`${state.tab}-current.json`,JSON.stringify({dataset:state.tab,exported_at:new Date().toISOString(),items},null,2),'application/json;charset=utf-8');}
 async function exportCurrent(){try{const rows=await allRowsForTab();exportRows(rows);showMessage('已导出当前数据集 JSON。','success');}catch(e){showMessage(fieldError(e),'error');}}
-function bind(){refs.tabs.querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(!(await canLeaveEditor()))return;refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));state.tab=b.dataset.tab;state.page=0;refs.search.value='';state.editorDirty=false;await load();});refs.searchBtn.onclick=async()=>{if(!(await canLeaveEditor()))return;state.page=0;load().catch(e=>showMessage(fieldError(e),'error'));};refs.search.onkeydown=e=>{if(e.key==='Enter')refs.searchBtn.click();};refs.role.onchange=async()=>{if(!(await canLeaveEditor()))return;state.page=0;load().catch(e=>showMessage(fieldError(e),'error'));};refs.region.onchange=async()=>{if(!(await canLeaveEditor()))return;state.page=0;load().catch(e=>showMessage(fieldError(e),'error'));};refs.prev.onclick=async()=>{if(state.page>0&&await canLeaveEditor()){state.page--;load();}};refs.next.onclick=async()=>{if(await canLeaveEditor()){state.page++;load();}};refs.edit.onclick=async()=>{if(!state.detail)return;await ensureLookups();state.editing=true;state.editorDirty=false;renderDetail();};refs.del.onclick=removeSelected;refs.add.onclick=async()=>{if(!(await canLeaveEditor()))return;await ensureLookups();state.creating=true;state.editing=true;state.editorDirty=false;state.selected=null;state.detail=null;renderEditor();render();};refs.importBtn.onclick=async()=>{if(!(await canLeaveEditor()))return;refs.importDataset.value=state.tab;refs.importFile.value='';refs.importMsg.classList.add('hidden');setModal(refs.importModal,true);};refs.importCancel.onclick=()=>setModal(refs.importModal,false);refs.importConfirm.onclick=doImport;refs.exportBtn.onclick=exportCurrent;window.addEventListener('beforeunload',e=>{if(state.editing&&state.editorDirty){e.preventDefault();e.returnValue=''}})}
-async function init(){try{state.me=await apiFetch('/api/me');bind();const params=new URLSearchParams(window.location.search);const requestedTab=params.get('tab');const requestedId=params.get('id');if(requestedTab&&TAB_META[requestedTab]){state.tab=requestedTab;refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x.dataset.tab===state.tab));}if(requestedId){refs.search.value=requestedId;}render();await load();if(requestedId){const i=state.items.findIndex(row=>String(itemId(row))===requestedId);if(i>=0)await selectIndex(i);}ensureLookups();}catch(e){showMessage(fieldError(e),'error');refs.wrap.innerHTML='<div class="empty-state">基础数据加载失败。</div>';}}
+
+function bind(){
+  refs.tabs.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+    if(!(await canLeaveEditor()))return;
+    refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
+    state.tab=b.dataset.tab; state.page=0; state.editorDirty=false; state.detailError=null;
+    syncToolbarFromFilters();
+    load().catch(e=>showMessage(fieldError(e),'error'));
+  });
+  refs.searchBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; submitFilters().catch(e=>showMessage(fieldError(e),'error')); };
+  refs.resetBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; resetFilters().catch(e=>showMessage(fieldError(e),'error')); };
+  refs.search.onkeydown=e=>{ if(e.key==='Enter')refs.searchBtn.click(); };
+  refs.region.onkeydown=e=>{ if(e.key==='Enter')refs.searchBtn.click(); };
+  refs.prev.onclick=async()=>{ if(state.page>0&&await canLeaveEditor()){ state.page--; load().catch(e=>showMessage(fieldError(e),'error')); } };
+  refs.next.onclick=async()=>{ if(await canLeaveEditor()){ state.page++; load().catch(e=>showMessage(fieldError(e),'error')); } };
+  refs.edit.onclick=async()=>{ if(!state.detail||state.editing||state.creating)return; await ensureLookups(); state.editing=true; state.editorDirty=false; renderDetail(); };
+  refs.del.onclick=removeSelected;
+  refs.add.onclick=async()=>{ if(!(await canLeaveEditor()))return; await ensureLookups(); state.creating=true; state.editing=true; state.editorDirty=false; state.selected=null; state.detail=null; renderDetail(); render(); };
+  refs.importBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; refs.importDataset.value=state.tab; refs.importFile.value=''; refs.importMsg.classList.add('hidden'); setModal(refs.importModal,true); };
+  refs.importCancel.onclick=()=>setModal(refs.importModal,false);
+  refs.importConfirm.onclick=doImport;
+  refs.exportBtn.onclick=exportCurrent;
+  window.addEventListener('beforeunload',e=>{ if(state.editing&&state.editorDirty){ e.preventDefault(); e.returnValue=''; } });
+}
+
+async function init(){
+  try{
+    state.me=await apiFetch('/api/me');
+    bind();
+    const params=new URLSearchParams(window.location.search);
+    const requestedTab=params.get('tab'); const requestedId=params.get('id');
+    if(requestedTab&&TAB_META[requestedTab]){ state.tab=requestedTab; refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x.dataset.tab===state.tab)); }
+    syncToolbarFromFilters();
+    render(); await load();
+    if(requestedId){ const i=state.items.findIndex(row=>String(itemId(row))===requestedId); if(i>=0)await selectIndex(i); }
+    ensureLookups();
+  }catch(e){ showMessage(fieldError(e),'error'); refs.wrap.innerHTML='<div class="empty-state">基础数据加载失败。</div>'; }
+}
 init();
