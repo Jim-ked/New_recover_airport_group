@@ -259,7 +259,7 @@ export function beginMissionLocationPick() {
     longitude.value = event.latlng.lng.toFixed(6);
     latitude.value = event.latlng.lat.toFixed(6);
     state.draftMissionCoord = { lon: event.latlng.lng, lat: event.latlng.lat };
-    state.panelDraftDirty = true;
+    callbacks.markPanelDraft?.();
     button.textContent = '从地图取点';
     drawMap();
   });

@@ -223,6 +223,7 @@
 .situation-inspector[data-kind="airport-editor"] { width: 340px; max-height: 78vh; }
 .situation-inspector[data-kind="mission-editor"] { width: 350px; max-height: 78vh; }
 .situation-inspector[data-kind="damage-editor"] { width: 360px; max-height: 78vh; }
+.situation-inspector[data-kind="situation-editor"] { width: 350px; max-height: 78vh; }
 .situation-inspector.closed {
   pointer-events: none;
   opacity: 0;
@@ -240,6 +241,7 @@
 }
 .inspector-head strong { font-size: 14px; }
 .inspector-head small { display: block; margin-top: 3px; color: #819aaa; font-size: 12px; line-height: 1.4; }
+.inspector-head-actions { display: flex; align-items: center; gap: 7px; }
 .inspector-content { overflow: auto; padding: 12px; font-size: 13px; }
 .inspector-content .field label { color: #aabecb; font-size: 12px; }
 .inspector-content .control { font-size: 13px; }
@@ -297,6 +299,16 @@
 }
 .inspector-footer .btn { min-height: 34px; padding: 0 9px; font-size: 12px; }
 .inspector-footer .btn.primary { margin-left: auto; }
+.panel-draft-warning {
+  position: sticky;
+  top: -12px;
+  z-index: 4;
+  margin: -12px -12px 12px;
+  border-radius: 0;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .28);
+}
+.panel-draft-warning strong { display: block; margin-bottom: 3px; }
+.panel-draft-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 9px; }
 
 .candidate-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 98px; gap: 7px; margin-bottom: 9px; }
 .candidate-toolbar > select:last-child { grid-column: 1 / -1; }

@@ -108,7 +108,10 @@
         <strong id="inspectorTitle"></strong>
         <small id="inspectorSubtitle"></small>
       </div>
-      <button id="closeInspector" class="icon-button" type="button" aria-label="收起工作区"><svg class="ui-icon"><use href="#i-close"></use></svg></button>
+      <div class="inspector-head-actions">
+        <span id="panelDraftStatus" class="badge warning hidden">未应用</span>
+        <button id="closeInspector" class="icon-button" type="button" aria-label="收起工作区"><svg class="ui-icon"><use href="#i-close"></use></svg></button>
+      </div>
     </header>
     <div id="inspectorBody" class="inspector-content"></div>
   </aside>
@@ -155,22 +158,6 @@
   </section>
 
   <div id="situationMessage" class="workspace-message hidden" role="alert"></div>
-
-  <div id="situationCreateModal" class="shell-modal-backdrop" aria-hidden="true">
-    <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationCreateTitle">
-      <header><strong id="situationCreateTitle">新建情境</strong></header>
-      <div class="body">
-        <div class="field required"><label>情境编号</label><input id="newSituationId" class="control" placeholder="例如 SITUATION-01"></div>
-        <div class="field required"><label>名称</label><input id="newSituationName" class="control"></div>
-        <div class="field"><label>说明</label><textarea id="newSituationDescription" class="control textarea-control" rows="3"></textarea></div>
-        <div id="newSituationMessage" class="inline-message hidden"></div>
-      </div>
-      <footer>
-        <button id="newSituationCancel" class="btn ghost" type="button">取消</button>
-        <button id="newSituationConfirm" class="btn primary" type="button">创建</button>
-      </footer>
-    </section>
-  </div>
 
   <div id="situationConfirmModal" class="shell-modal-backdrop" aria-hidden="true">
     <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="situationConfirmTitle">

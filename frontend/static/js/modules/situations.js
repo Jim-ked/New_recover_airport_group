@@ -37,6 +37,7 @@ import {
 } from './situation-panels.js';
 let lifecycleController = null;
 let mounted = false;
+let pendingPanelTransition = null;
 
 function wasAborted(error) {
   return error?.name === 'AbortError' || error?.body?.name === 'AbortError';
@@ -60,15 +61,18 @@ async function canonicalizeWorking(candidate){const d=await apiFetch('/api/situa
 function aircraftName(id){const x=state.aircraft.find(v=>v.aircraft_type.aircraft_type_id===id);return x?.aircraft_type?.name||id} function resourceName(id){const x=state.resources.find(v=>v.resource_type.resource_type_id===id);return x?.resource_type?.name||id}
 function renderHeader(){if(!state.working){refs.meta.textContent='打开或创建情境后开始编辑';refs.saveState.textContent='未打开';refs.saveState.className='situation-save-state';refs.save.disabled=true;refs.del.disabled=true;return} refs.meta.textContent=`${state.working.situation_id}${state.meta?.updated_at?` · 最近保存 ${state.meta.updated_at}`:''}${state.meta?.historical_run_count?` · 历史 Run ${state.meta.historical_run_count}`:''}`;refs.saveState.textContent=state.persisted?(state.dirty?'未保存':'已保存'):'新建未保存';refs.saveState.className=`situation-save-state ${state.dirty||!state.persisted?'warning':'success'}`;refs.save.disabled=!writable()||(!state.dirty&&state.persisted);refs.del.disabled=!writable()||!state.persisted}
 async function loadSituationList(selectId=null){const d=await apiFetch('/api/situations?limit=500&offset=0');state.list=d.items||[];refs.select.innerHTML='<option value="">选择情境…</option>'+state.list.map(x=>`<option value="${esc(x.situation_id)}">${esc(x.name)}（${esc(x.situation_id)}）</option>`).join('');if(selectId)refs.select.value=selectId}
-async function canDiscard(){if(!state.dirty)return true;return confirmAction('当前情境有未保存修改。继续会丢弃这些修改。','放弃修改')}
-function bindPanelDraft(){refs.body.querySelectorAll('input,select,textarea').forEach(el=>{const mark=()=>{state.panelDraftDirty=true};el.addEventListener('input',mark);el.addEventListener('change',mark)})}
-async function canDiscardPanelDraft(){if(!state.panelDraftDirty)return true;return confirmAction('当前右侧表单还有尚未“应用到情境”的修改。继续会放弃这些表单修改。','放弃表单修改')}
-function clearPanelDraft(){state.panelDraftDirty=false;state.draftMissionCoord=null}
-async function openSituation(id,{force=false}={}){if(!id)return;if(!force&&!(await canDiscardPanelDraft())){refs.select.value=state.working?.situation_id||'';return}if(!force&&!(await canDiscard())){refs.select.value=state.working?.situation_id||'';return}try{const d=await apiFetch(`/api/situations/${encodeURIComponent(id)}`);clearPanelDraft();clearConflict();state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta=d;state.dirty=false;state.mode='select';state.selected=null;refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));renderAll();fitMap()}catch(e){showMessage(errText(e),'error')}}
-function newSituation(){if(!writable()){showMessage('当前账号没有情境维护权限。','error');return}refs.newId.value='';refs.newName.value='';refs.newDesc.value='';refs.newMsg.classList.add('hidden');setModal(refs.createModal,true);setTimeout(()=>refs.newId.focus(),30)}
-async function createWorking(){if(!(await canDiscardPanelDraft()))return;const id=refs.newId.value.trim(),name=refs.newName.value.trim();if(!id||!name){refs.newMsg.textContent='情境编号和名称不能为空。';refs.newMsg.className='inline-message error';refs.newMsg.classList.remove('hidden');return}if(!(await canDiscard()))return;clearPanelDraft();state.working={situation_id:id,name,description:refs.newDesc.value.trim()||null,airports:[],missions:[],damage_scenarios:[]};state.savedHash=null;state.persisted=false;state.meta=null;state.dirty=true;state.selected=null;refs.select.value='';setModal(refs.createModal,false);renderAll()}
+async function canDiscardSituation(){if(!state.dirty&&!state.panelDraftDirty)return true;return confirmAction('当前情境有未保存修改。继续会丢弃这些修改。','放弃修改')}
+function setPanelDraftDirty(dirty=true){state.panelDraftDirty=dirty;refs.panelDraftStatus?.classList.toggle('hidden',!dirty);if(!dirty){pendingPanelTransition=null;refs.body?.querySelector('#panelDraftWarning')?.remove()}}
+function bindPanelDraft(){refs.body.querySelectorAll('input,select,textarea').forEach(el=>{const mark=()=>setPanelDraftDirty(true);el.addEventListener('input',mark);el.addEventListener('change',mark)})}
+function showPanelDraftWarning(){let warning=$('panelDraftWarning');if(!warning){refs.body.insertAdjacentHTML('afterbegin',`<div id="panelDraftWarning" class="inline-message warning panel-draft-warning"><strong>当前修改尚未应用</strong><span>先继续当前编辑，或明确放弃后再切换。</span><div class="panel-draft-actions"><button id="continuePanelEditing" class="btn ghost" type="button">继续编辑</button><button id="discardPanelAndSwitch" class="btn danger" type="button">放弃并切换</button></div></div>`);warning=$('panelDraftWarning')}$('continuePanelEditing').onclick=()=>{pendingPanelTransition=null;warning.remove()};$('discardPanelAndSwitch').onclick=()=>{const transition=pendingPanelTransition;clearPanelDraft();Promise.resolve(transition?.()).catch(error=>showMessage(errText(error),'error'))}}
+function requestPanelTransition(transition){if(!state.panelDraftDirty){clearPanelDraft();return transition()}pendingPanelTransition=transition;showPanelDraftWarning();return false}
+function clearPanelDraft(){setPanelDraftDirty(false);state.draftMissionCoord=null}
+async function openSituation(id,{force=false}={}){if(!id)return;if(!force&&!(await canDiscardSituation())){refs.select.value=state.working?.situation_id||'';return}try{const d=await apiFetch(`/api/situations/${encodeURIComponent(id)}`);clearPanelDraft();clearConflict();state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta=d;state.dirty=false;state.mode='select';state.selected=null;refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));renderAll();fitMap()}catch(e){showMessage(errText(e),'error')}}
+async function newSituation(){if(!writable()){showMessage('当前账号没有情境维护权限。','error');return}if(!(await canDiscardSituation()))return;clearPanelDraft();renderNewSituationEditor();setTimeout(()=>$('newSituationId')?.focus(),30)}
+function renderNewSituationEditor(){state.mode='select';state.selected=null;refs.tools.querySelectorAll('[data-mode]').forEach(button=>button.classList.remove('active'));refs.inspector.dataset.kind='situation-editor';refs.inspectorTitle.textContent='新建情境';refs.inspectorSubtitle.textContent='创建未保存的 Working Copy';refs.body.innerHTML=`<div class="compact-grid"><div class="field wide required"><label>情境编号</label><input id="newSituationId" class="control" placeholder="例如 SITUATION-01"></div><div class="field wide required"><label>名称</label><input id="newSituationName" class="control"></div><div class="field wide"><label>说明</label><textarea id="newSituationDescription" class="control textarea-control" rows="4"></textarea></div></div><div id="newSituationMessage" class="inline-message hidden"></div><div class="inspector-footer"><button id="cancelNewSituation" class="btn ghost" type="button">取消</button><button id="createNewSituation" class="btn primary" type="button">创建</button></div>`;setInspectorOpen(true);collapseOverview();bindPanelDraft();$('cancelNewSituation').onclick=()=>{clearPanelDraft();renderInspector();syncWorkspaceChrome()};$('createNewSituation').onclick=createWorking}
+async function createWorking(){const id=$('newSituationId').value.trim(),name=$('newSituationName').value.trim(),message=$('newSituationMessage');if(!id||!name){message.textContent='情境编号和名称不能为空。';message.className='inline-message error';message.classList.remove('hidden');return}state.working={situation_id:id,name,description:$('newSituationDescription').value.trim()||null,airports:[],missions:[],damage_scenarios:[]};state.savedHash=null;state.persisted=false;state.meta=null;state.dirty=true;state.selected=null;refs.select.value='';clearPanelDraft();renderAll()}
 async function saveSituation(){if(!state.working||!writable())return;if(state.panelDraftDirty){showMessage('请先将右侧表单“应用”到当前情境，再保存。','error');return}try{let d;if(state.persisted)d=await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'PUT',body:{situation:state.working,expected_content_hash:state.savedHash}});else d=await apiFetch('/api/situations',{method:'POST',body:{situation:state.working}});state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta={...(state.meta||{}),...d};state.dirty=false;clearConflict();await loadSituationList(state.working.situation_id);renderAll();showMessage('情境已保存。','success')}catch(e){if(e instanceof ApiError&&e.status===409){showConflict();showMessage('保存失败：服务器中的情境已经变化，本地修改仍保留。','error')}else showMessage(errText(e),'error')}}
-async function deleteSituation(){if(!state.persisted||!state.working)return;const active=state.meta?.active_run_count||0,hist=state.meta?.historical_run_count||0;if(!(await confirmAction(`删除情境 ${state.working.name}？当前关联 ${active} 个活动 Run、${hist} 个历史 Run。历史 Run 的冻结快照不会被修改；活动 Run 存在时后端可能拒绝删除。`,'删除情境')))return;try{await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'DELETE',body:{expected_content_hash:state.savedHash}});state.working=null;state.persisted=false;state.savedHash=null;state.meta=null;state.dirty=false;state.selected=null;await loadSituationList();renderAll();showMessage('情境已删除。','success')}catch(e){showMessage(errText(e),'error')}}
+async function deleteSituation(){if(!state.persisted||!state.working)return;const active=state.meta?.active_run_count||0,hist=state.meta?.historical_run_count||0;if(!(await confirmAction(`删除情境 ${state.working.name}？当前关联 ${active} 个活动 Run、${hist} 个历史 Run。历史 Run 的冻结快照不会被修改；活动 Run 存在时后端可能拒绝删除。`,'删除情境')))return;try{await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'DELETE',body:{expected_content_hash:state.savedHash}});clearPanelDraft();state.working=null;state.persisted=false;state.savedHash=null;state.meta=null;state.dirty=false;state.selected=null;await loadSituationList();renderAll();showMessage('情境已删除。','success')}catch(e){showMessage(errText(e),'error')}}
 function setMode(mode){state.mode=mode;state.selected=null;state.draftMissionCoord=null;if(mode==='airport')state.tempAirportIds=new Set();if(mode!=='layers')collapseOverview();refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));setInspectorOpen(true);renderInspector()}
 function lockEditorForReadOnly(){if(writable())return;refs.body.querySelectorAll('input,select,textarea,button').forEach(el=>{el.disabled=true});refs.inspectorSubtitle.textContent=`${refs.inspectorSubtitle.textContent} · 只读`; }
 function applyPermissionUi(){const can=writable();refs.newBtn.disabled=!can;document.getElementById('overviewEditSituationInfo').disabled=!can;for(const mode of ['airport','mission','damage']){const b=refs.tools.querySelector(`[data-mode="${mode}"]`);if(b){b.disabled=!can;b.title=can?'':'当前账号为只读权限';}}}
@@ -153,7 +157,7 @@ function removeRowButton(){return '<button class="mini-button remove-row" type="
 function supportRow(r={}){return `<div class="dynamic-row support-row"><div class="field"><label>机型</label><select class="control row-aircraft">${opt(state.aircraft,r.aircraft_type_id,x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select></div><div class="field"><label>数量</label><input class="control row-initial" type="number" min="0" value="${esc(val(r.initial_quantity))}"></div><div class="field"><label>整备/窗</label><input class="control row-reset" type="number" min="0" value="${esc(val(r.tau_reset_windows))}"></div>${removeRowButton()}</div>`}
 function stockRow(r={}){return `<div class="dynamic-row stock-row"><div class="field"><label>资源</label><select class="control row-resource">${opt(state.resources,r.resource_type_id,x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select></div><div class="field"><label>库存</label><input class="control row-stock" type="number" min="0" step="any" value="${esc(val(r.initial_quantity))}"></div><div class="field"><label>补给/窗</label><input class="control row-cap" type="number" min="0" step="any" value="${esc(val(r.replenishment_capacity_per_window))}"></div>${removeRowButton()}</div>`}
 function replenishRow(r={}){return `<div class="dynamic-row replenish-row"><div class="field"><label>资源</label><select class="control row-resource">${opt(state.resources,r.resource_type_id,x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select></div><div class="field"><label>时间窗</label><input class="control row-slot" type="number" min="0" value="${esc(val(r.slot))}"></div><div class="field"><label>实际补给</label><input class="control row-qty" type="number" min="0" step="any" value="${esc(val(r.quantity))}"></div>${removeRowButton()}</div>`}
-function bindDynamic(addId,target,fn){const b=$(addId);if(b)b.onclick=()=>{state.panelDraftDirty=true;$(target).insertAdjacentHTML('beforeend',fn({}));bindRemoves()};bindRemoves()}function bindRemoves(){refs.body.querySelectorAll('.remove-row').forEach(b=>b.onclick=()=>{state.panelDraftDirty=true;b.closest('.dynamic-row').remove()})}
+function bindDynamic(addId,target,fn){const b=$(addId);if(b)b.onclick=()=>{setPanelDraftDirty(true);$(target).insertAdjacentHTML('beforeend',fn({}));bindRemoves()};bindRemoves()}function bindRemoves(){refs.body.querySelectorAll('.remove-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.closest('.dynamic-row').remove()})}
 function renderAirportEditor(id) {
   refs.inspector.dataset.kind = 'airport-editor';
   collapseOverview();
@@ -295,7 +299,7 @@ async function applyDamagePresetDraft() {
     };
   });
   $('damageEventRows').innerHTML = events.map(damageEventRow).join('');
-  state.panelDraftDirty = true;
+  setPanelDraftDirty(true);
   bindDamageEvents();
   bindPanelDraft();
   $('damagePresetStatus').textContent = `已生成 ${events.length} 个容量损毁事件，请检查后应用。`;
@@ -335,7 +339,7 @@ function renderDamageEditor(id) {
   $('applyDamagePreset').addEventListener('click', applyDamagePresetDraft);
   $('cancelDamageEdit').onclick = () => { clearPanelDraft(); renderDamageMode(); };
   $('addDamageEvent').onclick = () => {
-    state.panelDraftDirty = true;
+    setPanelDraftDirty(true);
     $('damageEventRows').insertAdjacentHTML('beforeend', damageEventRow({}, refs.body.querySelectorAll('.damage-event').length));
     bindDamageEvents();
   };
@@ -350,39 +354,27 @@ function renderDamageEditor(id) {
   };
   lockEditorForReadOnly();
 }
-function bindDamageEvents(){refs.body.querySelectorAll('.remove-event').forEach(b=>b.onclick=()=>{state.panelDraftDirty=true;b.closest('.damage-event').remove()});refs.body.querySelectorAll('.ev-type').forEach(s=>s.onchange=()=>{const card=s.closest('.damage-event');const ev={event_id:card.querySelector('.ev-id').value,sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:s.value,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect:{},recovery_mode:s.value==='aircraft_damage'?'none':'instant',recovery_duration_slots:null};card.outerHTML=damageEventRow(ev,Number(card.dataset.eventIndex));bindDamageEvents();bindPanelDraft()});refs.body.querySelectorAll('.ev-recovery').forEach(s=>s.onchange=()=>{const input=s.closest('.damage-event').querySelector('.ev-duration');input.disabled=s.value!=='average';if(input.disabled)input.value=''});refs.body.querySelectorAll('.add-loss-row').forEach(b=>b.onclick=()=>{state.panelDraftDirty=true;b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-aircraft">${opt(state.aircraft,'',x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select><input class="control loss-qty" type="number" min="1" value="1"></div>`)});refs.body.querySelectorAll('.add-resource-row').forEach(b=>b.onclick=()=>{state.panelDraftDirty=true;b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-resource">${opt(state.resources,'',x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select><input class="control loss-qty" type="number" min="0" step="any" value="0"></div>`)});}
+function bindDamageEvents(){refs.body.querySelectorAll('.remove-event').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.closest('.damage-event').remove()});refs.body.querySelectorAll('.ev-type').forEach(s=>s.onchange=()=>{const card=s.closest('.damage-event');const ev={event_id:card.querySelector('.ev-id').value,sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:s.value,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect:{},recovery_mode:s.value==='aircraft_damage'?'none':'instant',recovery_duration_slots:null};card.outerHTML=damageEventRow(ev,Number(card.dataset.eventIndex));bindDamageEvents();bindPanelDraft()});refs.body.querySelectorAll('.ev-recovery').forEach(s=>s.onchange=()=>{const input=s.closest('.damage-event').querySelector('.ev-duration');input.disabled=s.value!=='average';if(input.disabled)input.value=''});refs.body.querySelectorAll('.add-loss-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-aircraft">${opt(state.aircraft,'',x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select><input class="control loss-qty" type="number" min="1" value="1"></div>`)});refs.body.querySelectorAll('.add-resource-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-resource">${opt(state.resources,'',x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select><input class="control loss-qty" type="number" min="0" step="any" value="0"></div>`)});}
 function eventFromCard(card){const type=card.querySelector('.ev-type').value;let effect;if(type==='capacity_damage'){const closed=card.querySelector('.ev-closed').value==='true';effect={closed,remaining_capacity_per_window:closed?0:int(card.querySelector('.ev-cap').value)}}else if(type==='navigation_delay'){effect={departure_delay_slots:int(card.querySelector('.ev-dep-delay').value)||0,return_delay_slots:int(card.querySelector('.ev-ret-delay').value)||0}}else if(type==='aircraft_damage'){const loss={};card.querySelectorAll('.effect-row').forEach(r=>{const id=r.querySelector('.loss-aircraft').value;if(id)loss[id]=int(r.querySelector('.loss-qty').value)});effect={aircraft_loss:loss}}else{const rem={};card.querySelectorAll('.effect-row').forEach(r=>{const id=r.querySelector('.loss-resource').value;if(id)rem[id]=Number(r.querySelector('.loss-qty').value)});effect={remaining_quantity:rem}}const recovery=type==='aircraft_damage'?'none':card.querySelector('.ev-recovery').value;return {event_id:card.querySelector('.ev-id').value.trim(),sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:type,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect,recovery_mode:recovery,recovery_duration_slots:recovery==='average'?int(card.querySelector('.ev-duration').value):null}}
 async function applyDamageScenario(oldId){const id=$('damageScenarioId').value.trim(),name=$('damageScenarioName').value.trim();if(!id||!name){showMessage('损毁场景编号和名称不能为空。','error');return}if(!oldId&&state.working.damage_scenarios.some(x=>x.damage_scenario_id===id)){showMessage('当前情境已存在同编号损毁场景。','error');return}try{const candidate=deep(state.working);const scenario={damage_scenario_id:id,name,category:$('damageScenarioCategory').value,events:[...refs.body.querySelectorAll('.damage-event')].map(eventFromCard)};if(oldId)candidate.damage_scenarios=candidate.damage_scenarios.map(x=>x.damage_scenario_id===oldId?scenario:x);else candidate.damage_scenarios.push(scenario);state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();showMessage('损毁场景已应用到当前情境。','success');renderDamageEditor(id)}catch(e){showMessage(errText(e),'error')}}
 function visibleCandidateAirports(){if(state.mode!=='airport')return[];const existing=new Set((state.working?.airports||[]).map(x=>x.airport.airport_id));return state.airportCatalog.filter(x=>!existing.has(x.airport_id)&&(!state.candidateQuery||`${x.airport_id} ${x.airport_name}`.toLowerCase().includes(state.candidateQuery))&&(!state.candidateRole||x.role===state.candidateRole)&&(!state.candidateRegion||String(x.region||'')===state.candidateRegion))}
 function toggleCandidate(id){const row=state.airportCatalog.find(x=>x.airport_id===id);if(!row)return;if(state.tempAirportIds.has(id))state.tempAirportIds.delete(id);else state.tempAirportIds.add(id);const input=refs.body.querySelector(`#airportCandidateList input[value="${CSS.escape(id)}"]`);if(input){input.checked=state.tempAirportIds.has(id);input.closest('.candidate-row')?.classList.toggle('selected',input.checked)}const add=$('addAirportsToSituation');if(add)add.textContent=`加入当前情境（${state.tempAirportIds.size}）`;drawMap()}
-async function selectObject(type,id,{locate=false}={}){if(!(await canDiscardPanelDraft()))return;clearPanelDraft();collapseOverview();state.mode='select';refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));state.selected={type,id};renderInspector();drawMap();if(locate)focusObject(type,id)}
+async function selectObject(type,id,{locate=false}={}){return requestPanelTransition(()=>{collapseOverview();state.mode='select';refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));state.selected={type,id};renderInspector();drawMap();if(locate)focusObject(type,id)})}
 function bind(signal) {
   refs.select.addEventListener('change', () => openSituation(refs.select.value), { signal });
   refs.newBtn.addEventListener('click', newSituation, { signal });
-  refs.newCancel.addEventListener('click', () => setModal(refs.createModal, false), { signal });
-  refs.newConfirm.addEventListener('click', createWorking, { signal });
   refs.save.addEventListener('click', saveSituation, { signal });
-  refs.del.addEventListener('click', async () => {
-    if (!(await canDiscardPanelDraft())) return;
-    clearPanelDraft();
-    await deleteSituation();
-  }, { signal });
+  refs.del.addEventListener('click', deleteSituation, { signal });
   refs.tools.querySelectorAll('[data-mode]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      if (!(await canDiscardPanelDraft())) return;
-      clearPanelDraft();
-      setMode(button.dataset.mode);
-    }, { signal });
+    button.addEventListener('click', () => requestPanelTransition(() => setMode(button.dataset.mode)), { signal });
   });
-  refs.close.addEventListener('click', async () => {
-    if (!(await canDiscardPanelDraft())) return;
-    clearPanelDraft();
+  refs.close.addEventListener('click', () => requestPanelTransition(() => {
     state.mode = 'select';
     state.selected = null;
     refs.tools.querySelectorAll('[data-mode]').forEach((button) => button.classList.remove('active'));
     setInspectorOpen(false);
     drawMap();
-  }, { signal });
+  }), { signal });
   refs.overviewTrigger.addEventListener('click', () => {
     const open = !refs.overview.classList.contains('open');
     refs.overview.classList.toggle('open', open);
@@ -397,19 +389,22 @@ function bind(signal) {
 }
 
 async function init(signal) {
-  configureMap({ selectObject, toggleCandidate, visibleCandidateAirports, message: showMessage, signal });
+  configureMap({ selectObject, toggleCandidate, visibleCandidateAirports, message: showMessage, markPanelDraft: () => setPanelDraftDirty(true), signal });
   configurePanels({
     selectObject,
     setMode,
-    editSituationInfo: () => {
+    editSituationInfo: () => requestPanelTransition(() => {
       if (!state.working) return;
       state.mode = 'select';
       state.selected = null;
       setInspectorOpen(true);
       renderSituationInfoEditor();
       syncWorkspaceChrome();
+    }),
+    reloadSituation: async () => {
+      if (!state.working || !(await canDiscardSituation())) return;
+      await openSituation(state.working.situation_id, { force: true });
     },
-    reloadSituation: () => state.working ? openSituation(state.working.situation_id, { force: true }) : Promise.resolve(),
   });
   initPanels({ signal });
   try {
@@ -433,6 +428,7 @@ async function init(signal) {
 
 export async function mount(root) {
   if (mounted) unmount();
+  pendingPanelTransition = null;
   resetSituationState();
   bindSituationDom(root);
   lifecycleController = new AbortController();
@@ -448,6 +444,7 @@ export async function beforeLeave() {
 export function unmount() {
   if (!mounted) return;
   mounted = false;
+  pendingPanelTransition = null;
   lifecycleController?.abort();
   clearTimeout(showMessage.t);
   destroyPanels();

@@ -22,7 +22,7 @@ function inspectorHasTask() {
   if (!state.working) return false;
   if (state.mode !== 'select' || state.selected) return true;
   return Boolean(refs.body.querySelector(
-    '#applyAirport,#applyMission,#applyDamageScenario,#applySituationInfo',
+    '#applyAirport,#applyMission,#applyDamageScenario,#applySituationInfo,#createNewSituation',
   ));
 }
 
@@ -33,14 +33,6 @@ function syncEmptyGuide() {
     refs.emptyText.textContent = '从底部情境 Dock 打开已有情境，或创建一个新情境。';
     refs.emptyAction.textContent = '新建情境';
     refs.emptyAction.dataset.action = 'new';
-    return;
-  }
-  if (!state.working.airports.length) {
-    refs.emptyGuide.classList.remove('hidden');
-    refs.emptyTitle.textContent = '先加入机场';
-    refs.emptyText.textContent = '机场是任务和损毁配置的空间基础。';
-    refs.emptyAction.textContent = '添加机场';
-    refs.emptyAction.dataset.action = 'airport';
     return;
   }
   refs.emptyGuide.classList.add('hidden');
@@ -159,8 +151,7 @@ export function initPanels({ signal }) {
   initSearch(signal);
   initLayers(signal);
   refs.emptyAction.addEventListener('click', () => {
-    if (refs.emptyAction.dataset.action === 'airport') callbacks.setMode?.('airport');
-    else refs.newBtn.click();
+    refs.newBtn.click();
   }, { signal });
   document.getElementById('overviewEditSituationInfo').addEventListener('click', () => {
     callbacks.editSituationInfo?.();
