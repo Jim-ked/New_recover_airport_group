@@ -210,18 +210,19 @@
 .situation-inspector {
   top: 14px;
   right: 12px;
-  bottom: 70px;
   width: 340px;
+  max-height: 78vh;
+  height: auto;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   z-index: 32;
   transition: opacity .16s ease, transform .16s ease;
 }
-.situation-inspector[data-kind="airport-candidates"] { width: 360px; }
-.situation-inspector[data-kind="airport-editor"] { width: 340px; }
-.situation-inspector[data-kind="mission-editor"] { width: 350px; }
-.situation-inspector[data-kind="damage-editor"] { width: 360px; }
+.situation-inspector[data-kind="airport-candidates"] { width: 360px; max-height: 72vh; }
+.situation-inspector[data-kind="airport-editor"] { width: 340px; max-height: 78vh; }
+.situation-inspector[data-kind="mission-editor"] { width: 350px; max-height: 78vh; }
+.situation-inspector[data-kind="damage-editor"] { width: 360px; max-height: 78vh; }
 .situation-inspector.closed {
   pointer-events: none;
   opacity: 0;
@@ -385,9 +386,9 @@
 .situation-overview.open .overview-toggle .chevron { transform: rotate(180deg); }
 .overview-situation-select { height: 34px; font-size: 13px; }
 .overview-counts { justify-self: end; padding-right: 4px; color: #8fa7b6; font-size: 12px; white-space: nowrap; }
-.overview-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .16s ease, opacity .16s ease; }
-.overview-body > * { overflow: hidden; }
-.situation-overview.open .overview-body { grid-template-rows: auto minmax(0, 1fr); opacity: 1; }
+.overview-body { display: grid; grid-template-rows: 0fr 0fr; opacity: 0; transition: grid-template-rows .16s ease, opacity .16s ease; }
+.overview-body > * { overflow: hidden; min-height: 0; }
+.situation-overview.open .overview-body { grid-template-rows: auto minmax(0, 210px); opacity: 1; }
 .overview-meta-row { min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 5px 10px 0; }
 .overview-meta { flex: 1; color: #89a1af; font-size: 12px; }
 .compact-action { height: 32px; font-size: 12px; }
