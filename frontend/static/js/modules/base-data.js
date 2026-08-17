@@ -6,21 +6,24 @@ const state = {
   selected:null, detail:null, detailError:null,
   me:null, editing:false, creating:false, editorDirty:false,
   aircraft:[], resources:[], requirements:[], lookupsLoaded:false,
+  regionOptions:null,
   filters:{
-    airports:{ q:'', role:'', region:'' },
+    airports:{ q:'', roles:[], regions:[] },
     missions:{ q:'' },
     aircraft_types:{ q:'' },
     resource_types:{ q:'' },
   },
   listSeq:0, detailSeq:0,
 };
-const refs = { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), resetBtn:$('baseDataResetButton'), role:$('airportRoleFilter'), region:$('airportRegionFilter'), filters:$('airportFilters'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') };
+const refs = { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), searchClear:$('baseDataSearchClear'), chips:$('baseDataFilterChips'), popover:$('baseDataFilterPopover'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') };
 const TAB_META = {
-  airports:{title:'机场基础库', singular:'机场', empty:'选择一条机场查看详细信息', endpoint:'/api/airports'},
-  missions:{title:'任务模板库', singular:'任务模板', empty:'选择一条任务模板查看详细信息', endpoint:'/api/missions'},
-  aircraft_types:{title:'机型基础库', singular:'机型', empty:'选择一条机型查看详细信息', endpoint:'/api/aircraft-types'},
-  resource_types:{title:'保障资源类型', singular:'资源类型', empty:'选择一条资源类型查看详细信息', endpoint:'/api/resource-types'},
+  airports:{title:'机场基础库', singular:'机场', empty:'选择一条机场查看详细信息', searchPlaceholder:'搜索机场编号或名称', endpoint:'/api/airports'},
+  missions:{title:'任务模板库', singular:'任务模板', empty:'选择一条任务模板查看详细信息', searchPlaceholder:'搜索任务编号或名称', endpoint:'/api/missions'},
+  aircraft_types:{title:'机型基础库', singular:'机型', empty:'选择一条机型查看详细信息', searchPlaceholder:'搜索机型编号或名称', endpoint:'/api/aircraft-types'},
+  resource_types:{title:'保障资源类型', singular:'资源类型', empty:'选择一条资源类型查看详细信息', searchPlaceholder:'搜索资源编号或名称', endpoint:'/api/resource-types'},
 };
+const ROLE_OPTIONS = [['military','军用'],['joint','军民合用'],['civil','民用']];
+const roleLabel = (v) => (ROLE_OPTIONS.find(([k])=>k===v)||[v,v])[1];
 const esc = (v) => String(v ?? '—').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const val = (v) => v === null || v === undefined ? '' : String(v);
 const num = (v) => v === '' || v === null || v === undefined ? null : Number(v);
@@ -36,10 +39,82 @@ async function canLeaveEditor(){if(!(state.editing&&state.editorDirty))return tr
 
 /* ---- applied query state: the ONLY source for list requests ---- */
 function appliedFilters(){ return state.filters[state.tab]; }
-function syncToolbarFromFilters(){ const f=appliedFilters(); refs.search.value=f.q||''; refs.role.value=f.role||''; refs.region.value=f.region||''; }
-function submitFilters(){ const f=appliedFilters(); f.q=refs.search.value.trim(); if(state.tab==='airports'){ f.role=refs.role.value; f.region=refs.region.value.trim(); } state.page=0; return load(); }
-function resetFilters(){ const f=appliedFilters(); f.q=''; f.role=''; f.region=''; refs.search.value=''; refs.role.value=''; refs.region.value=''; state.page=0; return load(); }
-function endpointQuery(){ const f=appliedFilters(); const p=new URLSearchParams(); if(['airports','missions'].includes(state.tab)){ p.set('limit',state.limit); p.set('offset',state.page*state.limit); if(f.q)p.set('q',f.q); } if(state.tab==='airports'){ if(f.role)p.append('role',f.role); if(f.region)p.append('region',f.region); } return p.toString(); }
+function roles(){ return state.filters.airports.roles; }
+function regions(){ return state.filters.airports.regions; }
+function hasColumnFilters(){ return roles().length>0 || regions().length>0; }
+function updateSearchClear(){ refs.searchClear.classList.toggle('hidden',!refs.search.value); }
+function syncToolbarFromFilters(){ refs.search.value=appliedFilters().q||''; updateSearchClear(); }
+function submitSearch(){ const f=appliedFilters(); f.q=refs.search.value.trim(); state.page=0; return load(); }
+function applyColumnFilters(nextRoles, nextRegions){ state.filters.airports.roles=nextRoles.slice(); state.filters.airports.regions=nextRegions.slice(); state.page=0; return load(); }
+function endpointQuery(){ const f=appliedFilters(); const p=new URLSearchParams(); if(['airports','missions'].includes(state.tab)){ p.set('limit',state.limit); p.set('offset',state.page*state.limit); if(f.q)p.set('q',f.q); } if(state.tab==='airports'){ roles().forEach(r=>p.append('role',r)); regions().forEach(r=>p.append('region',r)); } return p.toString(); }
+
+/* ---- region options: derived from the airport catalog, cached ---- */
+async function ensureRegionOptions(){
+  if(state.regionOptions)return state.regionOptions;
+  const seen=new Set(); let offset=0, total=1;
+  while(offset<total){
+    const d=await apiFetch(`/api/airports?limit=500&offset=${offset}`);
+    (d.items||[]).forEach(x=>{ if(x.region)seen.add(String(x.region)); });
+    total=Number.isFinite(d.total)?d.total:0; offset+=500;
+  }
+  state.regionOptions=[...seen].sort((a,b)=>String(a).localeCompare(String(b),'zh-CN'));
+  return state.regionOptions;
+}
+
+/* ---- column filter popover (airports only) ---- */
+let filterDraft=[]; let filterCol='';
+function closeFilterPopover(){ refs.popover.classList.add('hidden'); refs.popover.innerHTML=''; }
+function renderFilterPopover(col){
+  filterCol=col;
+  const current=col==='role'?roles():regions();
+  filterDraft=current.slice();
+  const all=col==='role'?ROLE_OPTIONS.map(([k])=>k):(state.regionOptions||[]);
+  const rows=col==='role'
+    ? ROLE_OPTIONS.map(([k,n])=>[k,n])
+    : all.map(v=>[v,v]);
+  const body=rows.map(([k,n])=>`<label class="filter-option"><input type="checkbox" value="${esc(k)}" ${filterDraft.includes(k)?'checked':''}> <span>${esc(n)}</span></label>`).join('');
+  refs.popover.innerHTML=`
+    <div class="filter-popover-title">${col==='role'?'机场类型':'所属区域'}</div>
+    ${col==='region'?'<div class="filter-popover-search"><input id="filterRegionSearch" class="control" placeholder="搜索区域..."></div>':''}
+    <div class="filter-options">${body}</div>
+    <div class="filter-popover-footer">
+      <button id="filterPopoverCancel" class="btn ghost" type="button">取消</button>
+      <button id="filterPopoverApply" class="btn primary" type="button">应用</button>
+    </div>`;
+  refs.popover.querySelectorAll('.filter-option input').forEach(cb=>cb.onchange=()=>{
+    const v=cb.value;
+    filterDraft=cb.checked?[...new Set([...filterDraft,v])]:filterDraft.filter(x=>x!==v);
+  });
+  const s=$('filterRegionSearch');
+  if(s)s.oninput=()=>{ const n=s.value.trim().toLowerCase(); refs.popover.querySelectorAll('.filter-option').forEach(el=>el.classList.toggle('hidden',n!==''&&!(el.textContent||'').toLowerCase().includes(n))); };
+  $('filterPopoverCancel').onclick=closeFilterPopover;
+  $('filterPopoverApply').onclick=()=>{ closeFilterPopover(); if(filterCol==='role')applyColumnFilters(filterDraft,regions()).catch(e=>showMessage(fieldError(e),'error')); else applyColumnFilters(roles(),filterDraft).catch(e=>showMessage(fieldError(e),'error')); };
+  refs.popover.classList.remove('hidden');
+}
+async function openFilterPopover(col, btn){
+  if(col==='region'&&!state.regionOptions){
+    try{ await ensureRegionOptions(); }catch(e){ showMessage(fieldError(e),'error'); return; }
+  }
+  const r=btn.getBoundingClientRect();
+  const pop=refs.popover;
+  renderFilterPopover(col);
+  const width=col==='role'?220:240;
+  pop.style.left=`${Math.max(8,Math.min(r.left,window.innerWidth-width-12))}px`;
+  pop.style.top=`${r.bottom+6}px`;
+  pop.style.width=`${width}px`;
+}
+
+/* ---- filter chips ---- */
+function renderChips(){
+  const chips=[];
+  roles().forEach(r=>chips.push({label:`类型：${roleLabel(r)}`, remove:()=>applyColumnFilters(roles().filter(x=>x!==r),regions())}));
+  regions().forEach(r=>chips.push({label:`区域：${r}`, remove:()=>applyColumnFilters(roles(),regions().filter(x=>x!==r))}));
+  refs.chips.innerHTML=chips.map(c=>`<button class="filter-chip" type="button">${esc(c.label)} <svg class="ui-icon"><use href="#i-close"></use></svg></button>`).join('')
+    + (hasColumnFilters()?`<button class="clear-filters" type="button">清除筛选</button>`:'');
+  refs.chips.querySelectorAll('.filter-chip').forEach((b,i)=>b.onclick=()=>chips[i].remove().catch(e=>showMessage(fieldError(e),'error')));
+  const clear=refs.chips.querySelector('.clear-filters');
+  if(clear)clear.onclick=()=>applyColumnFilters([],[]).catch(e=>showMessage(fieldError(e),'error'));
+}
 
 /* ---- lookups: optional for the list, loaded on editor/detail demand ---- */
 async function loadLookups(){ const [a,r,q]=await Promise.all([apiFetch('/api/aircraft-types'),apiFetch('/api/resource-types'),apiFetch('/api/aircraft-resource-requirements')]); state.aircraft=a.items||[];state.resources=r.items||[];state.requirements=q.items||[]; }
@@ -61,7 +136,8 @@ async function load(){
     }
     if(seq!==state.listSeq)return;
     state.items=items; state.total=total;
-    state.selected=null; state.detail=null; state.detailError=null; state.editing=false; state.editorDirty=false;
+    state.selected=null; state.detail=null; state.detailError=null;
+    state.editing=false; state.creating=false; state.editorDirty=false;
     render();
   }catch(e){
     if(seq!==state.listSeq)return;
@@ -91,20 +167,26 @@ async function selectIndex(i){
 }
 
 /* ---- table ---- */
+function colFilterBtn(col){
+  const active=col==='role'?roles().length>0:regions().length>0;
+  return `<button class="col-filter ${active?'active':''}" data-col="${col}" type="button" aria-label="筛选${col==='role'?'类型':'区域'}"><svg class="ui-icon"><use href="#i-filter"></use></svg></button>`;
+}
 function renderTable(){
   let heads=[], body=[];
-  if(state.tab==='airports'){heads=['编号','名称','类型','区域','容量/窗','支持机型','更新时间']; body=state.items.map(x=>[x.airport_id,x.airport_name,x.role,x.region||'—',x.capacity_per_window??'—',x.supported_aircraft_type_count,x.updated_at||'—']);}
+  if(state.tab==='airports'){heads=['编号','名称',`类型 ${colFilterBtn('role')}`,`区域 ${colFilterBtn('region')}`,'容量/窗','支持机型','更新时间']; body=state.items.map(x=>[x.airport_id,x.airport_name,x.role,x.region||'—',x.capacity_per_window??'—',x.supported_aircraft_type_count,x.updated_at||'—']);}
   else if(state.tab==='missions'){heads=['编号','名称','任务窗','需求机型','更新时间'];body=state.items.map(x=>[x.mission.mission_id,x.mission.name,`T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`,x.mission.aircraft_requirements.length,x.metadata.updated_at||'—']);}
   else if(state.tab==='aircraft_types'){heads=['编号','名称','速度 km/h','最大航程 km','安全余油','更新时间'];body=state.items.map(x=>[x.aircraft_type.aircraft_type_id,x.aircraft_type.name,x.aircraft_type.speed_kmh??'—',x.aircraft_type.max_range_km??'—',x.aircraft_type.reserve_ratio==null?'—':`${(x.aircraft_type.reserve_ratio*100).toFixed(1)}%`,x.metadata.updated_at||'—']);}
   else {heads=['编号','名称','类别','单位','更新时间'];body=state.items.map(x=>[x.resource_type.resource_type_id,x.resource_type.name,x.resource_type.category,x.resource_type.unit,x.metadata.updated_at||'—']);}
-  refs.wrap.innerHTML=`<table class="data-table"><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.map((cols,i)=>`<tr data-index="${i}" class="${itemId(state.items[i])===state.selected?'selected':''}">${cols.map(v=>`<td title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  refs.wrap.innerHTML=`<table class="data-table"><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body.map((cols,i)=>`<tr data-index="${i}" class="${itemId(state.items[i])===state.selected?'selected':''}">${cols.map(v=>`<td title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   refs.wrap.querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>selectIndex(Number(tr.dataset.index)));
+  refs.wrap.querySelectorAll('.col-filter').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); openFilterPopover(b.dataset.col,b); });
 }
 function render(){
   const meta=TAB_META[state.tab];
   refs.title.textContent=meta.title;
   refs.count.textContent=`${state.total} 条 · 当前态`;
-  refs.filters.classList.toggle('hidden',state.tab!=='airports');
+  refs.search.placeholder=meta.searchPlaceholder;
+  renderChips();
   refs.add.textContent=`新增${meta.singular}`;
   refs.add.disabled=!writable(); refs.importBtn.disabled=!writable(); refs.exportBtn.disabled=false;
   refs.edit.disabled=!writable()||!state.detail||state.editing||state.creating;
@@ -237,14 +319,19 @@ function bind(){
   refs.tabs.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
     if(!(await canLeaveEditor()))return;
     refs.tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));
-    state.tab=b.dataset.tab; state.page=0; state.editorDirty=false; state.detailError=null;
+    state.tab=b.dataset.tab; state.page=0;
+    state.selected=null; state.detail=null; state.detailError=null;
+    state.editing=false; state.creating=false; state.editorDirty=false;
+    state.detailSeq++; closeFilterPopover();
     syncToolbarFromFilters();
     load().catch(e=>showMessage(fieldError(e),'error'));
   });
-  refs.searchBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; submitFilters().catch(e=>showMessage(fieldError(e),'error')); };
-  refs.resetBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; resetFilters().catch(e=>showMessage(fieldError(e),'error')); };
+  refs.searchBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; submitSearch().catch(e=>showMessage(fieldError(e),'error')); };
   refs.search.onkeydown=e=>{ if(e.key==='Enter')refs.searchBtn.click(); };
-  refs.region.onkeydown=e=>{ if(e.key==='Enter')refs.searchBtn.click(); };
+  refs.search.oninput=()=>updateSearchClear();
+  refs.searchClear.onclick=async()=>{ refs.search.value=''; updateSearchClear(); if(appliedFilters().q){ await submitSearch().catch(e=>showMessage(fieldError(e),'error')); } };
+  document.addEventListener('pointerdown',(e)=>{ if(refs.popover&&!refs.popover.classList.contains('hidden')&&!refs.popover.contains(e.target)&&!e.target.closest?.('.col-filter'))closeFilterPopover(); });
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape')closeFilterPopover(); });
   refs.prev.onclick=async()=>{ if(state.page>0&&await canLeaveEditor()){ state.page--; load().catch(e=>showMessage(fieldError(e),'error')); } };
   refs.next.onclick=async()=>{ if(await canLeaveEditor()){ state.page++; load().catch(e=>showMessage(fieldError(e),'error')); } };
   refs.edit.onclick=async()=>{ if(!state.detail||state.editing||state.creating)return; await ensureLookups(); state.editing=true; state.editorDirty=false; renderDetail(); };

@@ -23,28 +23,24 @@
     <button type="button" data-tab="resource_types">保障资源</button>
   </nav>
 
-  <section class="data-toolbar surface">
+  <section class="data-toolbar">
     <div class="search-box">
       <input id="baseDataSearch" class="control" type="search" name="base-data-q"
              autocomplete="off" spellcheck="false" placeholder="搜索编号或名称">
-      <button id="baseDataSearchButton" class="btn" type="button">查询</button>
-      <button id="baseDataResetButton" class="btn ghost" type="button">重置</button>
+      <button id="baseDataSearchClear" class="search-clear hidden" type="button" aria-label="清空搜索">
+        <svg class="ui-icon"><use href="#i-close"></use></svg>
+      </button>
+      <button id="baseDataSearchButton" class="search-submit" type="button" aria-label="搜索">
+        <svg class="ui-icon"><use href="#i-search"></use></svg>
+      </button>
     </div>
-    <div id="airportFilters" class="filter-row">
-      <select id="airportRoleFilter" class="control" name="base-data-role" autocomplete="off">
-        <option value="">全部类型</option>
-        <option value="military">军用</option>
-        <option value="joint">军民合用</option>
-        <option value="civil">民用</option>
-      </select>
-      <input id="airportRegionFilter" class="control" name="base-data-region"
-             autocomplete="off" spellcheck="false" placeholder="所属区域">
-    </div>
+    <div id="baseDataFilterChips" class="toolbar-chips"></div>
     <div class="data-toolbar-spacer"></div>
-    <button id="baseDataImportButton" class="btn" type="button">导入</button>
-    <button id="baseDataExportButton" class="btn" type="button">导出</button>
+    <button id="baseDataImportButton" class="btn ghost" type="button">导入</button>
+    <button id="baseDataExportButton" class="btn ghost" type="button">导出</button>
     <button id="baseDataAddButton" class="btn primary" type="button">新增</button>
   </section>
+  <div id="baseDataFilterPopover" class="col-filter-popover hidden" role="dialog" aria-label="列筛选"></div>
 
   <section class="data-workspace">
     <div class="data-list panel">
