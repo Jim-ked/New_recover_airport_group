@@ -10,23 +10,23 @@
 </head>
 <body>
 <main class="login-page" id="loginPage" data-next="{{ next_path|default('/run') }}">
-  <section class="login-visual" aria-hidden="true">
-    <div class="login-grid"></div>
-    <div class="login-brand">
-      <h1>机场群顽存能力仿真系统</h1>
-      <p>机场、任务、损毁情境、组群优化与运行结果统一工作区。登录后进入受权限控制的业务界面。</p>
-    </div>
-  </section>
+  <section class="login-visual" aria-hidden="true"></section>
   <section class="login-side">
-    <form id="loginForm" class="login-card" novalidate>
-      <h2>用户登录</h2>
-      <p>账号由系统用户库统一管理。</p>
-      <div id="loginMessage" class="inline-message error hidden" role="alert"></div>
-      <div class="field required"><label for="loginName">用户名</label><input id="loginName" class="control" name="username" autocomplete="username" required></div>
-      <div class="field required"><label for="loginPassword">密码</label><input id="loginPassword" class="control" name="password" type="password" autocomplete="current-password" required></div>
-      <button id="loginButton" class="btn primary" type="submit">登录</button>
-      <div class="login-foot">会话同时受空闲超时和绝对时长限制；账号被禁用或密码修改后，已有会话会立即失效。</div>
-    </form>
+    <div class="login-panel-wrap">
+      <form id="loginForm" class="login-card" novalidate>
+        <header class="login-card-brand">
+          <img class="login-emblem" src="{{ url_for('static', filename='icons/airforce-emblem.png') }}" alt="" aria-hidden="true">
+          <div>
+            <h2>用户登录</h2>
+            <div class="login-system-name">机场群顽存能力仿真系统</div>
+          </div>
+        </header>
+        <div id="loginMessage" class="inline-message error hidden" role="alert"></div>
+        <div class="field required"><label for="loginName">用户名</label><input id="loginName" class="control" name="username" autocomplete="username" required></div>
+        <div class="field required"><label for="loginPassword">密码</label><input id="loginPassword" class="control" name="password" type="password" autocomplete="current-password" required></div>
+        <button id="loginButton" class="btn primary" type="submit">登录</button>
+      </form>
+    </div>
   </section>
 </main>
 <script type="module" src="{{ url_for('static', filename='js/modules/login.js') }}"></script>

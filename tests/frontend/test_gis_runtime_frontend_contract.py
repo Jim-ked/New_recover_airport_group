@@ -11,6 +11,7 @@ UI = (ROOT / "backend/web/flask_ui.py").read_text(encoding="utf-8")
 FLASK_RUNS = (ROOT / "backend/web/flask_runs.py").read_text(encoding="utf-8")
 SINGLE_HTML = (ROOT / "frontend/templates/pages/single_run.html").read_text(encoding="utf-8")
 SINGLE_JS = (ROOT / "frontend/static/js/modules/single-run.js").read_text(encoding="utf-8")
+SETTINGS = (ROOT / "backend/settings.py").read_text(encoding="utf-8")
 
 
 class GisRuntimeFrontendContractTests(unittest.TestCase):
@@ -54,8 +55,12 @@ class GisRuntimeFrontendContractTests(unittest.TestCase):
     def test_leaflet_is_local_only_and_missing_kernel_fails_visibly(self):
         self.assertIn('/static/vendor/leaflet/leaflet.js', JS)
         self.assertIn('/static/vendor/leaflet/leaflet.css', JS)
+        self.assertIn('/tiles/{z}/{x}/{y}.jpg', SETTINGS)
         self.assertNotIn('https://', JS)
         self.assertIn('Leaflet 本地地图内核尚未装载', JS)
+        self.assertIn('地图加载失败；运行结果数据已正常读取', JS)
+        self.assertIn('try { await initMap(); } catch (error) { showMapError(error); }', JS)
+        self.assertIn("tiles.on('tileerror'", JS)
 
     def test_runtime_routes_are_real_and_single_run_button_is_enabled(self):
         self.assertIn('@bp.get("/runs/<run_id>/runtime")', UI)

@@ -29,6 +29,82 @@ def _int_series(n: int) -> List[int]:
     return [0] * n
 
 
+def _build_demand_breakdown(
+    required_by_aircraft: Mapping[str, int],
+    scheduled_by_aircraft: Mapping[str, int],
+) -> Dict[str, Any]:
+    """Split scheduled sorties into baseline-demand fulfilment and additional capacity."""
+
+    required: Dict[str, int] = {}
+    scheduled: Dict[str, int] = {}
+    for label, source, target in (
+        ("required", required_by_aircraft, required),
+        ("scheduled", scheduled_by_aircraft, scheduled),
+    ):
+        for raw_aircraft_id, raw_value in source.items():
+            aircraft_id = str(raw_aircraft_id)
+            if not aircraft_id:
+                raise MetricsBuildError(f"{label} demand contains a blank aircraft type")
+            if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
+                raise MetricsBuildError(
+                    f"{label} sorties must be nonnegative integers: {aircraft_id}"
+                )
+            if raw_value > 0:
+                target[aircraft_id] = raw_value
+
+    aircraft_ids = sorted(set(required) | set(scheduled))
+    fulfilled = {
+        aircraft_id: min(scheduled.get(aircraft_id, 0), required.get(aircraft_id, 0))
+        for aircraft_id in aircraft_ids
+    }
+    unmet = {
+        aircraft_id: max(required.get(aircraft_id, 0) - scheduled.get(aircraft_id, 0), 0)
+        for aircraft_id in aircraft_ids
+    }
+    additional = {
+        aircraft_id: max(scheduled.get(aircraft_id, 0) - required.get(aircraft_id, 0), 0)
+        for aircraft_id in aircraft_ids
+    }
+
+    for aircraft_id in aircraft_ids:
+        required_value = required.get(aircraft_id, 0)
+        scheduled_value = scheduled.get(aircraft_id, 0)
+        if scheduled_value != fulfilled[aircraft_id] + additional[aircraft_id]:
+            raise MetricsBuildError(
+                f"scheduled demand invariant failed for aircraft type {aircraft_id}"
+            )
+        if required_value != fulfilled[aircraft_id] + unmet[aircraft_id]:
+            raise MetricsBuildError(
+                f"required demand invariant failed for aircraft type {aircraft_id}"
+            )
+
+    required_total = sum(required.values())
+    scheduled_total = sum(scheduled.values())
+    fulfilled_total = sum(fulfilled.values())
+    unmet_total = sum(unmet.values())
+    additional_total = sum(additional.values())
+    if scheduled_total != fulfilled_total + additional_total:
+        raise MetricsBuildError("scheduled demand invariant failed for mission total")
+    if required_total != fulfilled_total + unmet_total:
+        raise MetricsBuildError("required demand invariant failed for mission total")
+
+    return {
+        "required_by_aircraft": required,
+        "scheduled_by_aircraft": scheduled,
+        "fulfilled_by_aircraft": fulfilled,
+        "unmet_by_aircraft": unmet,
+        "additional_by_aircraft": additional,
+        "required_total": required_total,
+        "scheduled_total": scheduled_total,
+        "fulfilled_total": fulfilled_total,
+        "unmet_total": unmet_total,
+        "additional_total": additional_total,
+        "completion_ratio": (
+            fulfilled_total / required_total if required_total > 0 else None
+        ),
+    }
+
+
 def _path_for_chain(
     chain: SortieChain,
     *,
@@ -139,10 +215,12 @@ def _build_aircraft_inventory_metrics(
     for chain, _path in chains_with_paths:
         dep_i = chain.depart_window - t0
         ready_i = chain.ready_window - t0
-        if not (0 <= dep_i < n and 0 <= ready_i < n):
+        if not (0 <= dep_i < n) or not (0 <= ready_i <= n):
             raise MetricsBuildError(f"aircraft event outside metrics horizon: {chain.path_id}")
         dep[(chain.origin_airport_id, chain.aircraft_type)][dep_i] += int(chain.sorties)
-        ready[(chain.return_airport_id, chain.aircraft_type)][ready_i] += int(chain.sorties)
+        # ready_i == n is the terminal release after the last operational slot.
+        if ready_i < n:
+            ready[(chain.return_airport_id, chain.aircraft_type)][ready_i] += int(chain.sorties)
 
     by_airport: Dict[str, Any] = {}
     for aid in airports:
@@ -596,15 +674,21 @@ def build_metrics_core(
     tasks: Dict[str, Any] = {}
     for mid in missions:
         scheduled_by_type = {f: q for f, q in mission_scheduled[mid].items() if q > 0}
+        demand = _build_demand_breakdown(required_by_mission[mid], scheduled_by_type)
         tasks[mid] = {
-            "required_by_aircraft": required_by_mission[mid],
-            "required_total": sum(required_by_mission[mid].values()),
-            "scheduled_by_aircraft": scheduled_by_type,
-            "scheduled_total": sum(scheduled_by_type.values()),
+            **demand,
             "by_origin_airport": dict(sorted(mission_by_origin[mid].items())),
             "departures_timeline": by_mission_dep[mid],
             "returns_timeline": by_mission_ret[mid],
         }
+
+    total_fulfilled = sum(row["fulfilled_total"] for row in tasks.values())
+    total_unmet = sum(row["unmet_total"] for row in tasks.values())
+    total_additional = sum(row["additional_total"] for row in tasks.values())
+    if scheduled_total != total_fulfilled + total_additional:
+        raise MetricsBuildError("scheduled demand invariant failed for global total")
+    if total_required != total_fulfilled + total_unmet:
+        raise MetricsBuildError("required demand invariant failed for global total")
 
     aircraft: Dict[str, Any] = {}
     for f in aircraft_types:
@@ -676,7 +760,13 @@ def build_metrics_core(
             "core_airport_count": len(core_set),
             "mission_count": len(missions),
             "required_sorties_total": total_required,
+            "fulfilled_sorties_total": total_fulfilled,
+            "unmet_sorties_total": total_unmet,
+            "additional_sorties_total": total_additional,
             "scheduled_sorties_total": scheduled_total,
+            "completion_ratio": (
+                total_fulfilled / total_required if total_required > 0 else None
+            ),
             "returned_sorties_total": sum(ret_total),
             "max_airport_departure": {
                 "airport_id": max_airport_id,

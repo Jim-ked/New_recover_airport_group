@@ -55,6 +55,18 @@ class SituationApiTests(unittest.TestCase):
         self.assertEqual(1, response.body["total"])
         self.assertEqual("S-U1", response.body["items"][0]["situation_id"])
 
+    def test_situation_ids_are_allocated_by_backend_for_new_working_copies(self):
+        first = self.api.allocate_id(principal=self.u2)
+        second = self.api.create(
+            {"situation": {"name": "Auto ID", "description": None, "airports": [], "missions": [], "damage_scenarios": []}},
+            principal=self.u2,
+        )
+
+        self.assertEqual(201, first.status)
+        self.assertEqual("ST001", first.body["situation_id"])
+        self.assertEqual(201, second.status)
+        self.assertEqual("ST002", second.body["situation"]["situation_id"])
+
     def test_working_copy_copy_airport_and_mission_is_nonpersistent_backend_transform(self):
         airport = AirportBase.from_mapping({
             "airport_id": "A1", "airport_name": "Base A1", "facility_type": "medium_airport",

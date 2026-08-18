@@ -13,7 +13,15 @@ function showMessage(text) {
 }
 function safeNext() {
   const value = page?.dataset.next || '/run';
-  return value.startsWith('/') && !value.startsWith('//') ? value : '/run';
+  try {
+    const target = new URL(value, window.location.origin);
+    const isLocalPath = value.startsWith('/')
+      && !value.startsWith('//')
+      && target.origin === window.location.origin;
+    return isLocalPath ? `${target.pathname}${target.search}${target.hash}` : '/run';
+  } catch (_) {
+    return '/run';
+  }
 }
 
 form?.addEventListener('submit', async (event) => {

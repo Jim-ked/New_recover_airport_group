@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from backend.algorithm.runner import run_once
@@ -68,6 +69,25 @@ class RunRuntimeServiceTests(unittest.TestCase):
             metrics["timeline"]["returns_total"],
             [frame["returns_total"] for frame in runtime["frames"]],
         )
+
+    def test_new_project_ids_flow_through_snapshot_solution_metrics_and_runtime(self):
+        snapshot = make_snapshot(
+            run_id="RUN-project-ids",
+            situation_id="ST001",
+            airport_ids=("AP001", "AP002"),
+            cluster_enabled=False,
+        )
+        result = self._persist(snapshot)
+        runtime = self.runtime.get_runtime("RUN-project-ids", actor_user_id="U1")
+        metrics = self.results.get_metrics("RUN-project-ids", actor_user_id="U1")
+        payload = json.dumps(
+            {"snapshot": snapshot.to_dict(), "solution": result.solution.to_dict(), "metrics": metrics, "runtime": runtime},
+            ensure_ascii=False,
+        )
+
+        self.assertNotIn("oa:", payload)
+        self.assertIn("ST001", payload)
+        self.assertIn("AP001", payload)
 
     def test_runtime_frames_expose_depart_return_events_without_interpolating_flight_position(self):
         snapshot = make_snapshot(run_id="R1")

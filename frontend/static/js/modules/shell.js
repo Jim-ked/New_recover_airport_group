@@ -8,10 +8,6 @@ const roleLabel = document.getElementById('accountRole');
 const summaryName = document.getElementById('accountSummaryName');
 const summaryRole = document.getElementById('accountSummaryRole');
 const logoutAction = document.getElementById('logoutAction');
-const accountInfoAction = document.getElementById('accountInfoAction');
-const accountInfoModal = document.getElementById('accountInfoModal');
-const accountInfoBody = document.getElementById('accountInfoBody');
-const accountInfoClose = document.getElementById('accountInfoClose');
 const changePasswordAction = document.getElementById('changePasswordAction');
 const passwordModal = document.getElementById('passwordModal');
 const passwordCancel = document.getElementById('passwordCancel');
@@ -61,51 +57,21 @@ function openPasswordModal() {
 function closePasswordModal() {
   passwordModal.classList.remove('open'); passwordModal.setAttribute('aria-hidden', 'true');
 }
-function openAccountInfo() {
-  closeAccount();
-  if (!account) return;
-  const permissions = (account.permissions || []).map((permission) => {
-    const item = document.createElement('span');
-    item.className = 'account-permission';
-    item.textContent = permission;
-    return item;
-  });
-  accountInfoBody.replaceChildren();
-  const facts = document.createElement('dl');
-  facts.className = 'account-facts';
-  for (const [label, value] of [
-    ['用户编号', account.user_id || '—'],
-    ['账户角色', roleText(account.role)],
-  ]) {
-    const row = document.createElement('div');
-    const term = document.createElement('dt'); term.textContent = label;
-    const detail = document.createElement('dd'); detail.textContent = value;
-    row.append(term, detail); facts.append(row);
-  }
-  const permissionList = document.createElement('div');
-  permissionList.className = 'account-permissions';
-  permissionList.append(...permissions);
-  accountInfoBody.append(facts, permissionList);
-  accountInfoModal.classList.add('open');
-  accountInfoModal.setAttribute('aria-hidden', 'false');
-  accountInfoClose.focus();
-}
-function closeAccountInfo() {
-  accountInfoModal.classList.remove('open');
-  accountInfoModal.setAttribute('aria-hidden', 'true');
-}
 function roleText(role) {
-  return ({ viewer: '查看用户', operator: '运行操作员', admin: '系统管理员' })[role] || role || '查看用户';
+  return ({ viewer: '游客', operator: '操作员', admin: '管理员', user: '操作员' })[role] || '用户';
 }
 async function loadAccount() {
   if (!authenticated) { redirectToLogin(); return; }
   try {
     account = await apiFetch('/api/me');
     roleLabel.textContent = roleText(account.role);
-    summaryRole.textContent = `${roleText(account.role)} · ${account.permissions?.length || 0} 项权限`;
-    if (displayName?.textContent?.trim()) summaryName.textContent = displayName.textContent.trim();
+    summaryRole.textContent = roleText(account.role);
+    const accountName = account.display_name || account.login_name || displayName?.textContent?.trim() || account.user_id;
+    if (accountName) {
+      displayName.textContent = accountName;
+      summaryName.textContent = accountName;
+    }
     document.documentElement.dataset.role = account.role || 'viewer';
-    document.documentElement.dataset.permissions = (account.permissions || []).join(' ');
     globalThis.dispatchEvent(new CustomEvent('app:account-ready', { detail: account }));
   } catch (error) {
     if (!(error instanceof ApiError && error.status === 401)) console.error(error);
@@ -120,11 +86,8 @@ document.addEventListener('click', (event) => {
   if (!accountPopover?.contains(event.target) && !accountTrigger?.contains(event.target)) closeAccount();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') { closeAccount(); closeAccountInfo(); closePasswordModal(); }
+  if (event.key === 'Escape') { closeAccount(); closePasswordModal(); }
 });
-accountInfoAction?.addEventListener('click', openAccountInfo);
-accountInfoClose?.addEventListener('click', closeAccountInfo);
-accountInfoModal?.addEventListener('click', (event) => { if (event.target === accountInfoModal) closeAccountInfo(); });
 changePasswordAction?.addEventListener('click', openPasswordModal);
 passwordCancel?.addEventListener('click', closePasswordModal);
 passwordModal?.addEventListener('click', (event) => { if (event.target === passwordModal) closePasswordModal(); });

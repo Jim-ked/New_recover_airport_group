@@ -16,6 +16,7 @@ from backend.runtime import (
 from backend.settings import AppSettings, SettingsError
 from backend.services.airport_seed_service import AirportSeedError, bootstrap_airport_master
 from backend.storage.airport_repository import AirportRepository
+from backend.storage.identifier_migration import backup_database, migrate_project_identifiers
 
 
 def _settings() -> AppSettings:
@@ -74,6 +75,14 @@ def _check_command(settings: AppSettings) -> int:
     return 0
 
 
+def _migrate_identifiers_command(settings: AppSettings) -> int:
+    mapping_path = settings.project_root / "resources" / "migrations" / "airport_id_map_20260818.json"
+    backup_path = backup_database(settings.db_path, settings.db_path.parent / "backups")
+    report = migrate_project_identifiers(settings.db_path, mapping_path=mapping_path)
+    print(json.dumps({"backup_path": str(backup_path), **report.__dict__}, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _serve_command(settings: AppSettings) -> int:
     serve(settings)
     return 0
@@ -95,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     init_parser = sub.add_parser("init", help="initialize database and first administrator")
     init_parser.add_argument("--non-interactive", action="store_true")
     sub.add_parser("check", help="validate runtime paths/database and print non-secret status")
+    sub.add_parser("migrate-identifiers", help="backup and migrate mutable airport/Situation identifiers")
     sub.add_parser("serve", help="start the Waitress WSGI server")
     worker_parser = sub.add_parser("worker", help="start the queued Run worker process")
     worker_parser.add_argument(
@@ -115,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
             return _init_command(settings, non_interactive=bool(args.non_interactive))
         if args.command == "check":
             return _check_command(settings)
+        if args.command == "migrate-identifiers":
+            return _migrate_identifiers_command(settings)
         if args.command == "serve":
             return _serve_command(settings)
         if args.command == "worker":

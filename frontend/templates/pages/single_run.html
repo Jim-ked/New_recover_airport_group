@@ -65,58 +65,57 @@
         <div class="chart-legend"><span><i class="legend-departure"></i>出动</span><span><i class="legend-return"></i>返航</span></div>
       </section>
 
-      <div class="single-right-column">
-        <section class="single-panel spatial-panel">
-          <div class="single-panel-title"><strong>组群与航链结构</strong><span>非比例示意 · 地理关系见运行态势</span></div>
-          <div id="spatialChart" class="spatial-chart" role="img" aria-label="冻结运行空间布局"></div>
+      <section class="single-panel single-auxiliary">
+        <nav id="singleAuxTabs" class="single-panel-tabs" aria-label="辅助分析">
+          <button type="button" class="active" data-aux-mode="spatial">组群与航链</button>
+          <button type="button" data-aux-mode="resource">资源余量</button>
+        </nav>
+        <div class="single-aux-content">
+          <section class="spatial-panel" data-aux-panel="spatial">
+            <div class="single-panel-title"><strong>组群任务流结构</strong><span title="按出动机场、任务与返航机场展示聚合架次；真实地理位置见运行态势。">结构示意 ⓘ</span></div>
+            <div id="spatialChart" class="spatial-chart" role="img" aria-label="冻结运行空间布局"></div>
+          </section>
+          <section class="resource-timeline-panel hidden" data-aux-panel="resource">
+            <div class="single-panel-title"><strong>资源余量时序</strong><span>参与机场类别最低余量率</span></div>
+            <div id="resourceTimelineChart" class="svg-chart resource-svg-chart" role="img" aria-label="燃油航材航弹余量时序"></div>
+            <div class="chart-legend resource-legend"><span><i data-category="fuel"></i>燃油</span><span><i data-category="material"></i>航材</span><span><i data-category="munition"></i>航弹</span></div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <section class="single-panel single-bottom">
+      <nav id="singleBottomTabs" class="single-bottom-nav" aria-label="结果结构">
+        <button type="button" class="active" data-bottom-mode="airports">全机场承接</button>
+        <button type="button" data-bottom-mode="missions">任务调度结构</button>
+        <button type="button" data-bottom-mode="aircraft">机型投入结构</button>
+        <button type="button" data-bottom-mode="technical">技术信息</button>
+      </nav>
+      <div class="single-bottom-content">
+        <section class="single-bottom-view" data-bottom-panel="airports">
+          <div class="single-panel-title"><strong>全机场承接</strong><span id="airportCountLabel">全部机场</span></div>
+          <div class="structure-table-wrap"><table class="structure-table">
+            <thead><tr><th>机场</th><th>出动</th><th>返航</th><th>承接占比</th><th>角色</th></tr></thead><tbody id="airportTableBody"></tbody>
+          </table></div>
         </section>
-        <section class="single-panel resource-timeline-panel">
-          <div class="single-panel-title"><strong>资源余量时序</strong><span>参与机场类别最低余量率</span></div>
-          <div id="resourceTimelineChart" class="svg-chart resource-svg-chart" role="img" aria-label="燃油航材航弹余量时序"></div>
-          <div class="chart-legend resource-legend"><span><i data-category="fuel"></i>燃油</span><span><i data-category="material"></i>航材</span><span><i data-category="munition"></i>航弹</span></div>
+        <section class="single-bottom-view hidden" data-bottom-panel="missions">
+          <div class="single-panel-title"><strong>任务调度结构</strong><span id="missionCountLabel">全部任务</span></div>
+          <div class="structure-table-wrap"><table class="structure-table">
+            <thead><tr><th>任务</th><th>需求架次</th><th>已调度架次</th><th>承接机场</th></tr></thead><tbody id="missionTableBody"></tbody>
+          </table></div>
+        </section>
+        <section class="single-bottom-view hidden" data-bottom-panel="aircraft">
+          <div class="single-panel-title"><strong>机型投入结构</strong><span id="aircraftCountLabel">全部机型</span></div>
+          <div class="structure-table-wrap"><table class="structure-table">
+            <thead><tr><th>机型</th><th>投入架次</th><th>投入占比</th><th>出动机场</th></tr></thead><tbody id="aircraftTableBody"></tbody>
+          </table></div>
+        </section>
+        <section class="single-bottom-view hidden" data-bottom-panel="technical">
+          <div class="single-panel-title"><strong>技术信息</strong><span>同一 canonical Metrics</span></div>
+          <div id="technicalSummary" class="technical-summary"></div>
         </section>
       </div>
-    </div>
-
-    <div class="single-bottom">
-      <section class="single-panel structure-card" data-detail-tab="airport">
-        <div class="single-panel-title"><strong>全机场承接</strong><span id="airportCountLabel">全部机场</span></div>
-        <div class="structure-table-wrap">
-          <table class="structure-table">
-            <thead><tr><th>机场</th><th>出动</th><th>返航</th><th>承接占比</th><th>角色</th></tr></thead>
-            <tbody id="airportTableBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="single-panel structure-card" data-detail-tab="mission">
-        <div class="single-panel-title"><strong>任务调度结构</strong><span id="missionCountLabel">全部任务</span></div>
-        <div class="structure-table-wrap">
-          <table class="structure-table">
-            <thead><tr><th>任务</th><th>需求架次</th><th>已调度</th><th>承接机场</th></tr></thead>
-            <tbody id="missionTableBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="single-panel structure-card" data-detail-tab="aircraft">
-        <div class="single-panel-title"><strong>机型投入结构</strong><span id="aircraftCountLabel">全部机型</span></div>
-        <div class="structure-table-wrap">
-          <table class="structure-table">
-            <thead><tr><th>机型</th><th>投入架次</th><th>投入占比</th><th>出动机场</th></tr></thead>
-            <tbody id="aircraftTableBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="single-panel attention-card">
-        <div class="single-panel-title"><strong>方案关注</strong><span>规则状态</span></div>
-        <div class="attention-empty">
-          <strong>未配置自动关注规则</strong>
-          <span>当前仅展示确定的运行事实，不根据资源比例、集中度或峰值自行生成阈值告警。</span>
-        </div>
-      </section>
-    </div>
+    </section>
   </section>
 
   <section id="detailDock" class="detail-dock" aria-label="统一结果详情">

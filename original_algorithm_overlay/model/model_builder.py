@@ -12,12 +12,10 @@ from __future__ import annotations
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 try:  # Real deployment / solver environment.
-    from pyscipopt import Model, quicksum
+    from pyscipopt import Model, quicksum as scip_quicksum
 except ModuleNotFoundError:  # Allows solver-free contract tests for this overlay.
     Model = None
-
-    def quicksum(items):
-        return sum(items)
+    scip_quicksum = None
 
 from .decision_vars import PathKey, PathMaps, build_var_index
 from .model_facts import (
@@ -68,7 +66,7 @@ def _aggregate_views(maps: PathMaps, x_path: Mapping[PathKey, Any]):
     return x_out, x_ret
 
 
-def _add_aircraft_flow(model, ds, maps: PathMaps, x_path, z, A, K, T):
+def _add_aircraft_flow(model, ds, maps: PathMaps, x_path, z, A, K, T, sum_terms):
     departures, ready = aircraft_events(maps)
     z0 = ds["timeview"].get("z0") or {}
     shock = ds["timeview"].get("aircraft_shock") or {}
@@ -78,8 +76,8 @@ def _add_aircraft_flow(model, ds, maps: PathMaps, x_path, z, A, K, T):
             initial = float((z0.get(aid) or {}).get(f, 0.0))
             model.addCons(z[aid][f][0] == initial, name=f"ZINIT__{aid}__{f}")
             for t in range(T):
-                dep = quicksum(x_path[pid] for pid in departures.get((aid, f, t), ()))
-                ret = quicksum(x_path[pid] for pid in ready.get((aid, f, t), ()))
+                dep = sum_terms(x_path[pid] for pid in departures.get((aid, f, t), ()))
+                ret = sum_terms(x_path[pid] for pid in ready.get((aid, f, t), ()))
                 delta = _shock_at(shock, aid, f, t)
                 # ready/shock at slot t are applied before departures at t.  z[t+1]>=0
                 # therefore enforces that loss + departures cannot exceed availability.
@@ -89,7 +87,7 @@ def _add_aircraft_flow(model, ds, maps: PathMaps, x_path, z, A, K, T):
                 )
 
 
-def _add_capacity(model, ds, maps: PathMaps, run_params, x_path, A, T):
+def _add_capacity(model, ds, maps: PathMaps, run_params, x_path, A, T, sum_terms):
     dep_coef, arr_coef = capacity_coefficients(maps, run_params)
     cap = ds["timeview"].get("cap") or {}
     for aid in A:
@@ -104,11 +102,11 @@ def _add_capacity(model, ds, maps: PathMaps, run_params, x_path, A, T):
             for (a, slot, pid), coef in arr_coef.items():
                 if a == aid and slot == t:
                     terms.append(coef * x_path[pid])
-            model.addCons(quicksum(terms) <= float(seq[t]), name=f"CAP__{aid}__{t}")
+            model.addCons(sum_terms(terms) <= float(seq[t]), name=f"CAP__{aid}__{t}")
 
 
 
-def _add_demand(model, ds, maps: PathMaps, x_path, *, vtype: str):
+def _add_demand(model, ds, maps: PathMaps, x_path, *, vtype: str, sum_terms):
     """Add soft baseline-demand constraints.
 
     executed(mid,f) + unmet(mid,f) >= required(mid,f)
@@ -122,13 +120,13 @@ def _add_demand(model, ds, maps: PathMaps, x_path, *, vtype: str):
         var = model.addVar(lb=0.0, vtype=vtype, name=f"UNMET__{mid}__{f}")
         unmet[(mid, f)] = var
         model.addCons(
-            quicksum(x_path[pid] for pid in paths) + var >= float(required),
+            sum_terms(x_path[pid] for pid in paths) + var >= float(required),
             name=f"REQ__{mid}__{f}",
         )
     return unmet
 
 
-def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T):
+def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T, sum_terms):
     """Airport-local shared consumable pools, including reserve-adjusted fuel."""
     uses = resource_use_by_path(maps, run_params)
     limits = ds["timeview"].get("resources") or {}
@@ -158,7 +156,7 @@ def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T):
                 if amount > 0:
                     by_depart.setdefault(p.depart_slot, []).append(amount * x_path[p.key])
             for t in range(T):
-                cumulative = cumulative + quicksum(by_depart.get(t, ()))
+                cumulative = cumulative + sum_terms(by_depart.get(t, ()))
                 model.addCons(cumulative <= float(seq[t]), name=f"RES__{aid}__{rid}__{t}")
 
 
@@ -173,7 +171,7 @@ def _resolve_unmet_penalty(runtime: Mapping[str, Any]) -> float:
     return value
 
 
-def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path, unmet_demand):
+def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path, unmet_demand, sum_terms):
     weights = resolved_alpha(runtime)
     coeffs = objective_coefficients(ds, maps, run_params, runtime)
     terms = []
@@ -186,7 +184,7 @@ def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path, unmet
     for var in unmet_demand.values():
         terms.append(-unmet_penalty * var)
 
-    model.setObjective(quicksum(terms), "maximize")
+    model.setObjective(sum_terms(terms), "maximize")
     return unmet_penalty
 
 
@@ -214,6 +212,7 @@ def build_model(
     factory = model_factory or Model
     if factory is None:
         raise RuntimeError("PySCIPOpt is required to build the optimization model")
+    sum_terms = sum if model_factory is not None else scip_quicksum
     model = factory("AirportClusterModel")
 
     try:
@@ -248,12 +247,12 @@ def build_model(
             for t in range(T + 1):
                 z[aid][f][t] = model.addVar(lb=0.0, vtype=vtype, name=f"Z__{aid}__{f}__{t}")
 
-    _add_aircraft_flow(model, ds, maps, x_path, z, A, K, T)
-    _add_capacity(model, ds, maps, run_params, x_path, A, T)
-    unmet_demand = _add_demand(model, ds, maps, x_path, vtype=vtype)
-    _add_shared_resources(model, ds, maps, run_params, x_path, A, T)
+    _add_aircraft_flow(model, ds, maps, x_path, z, A, K, T, sum_terms)
+    _add_capacity(model, ds, maps, run_params, x_path, A, T, sum_terms)
+    unmet_demand = _add_demand(model, ds, maps, x_path, vtype=vtype, sum_terms=sum_terms)
+    _add_shared_resources(model, ds, maps, run_params, x_path, A, T, sum_terms)
     unmet_penalty = _set_objective(
-        model, ds, maps, run_params, runtime, x_path, unmet_demand
+        model, ds, maps, run_params, runtime, x_path, unmet_demand, sum_terms
     )
 
     x_out, x_ret = _aggregate_views(maps, x_path)

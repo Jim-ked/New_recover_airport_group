@@ -21,6 +21,8 @@ const state = {
   missionById: new Map(),
   timelineMode: 'all',
   timelineObjectId: null,
+  singleAuxMode: 'spatial',
+  singleBottomMode: 'airports',
   detailSelection: { airport: null, mission: null, aircraft: null, resource: 'fuel' },
 };
 
@@ -37,6 +39,7 @@ const refs = {
   airportTableBody: $('airportTableBody'), missionTableBody: $('missionTableBody'), aircraftTableBody: $('aircraftTableBody'),
   airportCountLabel: $('airportCountLabel'), missionCountLabel: $('missionCountLabel'), aircraftCountLabel: $('aircraftCountLabel'),
   detailDock: $('detailDock'), detailTabs: $('detailTabs'), detailBody: $('detailBody'), detailCloseButton: $('detailCloseButton'),
+  auxTabs: $('singleAuxTabs'), bottomTabs: $('singleBottomTabs'), technicalSummary: $('technicalSummary'),
 };
 
 function showError(error) {
@@ -60,15 +63,34 @@ function text(tag, value, className = '') {
 function airportName(id) {
   return state.airportById.get(id)?.airport_name || id || '—';
 }
+function shortRunId(id) {
+  const match = /^RUN-([a-f0-9]{8})/i.exec(String(id || ''));
+  return match ? `R-${match[1].toUpperCase()}` : String(id || '—');
+}
+function airportNumber(id) {
+  const match = /^AP(\d+)$/i.exec(String(id || ''));
+  return match ? match[1].padStart(3, '0') : '';
+}
+function shortAirportName(id) {
+  const name = airportName(id);
+  return name.replace(/\s+(?:International\s+|General\s+)?(?:Airport|Air Base)$/i, '').trim() || name;
+}
+function airportDisplay(id) {
+  const number = airportNumber(id);
+  return `${number ? `${number} ` : ''}${shortAirportName(id)}`;
+}
 function missionName(id) {
   const mission = state.missionById.get(id);
-  return mission ? `${mission.name}（${id}）` : id || '—';
+  return mission?.name || id || '—';
 }
 function percent(ratio, digits = 1) {
   return typeof ratio === 'number' && Number.isFinite(ratio) ? `${(ratio * 100).toFixed(digits)}%` : '—';
 }
 function number(value, digits = 2) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
+}
+function integer(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '—';
 }
 function windowLabel(window) {
   return Number.isInteger(window) ? `T${window}` : '—';
@@ -91,11 +113,11 @@ function renderBadges() {
   const damageId = state.runConfig?.damage_scenario_id;
   const damage = (state.situation?.damage_scenarios || []).find((x) => x.damage_scenario_id === damageId);
   const values = [
-    [state.run.run_id, ''], ['成功', 'success'],
-    [`情境 ${state.situation?.name || state.run.situation_id}`, ''],
-    [`损毁场景 ${damage ? (damage.name || damage.damage_scenario_id) : (damageId || '无损毁')}`, ''],
-    [`优化偏好 ${PREFERENCE_LABELS[state.runConfig?.preference_mode] || state.runConfig?.preference_mode || '—'}`, ''],
-    [`组群 ${state.runConfig?.cluster_enabled ? `${state.runConfig.cluster_size} 个机场` : '未启用'}`, ''],
+    [shortRunId(state.run.run_id), ''], ['成功', 'success'],
+    [state.situation?.name || state.run.situation_id, ''],
+    [damage ? (damage.name || damage.damage_scenario_id) : (damageId || '无损毁'), ''],
+    [PREFERENCE_LABELS[state.runConfig?.preference_mode] || state.runConfig?.preference_mode || '—', ''],
+    [state.runConfig?.cluster_enabled ? `组群${state.runConfig.cluster_size}` : '未启用组群', ''],
   ];
   for (const [value, cls] of values) refs.runBadges.append(text('span', value, `single-badge ${cls}`.trim()));
 }
@@ -105,24 +127,28 @@ function renderSummary() {
   const s = m.summary;
   const c = m.collaboration;
   const clusterEnabled = Boolean(state.runConfig?.cluster_enabled);
-  refs.clusterPrimary.textContent = clusterEnabled ? `组选机场 ${s.selected_cluster_count} 个` : '未启用组选';
-  refs.clusterMeta.innerHTML = `实际参与机场　${s.participating_airport_count} 个<br>核心机场　${s.core_airport_count} 个`;
+  refs.clusterPrimary.textContent = clusterEnabled ? `组选 ${integer(s.selected_cluster_count)}` : '未启用组选';
+  refs.clusterMeta.textContent = `参与 ${integer(s.participating_airport_count)} · 核心 ${integer(s.core_airport_count)}`;
   refs.clusterBadges.replaceChildren();
-  if (c.selected_cluster.length) {
-    for (const id of c.selected_cluster) refs.clusterBadges.append(text('span', airportName(id)));
+  const selectedCluster = Array.isArray(c.selected_cluster) ? c.selected_cluster : [];
+  if (selectedCluster.length) {
+    for (let index = 0; index < Math.min(2, selectedCluster.length); index += 1) {
+      refs.clusterBadges.append(text('span', airportDisplay(selectedCluster[index])));
+    }
+    if (selectedCluster.length > 2) refs.clusterBadges.append(text('span', `另 ${selectedCluster.length - 2} 个`));
   } else {
     refs.clusterBadges.append(text('span', '本 Run 无组选机场'));
   }
 
-  refs.missionPrimary.textContent = `任务 ${s.mission_count} 项`;
-  refs.missionMeta.innerHTML = `需求　${s.required_sorties_total} 架次<br>已调度　${s.scheduled_sorties_total} 架次<br>成功 Run：硬约束已满足`;
+  refs.missionPrimary.textContent = `任务 ${integer(s.mission_count)}`;
+  refs.missionMeta.textContent = `需求 ${integer(s.required_sorties_total)} · 调度 ${integer(s.scheduled_sorties_total)}`;
 
-  refs.sortiePrimary.textContent = `出动 ${s.scheduled_sorties_total} 架次`;
-  refs.sortieMeta.innerHTML = `返航　${s.returned_sorties_total} 架次<br>峰值出动量　${s.peak_departure_slot.sorties} 架次<br>峰值时段　${windowLabel(s.peak_departure_slot.window)}`;
+  refs.sortiePrimary.textContent = `出动 ${integer(s.scheduled_sorties_total)}`;
+  refs.sortieMeta.textContent = `返航 ${integer(s.returned_sorties_total)} · 峰值 ${integer(s.peak_departure_slot?.sorties)} · ${windowLabel(s.peak_departure_slot?.window)}`;
 
-  const maxAirport = s.max_airport_departure;
-  refs.collaborationPrimary.textContent = `参与机场 ${s.participating_airport_count} 个`;
-  refs.collaborationMeta.innerHTML = `最大承接　${airportName(maxAirport.airport_id)}<br>承接占比　${percent(maxAirport.share)}<br>集中度 HHI　${number(c.departure_hhi, 4)}`;
+  const maxAirport = s.max_airport_departure || {};
+  refs.collaborationPrimary.textContent = `参与 ${integer(s.participating_airport_count)}`;
+  refs.collaborationMeta.innerHTML = `最大承接　${airportDisplay(maxAirport.airport_id)}<br>承接占比　${percent(maxAirport.share)}<br>集中度 HHI　${number(c.departure_hhi, 4)}`;
 
   refs.resourceSummary.replaceChildren();
   const mins = m.resources?.category_min_remaining_ratio || {};
@@ -174,8 +200,38 @@ function pathFromSeries(values, width, height, maxValue, pad = 26) {
   return parts.join(' ');
 }
 
-function renderLineChart(container, series, { ratioAxis = false } = {}) {
+function validateTimelineSeries(windows, series) {
+  const invalid = '时序数据无效。';
+  const mismatch = '时序长度与时间窗不一致。';
+  if (!Array.isArray(windows) || !Array.isArray(series)) return { ok: false, message: invalid };
+  const checked = [];
+  for (const row of series) {
+    if (!Array.isArray(row?.values)) return { ok: false, message: invalid };
+    if (row.values.length !== windows.length) return { ok: false, message: mismatch };
+    const values = [];
+    for (const value of row.values) {
+      if (value === null) { values.push(null); continue; }
+      if (typeof value !== 'number' || !Number.isFinite(value)) return { ok: false, message: invalid };
+      values.push(value);
+    }
+    checked.push({ ...row, values });
+  }
+  return { ok: true, series: checked };
+}
+
+function nearestWindowIndex(clientX, rect, count, pad, width) {
+  if (count <= 1) return 0;
+  const svgX = ((clientX - rect.left) / Math.max(1, rect.width)) * width;
+  const ratio = Math.max(0, Math.min(1, (svgX - pad) / Math.max(1, width - pad * 2)));
+  return Math.round(ratio * (count - 1));
+}
+
+function renderLineChart(container, series, { ratioAxis = false, contextLabel = null } = {}) {
   container.replaceChildren();
+  const windows = state.metrics.time_axis.windows;
+  const checked = validateTimelineSeries(windows, series);
+  if (!checked.ok) { container.append(text('div', checked.message, 'chart-empty chart-error')); return; }
+  series = checked.series;
   const valid = series.some((row) => row.values.some((v) => typeof v === 'number' && Number.isFinite(v)));
   if (!valid) { container.append(text('div', '当前维度没有可展示的时序数据', 'chart-empty')); return; }
   const width = 760, height = 250, pad = 28;
@@ -197,7 +253,15 @@ function renderLineChart(container, series, { ratioAxis = false } = {}) {
     const titleEl = svgElement('title'); titleEl.textContent = row.label; path.append(titleEl);
     svg.append(path);
   }
-  const windows = state.metrics.time_axis.windows || [];
+  const hover = svgElement('g', { class: 'chart-hover-layer', visibility: 'hidden' });
+  const hoverLine = svgElement('line', { class: 'chart-hover-line', y1: pad, y2: height - pad });
+  hover.append(hoverLine);
+  const hoverPoints = series.map((row) => {
+    const point = svgElement('circle', { class: 'chart-hover-point', r: 3.6, fill: row.stroke });
+    hover.append(point);
+    return point;
+  });
+  svg.append(hover);
   const labels = windows.length > 2 ? [0, Math.floor((windows.length - 1) / 2), windows.length - 1] : windows.map((_, i) => i);
   for (const index of [...new Set(labels)]) {
     if (index < 0 || index >= windows.length) continue;
@@ -208,7 +272,36 @@ function renderLineChart(container, series, { ratioAxis = false } = {}) {
   }
   const top = svgElement('text', { x: 5, y: pad + 4, fill: '#708fa3', 'font-size': '8' });
   top.textContent = ratioAxis ? percent(maxValue, 0) : String(maxValue); svg.append(top);
-  container.append(svg);
+  const tooltip = text('div', '', 'chart-hover-tooltip');
+  tooltip.hidden = true;
+  const move = (event) => {
+    const rect = svg.getBoundingClientRect();
+    const index = nearestWindowIndex(event.clientX, rect, windows.length, pad, width);
+    const xSpan = width - pad * 2;
+    const x = pad + (windows.length === 1 ? xSpan / 2 : (index / (windows.length - 1)) * xSpan);
+    hoverLine.setAttribute('x1', x); hoverLine.setAttribute('x2', x);
+    hoverPoints.forEach((point, seriesIndex) => {
+      const value = series[seriesIndex].values[index];
+      const visible = typeof value === 'number' && Number.isFinite(value);
+      point.setAttribute('visibility', visible ? 'visible' : 'hidden');
+      if (!visible) return;
+      point.setAttribute('cx', x);
+      point.setAttribute('cy', height - pad - (value / maxValue) * (height - pad * 2));
+    });
+    hover.setAttribute('visibility', 'visible');
+    const lines = [contextLabel, windowLabel(windows[index]), ...series.map((row) => {
+      const value = row.values[index];
+      const shown = typeof value === 'number' && Number.isFinite(value) ? (ratioAxis ? percent(value) : integer(value)) : '—';
+      return `${row.shortLabel || row.label} ${shown}${ratioAxis ? '' : ' 架次'}`;
+    })].filter(Boolean);
+    tooltip.textContent = lines.join('\n'); tooltip.hidden = false;
+    const containerRect = container.getBoundingClientRect();
+    tooltip.style.left = `${Math.min(containerRect.width - 12, Math.max(8, event.clientX - containerRect.left + 10))}px`;
+    tooltip.style.top = `${Math.max(8, event.clientY - containerRect.top - 12)}px`;
+  };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerleave', () => { hover.setAttribute('visibility', 'hidden'); tooltip.hidden = true; });
+  container.append(svg, tooltip);
 }
 
 function timelineKeys(mode) {
@@ -250,9 +343,9 @@ function renderTimeline() {
   if (!block) { refs.timelineChart.replaceChildren(text('div', '当前维度没有对象', 'chart-empty')); return; }
   refs.timelineChart.setAttribute('aria-label', `${label}出动返航时序`);
   renderLineChart(refs.timelineChart, [
-    { label: `${label} 出动`, values: block.departures || [], stroke: '#3f9fe7' },
-    { label: `${label} 返航`, values: block.returns || [], stroke: '#65c987' },
-  ]);
+    { label: `${label} 出动`, shortLabel: '出动', values: block.departures || [], stroke: '#3f9fe7' },
+    { label: `${label} 返航`, shortLabel: '返航', values: block.returns || [], stroke: '#65c987' },
+  ], { contextLabel: state.timelineMode === 'all' ? null : label });
 }
 
 function renderResourceTimeline() {
@@ -266,55 +359,109 @@ function renderResourceTimeline() {
   renderLineChart(refs.resourceTimelineChart, data, { ratioAxis: true });
 }
 
+function aggregateTaskFlows(chains) {
+  const outbound = new Map(), inbound = new Map();
+  const add = (target, key, chain) => {
+    const row = target.get(key) || { missionId: chain.mission_id, sorties: 0, aircraft: new Map(), chains: [] };
+    row.sorties += chain.sorties; row.chains.push(chain);
+    row.aircraft.set(chain.aircraft_type, (row.aircraft.get(chain.aircraft_type) || 0) + chain.sorties);
+    target.set(key, row);
+  };
+  for (const chain of chains || []) {
+    if (!chain?.origin_airport_id || !chain?.mission_id || !chain?.return_airport_id || typeof chain.sorties !== 'number') continue;
+    add(outbound, `${chain.origin_airport_id}\u0000${chain.mission_id}`, chain);
+    add(inbound, `${chain.mission_id}\u0000${chain.return_airport_id}`, chain);
+  }
+  for (const [key, row] of outbound) [row.originId, row.missionId] = key.split('\u0000');
+  for (const [key, row] of inbound) [row.missionId, row.returnId] = key.split('\u0000');
+  return { outbound: [...outbound.values()], inbound: [...inbound.values()] };
+}
+function flowRank(rows, field) {
+  const totals = new Map();
+  for (const row of rows) totals.set(row[field], (totals.get(row[field]) || 0) + row.sorties);
+  return [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([id]) => id);
+}
+function flowY(index, count, height) { return count <= 1 ? height / 2 : 24 + index * ((height - 48) / (count - 1)); }
+function flowWindowRange(chains, field) {
+  const values = chains.map((row) => row[field]).filter(Number.isInteger);
+  if (!values.length) return null;
+  const lo = Math.min(...values), hi = Math.max(...values); return lo === hi ? windowLabel(lo) : `${windowLabel(lo)}–${windowLabel(hi)}`;
+}
+function flowAircraftLabel(row) { return [...row.aircraft].map(([id, sorties]) => `${id} ${sorties}`).join('、') || '—'; }
+
 function renderSpatial() {
   refs.spatialChart.replaceChildren();
-  const metrics = state.metrics;
-  const selected = new Set(metrics.collaboration.selected_cluster || []);
-  const participating = new Set(metrics.collaboration.participating_airports || []);
-  const core = new Set(metrics.collaboration.core_airports || []);
-  const airportIds = [...new Set([...selected, ...participating, ...core])].sort();
-  const missionIds = [...new Set((state.solution.sortie_chains || []).map((x) => x.mission_id))].sort();
-  const points = [];
-  for (const id of airportIds) {
-    const a = state.airportById.get(id);
-    if (a) points.push({ type: 'airport', id, lon: Number(a.longitude), lat: Number(a.latitude) });
+  const flows = aggregateTaskFlows(state.solution.sortie_chains || []);
+  if (!flows.outbound.length && !flows.inbound.length) {
+    refs.spatialChart.append(text('div', '当前 Run 没有可展示的任务流', 'chart-empty')); return;
   }
-  for (const id of missionIds) {
-    const m = state.missionById.get(id);
-    if (m) points.push({ type: 'mission', id, lon: Number(m.longitude), lat: Number(m.latitude) });
-  }
-  if (!points.length || points.some((p) => !Number.isFinite(p.lon) || !Number.isFinite(p.lat))) {
-    refs.spatialChart.append(text('div', '冻结 Situation 缺少可展示的经纬坐标', 'chart-empty')); return;
-  }
-  const width = 520, height = 150, pad = 18;
-  let lonMin = Math.min(...points.map((p) => p.lon)), lonMax = Math.max(...points.map((p) => p.lon));
-  let latMin = Math.min(...points.map((p) => p.lat)), latMax = Math.max(...points.map((p) => p.lat));
-  if (lonMax === lonMin) { lonMin -= .5; lonMax += .5; }
-  if (latMax === latMin) { latMin -= .5; latMax += .5; }
-  const project = (lon, lat) => ({
-    x: pad + ((lon - lonMin) / (lonMax - lonMin)) * (width - pad * 2),
-    y: height - pad - ((lat - latMin) / (latMax - latMin)) * (height - pad * 2),
-  });
-  const svg = svgElement('svg', { viewBox: `0 0 ${width} ${height}` });
-  const pos = new Map(points.map((p) => [p.id, project(p.lon, p.lat)]));
-  for (const chain of state.solution.sortie_chains || []) {
-    const a = pos.get(chain.origin_airport_id), m = pos.get(chain.mission_id), r = pos.get(chain.return_airport_id);
-    if (!a || !m || !r) continue;
-    const poly = svgElement('polyline', { points: `${a.x},${a.y} ${m.x},${m.y} ${r.x},${r.y}`, fill: 'none', stroke: '#2e7bb7', 'stroke-width': '1.1', opacity: '.52', 'stroke-dasharray': '4 3' });
-    const titleEl = svgElement('title'); titleEl.textContent = `${chain.path_id} · ${chain.sorties} 架次`; poly.append(titleEl); svg.append(poly);
-  }
-  for (const p of points) {
-    const xy = pos.get(p.id);
-    if (p.type === 'mission') {
-      const rect = svgElement('rect', { x: xy.x - 3.5, y: xy.y - 3.5, width: 7, height: 7, fill: '#d7a552', stroke: '#f5d398', 'stroke-width': '.8' });
-      const titleEl = svgElement('title'); titleEl.textContent = missionName(p.id); rect.append(titleEl); svg.append(rect);
-    } else {
-      const fill = core.has(p.id) ? '#f0b35d' : selected.has(p.id) ? '#3c9df2' : '#62c987';
-      const circle = svgElement('circle', { cx: xy.x, cy: xy.y, r: core.has(p.id) ? 5 : 4, fill, stroke: '#dff2ff', 'stroke-width': '.7' });
-      const titleEl = svgElement('title'); titleEl.textContent = `${airportName(p.id)} · ${core.has(p.id) ? '核心' : selected.has(p.id) ? '组选' : '参与'}`; circle.append(titleEl); svg.append(circle);
+  const origins = flowRank(flows.outbound, 'originId');
+  const missions = flowRank([...flows.outbound, ...flows.inbound], 'missionId');
+  const returns = flowRank(flows.inbound, 'returnId');
+  const width = 560, height = Math.max(180, Math.max(origins.length, missions.length, returns.length) * 30 + 34);
+  const columns = { origin: 12, mission: 230, return: 424 };
+  const nodeWidths = { origin: 124, mission: 104, return: 124 };
+  const positions = {
+    origin: new Map(origins.map((id, index) => [id, flowY(index, origins.length, height)])),
+    mission: new Map(missions.map((id, index) => [id, flowY(index, missions.length, height)])),
+    return: new Map(returns.map((id, index) => [id, flowY(index, returns.length, height)])),
+  };
+  const maxSorties = Math.max(1, ...flows.outbound.map((row) => row.sorties), ...flows.inbound.map((row) => row.sorties));
+  const svg = svgElement('svg', { viewBox: `0 0 ${width} ${height}`, class: 'flow-diagram', 'aria-label': '出动机场到任务再到返航机场的聚合任务流' });
+  const tooltip = text('div', '', 'flow-tooltip'); tooltip.hidden = true;
+  const setHighlight = (missionId, active) => {
+    for (const edge of svg.querySelectorAll('.flow-edge')) {
+      edge.classList.toggle('related', active && edge.dataset.missionId === missionId);
+      edge.classList.toggle('dimmed', active && edge.dataset.missionId !== missionId);
     }
-  }
-  refs.spatialChart.append(svg, text('span', '基于冻结经纬坐标生成的非比例结构示意；完整 GIS 在运行态势页展示', 'spatial-note'));
+  };
+  const showFlowTooltip = (row, kind, event) => {
+    const related = kind === 'outbound'
+      ? [...new Set(flows.inbound.filter((item) => item.missionId === row.missionId).map((item) => airportDisplay(item.returnId)))]
+      : [...new Set(flows.outbound.filter((item) => item.missionId === row.missionId).map((item) => airportDisplay(item.originId)))];
+    const titleValue = kind === 'outbound'
+      ? `${airportDisplay(row.originId)} → ${missionName(row.missionId)}`
+      : `${missionName(row.missionId)} → ${airportDisplay(row.returnId)}`;
+    tooltip.textContent = [titleValue, `${kind === 'outbound' ? '返航' : '出动'}关系：${related.join('、')}`, `架次：${integer(row.sorties)}`, `机型：${flowAircraftLabel(row)}`, `出动：${flowWindowRange(row.chains, 'depart_window') || '—'} · 返航：${flowWindowRange(row.chains, 'return_window') || '—'}`].join('\n');
+    tooltip.hidden = false;
+    const rect = refs.spatialChart.getBoundingClientRect();
+    tooltip.style.left = `${Math.max(8, Math.min(rect.width - 12, (event?.clientX || rect.left + rect.width / 2) - rect.left + 8))}px`;
+    tooltip.style.top = `${Math.max(8, (event?.clientY || rect.top + rect.height / 2) - rect.top - 12)}px`;
+  };
+  const appendEdge = (row, kind) => {
+    const outbound = kind === 'outbound';
+    const x1 = outbound ? columns.origin + nodeWidths.origin : columns.mission + nodeWidths.mission;
+    const x2 = outbound ? columns.mission : columns.return;
+    const y1 = outbound ? positions.origin.get(row.originId) : positions.mission.get(row.missionId);
+    const y2 = outbound ? positions.mission.get(row.missionId) : positions.return.get(row.returnId);
+    const curve = Math.max(26, (x2 - x1) * .48);
+    const edge = svgElement('path', {
+      d: `M${x1} ${y1} C${x1 + curve} ${y1},${x2 - curve} ${y2},${x2} ${y2}`,
+      class: `flow-edge flow-${kind}`, fill: 'none', tabindex: '0', role: 'button',
+      'stroke-width': (1.2 + 3.8 * Math.sqrt(row.sorties / maxSorties)).toFixed(2),
+      'data-mission-id': row.missionId,
+    });
+    const enter = (event) => { setHighlight(row.missionId, true); showFlowTooltip(row, kind, event); };
+    const leave = () => { setHighlight(row.missionId, false); tooltip.hidden = true; };
+    edge.addEventListener('pointerenter', enter); edge.addEventListener('pointermove', (event) => showFlowTooltip(row, kind, event)); edge.addEventListener('pointerleave', leave);
+    edge.addEventListener('focus', enter); edge.addEventListener('blur', leave); edge.addEventListener('click', () => openDetail('mission', row.missionId));
+    svg.append(edge);
+  };
+  flows.outbound.forEach((row) => appendEdge(row, 'outbound'));
+  flows.inbound.forEach((row) => appendEdge(row, 'return'));
+
+  const appendNode = (kind, id, label, openTab) => {
+    const y = positions[kind].get(id), x = columns[kind], w = nodeWidths[kind];
+    const group = svgElement('g', { class: `flow-node flow-${kind}`, tabindex: '0', role: 'button' });
+    group.append(svgElement('rect', { x, y: y - 11, width: w, height: 22, rx: 3 }));
+    const labelEl = svgElement('text', { x: x + 6, y: y + 3.5 }); labelEl.textContent = label; group.append(labelEl);
+    const open = () => openDetail(openTab, id); group.addEventListener('click', open); group.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+    svg.append(group);
+  };
+  origins.forEach((id) => appendNode('origin', id, airportDisplay(id), 'airport'));
+  missions.forEach((id) => appendNode('mission', id, missionName(id), 'mission'));
+  returns.forEach((id) => appendNode('return', id, airportDisplay(id), 'airport'));
+  refs.spatialChart.append(svg, tooltip);
 }
 
 function roleCell(row) {
@@ -339,7 +486,7 @@ function renderStructureTables() {
   refs.airportTableBody.replaceChildren();
   for (const [id, row] of airportRows) {
     const tr = document.createElement('tr'); tr.tabIndex = 0;
-    appendCell(tr, airportName(id), id); appendCell(tr, row.departures_total); appendCell(tr, row.returns_total); appendCell(tr, percent(row.departure_share)); appendCell(tr, roleCell(row));
+    appendCell(tr, airportDisplay(id), id); appendCell(tr, row.departures_total); appendCell(tr, row.returns_total); appendCell(tr, percent(row.departure_share)); appendCell(tr, roleCell(row));
     const open = () => openDetail('airport', id); tr.addEventListener('click', open); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); }); refs.airportTableBody.append(tr);
   }
 
@@ -376,7 +523,7 @@ function renderAirportDetail(id) {
   const row = state.metrics.airports?.[id]; if (!row) return text('div', '没有机场结果');
   const root = document.createElement('div');
   const grid = document.createElement('div'); grid.className = 'detail-grid';
-  grid.append(detailItem('机场', `${airportName(id)}（${id}）`), detailItem('出动架次', row.departures_total), detailItem('返航架次', row.returns_total), detailItem('承接占比', percent(row.departure_share)));
+  grid.append(detailItem('机场', airportDisplay(id)), detailItem('出动架次', row.departures_total), detailItem('返航架次', row.returns_total), detailItem('承接占比', percent(row.departure_share)));
   root.append(grid);
   const flags = [row.is_core && '核心机场', row.is_selected_cluster && '组选机场', row.is_participating && '实际参与'].filter(Boolean);
   root.append(detailSection('运行角色', (flags.length ? flags : ['未承接任务']).map(pill)));
@@ -420,7 +567,7 @@ function renderResourceDetail(category) {
 }
 function renderTechnicalDetail() {
   const t = state.metrics.technical || {}; const root = document.createElement('div'); const grid = document.createElement('div'); grid.className = 'detail-grid';
-  grid.append(detailItem('Metrics Schema', state.metrics.schema_version), detailItem('Snapshot Hash', t.snapshot_hash), detailItem('Solver Status', t.solver_status ?? '—'), detailItem('Objective', t.objective ?? '—'), detailItem('Gap', t.gap ?? '—'), detailItem('Solve Time', t.solve_time_s != null ? `${t.solve_time_s}s` : '—'), detailItem('Algorithm Version', t.algorithm_version ?? '—'), detailItem('时间粒度', `${state.metrics.time_axis.slot_minutes} min/窗`)); root.append(grid);
+  grid.append(detailItem('完整 Run ID', state.runId), detailItem('Metrics Schema', state.metrics.schema_version), detailItem('Snapshot Hash', t.snapshot_hash), detailItem('Solver Status', t.solver_status ?? '—'), detailItem('Objective', t.objective ?? '—'), detailItem('Gap', t.gap ?? '—'), detailItem('Solve Time', t.solve_time_s != null ? `${t.solve_time_s}s` : '—'), detailItem('Algorithm Version', t.algorithm_version ?? '—'), detailItem('时间粒度', `${state.metrics.time_axis.slot_minutes} min/窗`)); root.append(grid);
   const section = document.createElement('section'); section.className = 'detail-section'; section.append(text('h3', '冻结 RunConfig'));
   const pre = text('pre', JSON.stringify(state.runConfig, null, 2), 'detail-series'); section.append(pre); root.append(section); return root;
 }
@@ -449,6 +596,36 @@ function openDetail(tab, id = null) {
   renderDetail(tab);
 }
 
+function renderWorkspaceTabs() {
+  for (const button of refs.auxTabs.querySelectorAll('[data-aux-mode]')) {
+    button.classList.toggle('active', button.dataset.auxMode === state.singleAuxMode);
+  }
+  document.querySelectorAll('[data-aux-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.auxPanel !== state.singleAuxMode);
+  });
+  for (const button of refs.bottomTabs.querySelectorAll('[data-bottom-mode]')) {
+    button.classList.toggle('active', button.dataset.bottomMode === state.singleBottomMode);
+  }
+  document.querySelectorAll('[data-bottom-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.bottomPanel !== state.singleBottomMode);
+  });
+}
+
+function renderTechnicalSummary() {
+  const technical = state.metrics.technical || {};
+  const facts = [
+    ['Metrics Schema', state.metrics.schema_version],
+    ['Snapshot Hash', technical.snapshot_hash],
+    ['Solver Status', technical.solver_status],
+    ['Objective', technical.objective],
+    ['Gap', technical.gap],
+    ['Solve Time', technical.solve_time_s != null ? `${technical.solve_time_s}s` : null],
+    ['Algorithm Version', technical.algorithm_version],
+    ['时间粒度', Number.isInteger(state.metrics.time_axis.slot_minutes) ? `${state.metrics.time_axis.slot_minutes} min/窗` : null],
+  ];
+  refs.technicalSummary.replaceChildren(...facts.map(([label, value]) => detailItem(label, value ?? '—')));
+}
+
 function bindInteractions() {
   refs.timelineModes.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-mode]'); if (!button) return;
@@ -458,10 +635,18 @@ function bindInteractions() {
   refs.detailTabs.addEventListener('click', (event) => { const button = event.target.closest('button[data-tab]'); if (button) renderDetail(button.dataset.tab); });
   refs.detailCloseButton.addEventListener('click', () => refs.detailDock.classList.remove('open'));
   refs.openRuntimeButton.addEventListener('click', () => { window.location.href = `/runs/${encodeURIComponent(state.runId)}/runtime`; });
+  refs.auxTabs.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-aux-mode]'); if (!button) return;
+    state.singleAuxMode = button.dataset.auxMode; renderWorkspaceTabs();
+  });
+  refs.bottomTabs.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-bottom-mode]'); if (!button) return;
+    state.singleBottomMode = button.dataset.bottomMode; renderWorkspaceTabs();
+  });
 }
 
 function renderAll() {
-  renderBadges(); renderSummary(); renderTimeline(); renderSpatial(); renderResourceTimeline(); renderStructureTables();
+  renderBadges(); renderSummary(); renderTimeline(); renderSpatial(); renderResourceTimeline(); renderStructureTables(); renderTechnicalSummary(); renderWorkspaceTabs();
   refs.loading.classList.add('hidden'); refs.content.classList.remove('hidden');
 }
 

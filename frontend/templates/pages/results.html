@@ -11,60 +11,68 @@
 
   <section class="results-condition">
     <strong id="conditionTitle">当前比较条件</strong>
-    <div id="conditionFacts" class="condition-facts">尚未选择比较条件</div>
+    <div id="conditionFacts" class="condition-facts" role="status" aria-live="polite">正在读取运行结果…</div>
     <div id="resultsScopeError" class="results-scope-error hidden" role="alert"></div>
     <span class="condition-spacer"></span>
-    <button id="changeConditionButton" class="btn" type="button">选择比较条件</button>
-    <div class="results-export"><button id="resultsExportButton" class="btn" type="button" disabled aria-expanded="false">导出</button><div id="resultsExportMenu" class="results-export-menu" aria-hidden="true"><button type="button" data-export-format="pdf">PDF 汇总报告</button><button type="button" data-export-format="csv">CSV 运行结果</button></div></div>
+    <div id="resultsConditionActions" class="results-condition-actions">
+      <button id="resultsRulesButton" class="btn hidden" type="button">查看比较条件</button>
+      <a id="resultsRunLink" class="btn primary hidden" href="/run">前往算法运行</a>
+      <button id="changeConditionButton" class="btn hidden" type="button">选择比较条件</button>
+      <button id="resultsRetryButton" class="btn hidden" type="button">重试</button>
+      <div id="resultsExport" class="results-export hidden"><button id="resultsExportButton" class="btn" type="button" disabled aria-expanded="false">导出</button><div id="resultsExportMenu" class="results-export-menu" aria-hidden="true"><button type="button" data-export-format="pdf">PDF 汇总报告</button><button type="button" data-export-format="csv">CSV 运行结果</button></div></div>
+    </div>
   </section>
-  <section id="resultsTop" class="results-top hidden"></section>
-  <section id="resultsMetrics" class="results-metrics"></section>
+  <section id="resultsMetrics" class="results-metrics hidden"></section>
 
-  <section class="results-main">
+  <section id="resultsMain" class="results-main">
     <article class="results-box chart-box">
       <header class="results-box-head">
-        <strong id="resultsChartTitle">出动架次时序比较</strong>
-        <div class="results-chart-controls">
-          <div id="resultsSeriesKind" class="segmented series-kind" role="group" aria-label="时序类型">
-            <button type="button" class="active" data-series-kind="departures">出动</button>
-            <button type="button" data-series-kind="returns">返航</button>
-          </div>
-          <div id="resultsChartModes" class="segmented" role="group" aria-label="图表对象类型">
-            <button type="button" class="active" data-chart-mode="all">全部</button>
-            <button type="button" data-chart-mode="airport">机场</button>
-            <button type="button" data-chart-mode="mission">任务</button>
-            <button type="button" data-chart-mode="aircraft">机型</button>
+        <strong id="resultsChartTitle">时序比较</strong>
+        <div id="resultsChartControls" class="results-chart-controls hidden">
+          <div class="results-segmented-groups">
+            <div id="resultsSeriesKind" class="segmented" role="group" aria-label="时序类型">
+              <button type="button" class="active" data-series-kind="departures">出动</button>
+              <button type="button" data-series-kind="returns">返航</button>
+            </div>
+            <div id="resultsChartModes" class="segmented" role="group" aria-label="图表对象类型">
+              <button type="button" class="active" data-chart-mode="all">全部</button>
+              <button type="button" data-chart-mode="airport">机场</button>
+              <button type="button" data-chart-mode="mission">任务</button>
+              <button type="button" data-chart-mode="aircraft">机型</button>
+            </div>
           </div>
           <select id="resultsObjectSelect" class="mini-select hidden" aria-label="选择比较对象"></select>
         </div>
       </header>
-      <div id="resultsChart" class="results-chart"><div class="results-placeholder">暂无比较数据</div></div>
+      <div id="resultsChart" class="results-chart"><div class="results-placeholder">加载中…</div></div>
       <div id="resultsLegend" class="results-legend"></div>
     </article>
 
     <aside class="results-box diff-box">
       <header class="results-box-head"><strong id="resultsDiffTitle">关键差异</strong></header>
-      <div id="resultsDiff" class="results-diff"><div class="results-placeholder">比较后显示确定性差异</div></div>
+      <div id="resultsDiff" class="results-diff"><div class="results-placeholder">—</div></div>
     </aside>
   </section>
 
-  <section class="results-bottom">
+  <section id="resultsBottom" class="results-bottom">
     <nav class="results-bottom-nav">
       <button type="button" class="active" data-bottom-mode="airports">全机场承接</button>
       <button type="button" data-bottom-mode="resources">资源变化</button>
       <button type="button" data-bottom-mode="scheme">方案结构</button>
       <span></span>
-      <button type="button" class="small active" data-airport-value="sorties">出动架次</button>
-      <button type="button" class="small" data-airport-value="share">累计承接占比</button>
+      <div id="resultsAirportValueControls" class="results-airport-value-controls hidden">
+        <button type="button" class="small active" data-airport-value="sorties">出动架次</button>
+        <button type="button" class="small" data-airport-value="share">承接占比</button>
+      </div>
     </nav>
-    <div id="resultsTable" class="results-table-wrap"><div class="results-placeholder">暂无比较数据</div></div>
+    <div id="resultsTable" class="results-table-wrap"><div class="results-placeholder">—</div></div>
   </section>
 
   <aside id="resultsOverlay" class="results-overlay" aria-label="修改比较条件" aria-hidden="true">
     <header><strong id="resultsOverlayTitle">选择比较条件</strong><button id="closeResultsOverlay" type="button" class="btn ghost" aria-label="关闭比较条件抽屉">×</button></header>
-    <div class="results-overlay-search"><input id="resultsRunSearch" class="control" type="search" placeholder="搜索 Run ID、情境或损毁场景" aria-label="搜索成功 Run"></div>
+    <div id="resultsOverlaySearch" class="results-overlay-search"><input id="resultsRunSearch" class="control" type="search" placeholder="搜索 Run ID、情境或损毁场景" aria-label="搜索成功 Run"></div>
     <div id="resultsOverlayBody" class="results-overlay-body"></div>
-    <footer><button id="cancelResultsOverlay" type="button" class="btn">取消</button><button id="applyResultsComparison" type="button" class="btn primary" disabled>应用比较</button></footer>
+    <footer id="resultsOverlayFooter"><button id="cancelResultsOverlay" type="button" class="btn">取消</button><button id="applyResultsComparison" type="button" class="btn primary" disabled>应用比较</button></footer>
   </aside>
 
   <div id="resultsError" class="results-error hidden" role="alert"></div>

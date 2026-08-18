@@ -62,6 +62,12 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual({"R0": "R0", "R1": "R1", "R2": "R2"}, response.body["roles"])
         self.assertEqual("R1-R0", response.body["definitions"]["damage_delta"])
         self.assertEqual("R2-R1", response.body["definitions"]["cluster_delta"])
+        self.assertEqual({"R0", "R1", "R2"}, set(response.body["run_summaries"]))
+        self.assertIn("mission_count", response.body["run_summaries"]["R0"])
+        self.assertIn("returned_sorties_total", response.body["run_summaries"]["R0"])
+        self.assertIn("required_total", response.body["tasks"]["M1"])
+        self.assertIn("scheduled_total", response.body["tasks"]["M1"])
+        self.assertEqual("Mission", response.body["labels"]["missions"]["M1"])
 
         candidates = self.api.damage_candidates(principal=self.u1)
         self.assertEqual(200, candidates.status)
@@ -147,6 +153,9 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual(200, multi.status)
         self.assertEqual("multi_scenario", multi.body["mode"])
         self.assertEqual(["SCENE1", "SCENE2"], multi.body["run_ids"])
+        self.assertEqual({"SCENE1", "SCENE2"}, set(multi.body["run_summaries"]))
+        self.assertIn("required_total", multi.body["tasks"]["M1"]["SCENE1"])
+        self.assertIn("scheduled_total", multi.body["tasks"]["M1"]["SCENE1"])
         self.assertNotIn("best", str(multi.body).lower())
 
         cfg = self.api.configuration_comparison(
@@ -156,6 +165,9 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual(200, cfg.status)
         self.assertEqual("configuration", cfg.body["mode"])
         self.assertEqual("SCENE1", cfg.body["baseline_run_id"])
+        self.assertEqual({"SCENE1", "CONFIG"}, set(cfg.body["run_summaries"]))
+        self.assertIn("required_total", cfg.body["tasks"]["M1"]["SCENE1"])
+        self.assertIn("scheduled_total", cfg.body["tasks"]["M1"]["SCENE1"])
         self.assertEqual(
             0.0,
             cfg.body["summary_deltas_vs_baseline"]["SCENE1"]["participating_airport_count_delta"],

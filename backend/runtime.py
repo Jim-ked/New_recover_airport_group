@@ -106,7 +106,7 @@ def build_application(
         situation_api=build_situation_api(db_path),
         catalog_api=build_catalog_api(db_path),
         indicator_api=build_indicator_api(db_path),
-        account_api=build_account_api(),
+        account_api=build_account_api(db_path),
         audit_api=build_audit_api(db_path),
         user_admin_api=UserAdminApi(prepared.user_repository),
         user_repository=prepared.user_repository,

@@ -69,6 +69,21 @@ class CatalogApiTests(unittest.TestCase):
         self.assertEqual(409, stale.status)
         self.assertEqual("CATALOG_STATE_CONFLICT", stale.body["error"]["code"])
 
+    def test_new_airport_id_is_allocated_when_client_omits_technical_id(self):
+        airport = self.airport.to_dict()
+        profile = self.profile.to_dict()
+        airport.pop("airport_id")
+        profile.pop("airport_id")
+
+        created = self.api.create_airport(
+            {"airport": airport, "operational_profile": profile},
+            principal=self.admin,
+        )
+
+        self.assertEqual(201, created.status)
+        self.assertEqual("AP001", created.body["airport"]["airport_id"])
+        self.assertEqual("AP001", created.body["operational_profile"]["airport_id"])
+
     def test_airport_delete_is_blocked_while_current_situation_references_it(self):
         self.api.create_airport({
             "airport": self.airport.to_dict(), "operational_profile": self.profile.to_dict()

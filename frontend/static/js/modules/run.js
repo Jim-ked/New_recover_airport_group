@@ -491,7 +491,7 @@ async function submitRun() {
     const record = await apiFetch('/api/runs', { method: 'POST', body });
     state.lastSubmittedRunId = record.run_id;
     if (!state.activeRun || state.activeRun.status !== 'running') setActiveRun(record);
-    showMessage(`已提交 ${record.run_id}`, 'success');
+    showMessage(`已提交 ${shortRunId(record.run_id)}`, 'success');
     invalidateValidation();
     await refreshRuns();
   } catch (error) {
@@ -730,12 +730,12 @@ function jumpToLatestLog() {
 
 async function retryFailedRun(run) {
   if (!can('runs.execute')) { showMessage('当前账号没有运行执行权限', 'warning'); return; }
-  if (!window.confirm(`确认按 ${run.run_id} 的冻结输入重新创建一次运行？`)) return;
+  if (!window.confirm(`确认按 ${shortRunId(run.run_id)} 的冻结输入重新创建一次运行？`)) return;
   try {
     const retried = await apiFetch(`/api/runs/${encodeURIComponent(run.run_id)}/retry`, { method: 'POST', body: {} });
     state.lastSubmittedRunId = retried.run_id;
     if (!state.activeRun || state.activeRun.status !== 'running') setActiveRun(retried);
-    showMessage(`已按原冻结输入创建 ${retried.run_id}`, 'success');
+    showMessage(`已按原冻结输入创建 ${shortRunId(retried.run_id)}`, 'success');
     await refreshRuns();
   } catch (error) { handleError(error); }
 }
@@ -810,7 +810,7 @@ function renderCurrentRun() {
   refs.currentTitle.textContent = inspecting ? '历史运行检查' : '当前运行';
   refs.returnLiveButton.classList.toggle('hidden', !inspecting);
   refs.runMeta.replaceChildren(...(run ? [
-    runMetaRow('Run ID', run.run_id),
+    runMetaRow('Run ID', shortRunId(run.run_id)),
     runMetaRow('情境', run.situation?.name || run.situation_id),
     runMetaRow('损毁场景', damageLabel(run)),
     runMetaRow('开始时间', run.started_at || '—'),
@@ -841,6 +841,11 @@ function damageLabel(run) {
   return id ? (run.damage_scenario?.name || id) : '无损毁';
 }
 
+function shortRunId(id) {
+  const match = /^RUN-([a-f0-9]{8})/i.exec(String(id || ''));
+  return match ? `R-${match[1].toUpperCase()}` : String(id || '—');
+}
+
 function clusterLabel(run) {
   return run.run_config?.cluster_enabled ? String(run.run_config?.cluster_size ?? '—') : '关闭';
 }
@@ -861,7 +866,7 @@ function renderQueue() {
     if (cancelButton.disabled) cancelButton.title = '当前账号只有查看权限';
     actions.append(cancelButton);
     tr.append(
-      td(run.run_id), td(run.situation?.name || run.situation_id), td(damageLabel(run)),
+      td(shortRunId(run.run_id)), td(run.situation?.name || run.situation_id), td(damageLabel(run)),
       td(PREFERENCE_LABELS[run.run_config?.preference_mode] || run.run_config?.preference_mode),
       td(clusterLabel(run)), td(run.created_at), td(STATUS_LABELS[run.status], `status-${run.status}`), actions,
     );
@@ -901,7 +906,7 @@ function renderHistory() {
       actions.prepend(resultButton);
     }
     tr.append(
-      td(run.run_id), td(run.situation?.name || run.situation_id), td(damageLabel(run)),
+      td(shortRunId(run.run_id)), td(run.situation?.name || run.situation_id), td(damageLabel(run)),
       td(PREFERENCE_LABELS[run.run_config?.preference_mode] || run.run_config?.preference_mode),
       td(clusterLabel(run)), td(run.started_at), td(run.finished_at),
       td(STATUS_LABELS[run.status], `status-${run.status}`), actions,
@@ -1008,7 +1013,7 @@ async function refreshEvents() {
 
 async function cancelQueuedRun(run) {
   if (!can('runs.execute')) return;
-  if (!window.confirm(`确认取消排队任务 ${run.run_id}？`)) return;
+  if (!window.confirm(`确认取消排队任务 ${shortRunId(run.run_id)}？`)) return;
   try {
     await apiFetch(`/api/runs/${encodeURIComponent(run.run_id)}/cancel`, { method: 'POST', body: {} });
     showMessage('排队任务已取消', 'warning');

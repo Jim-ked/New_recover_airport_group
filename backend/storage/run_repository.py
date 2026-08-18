@@ -471,6 +471,69 @@ class RunRepository:
             ).fetchall()
         return [self._event_from_row(row) for row in rows]
 
+    def delete_terminal_batch(
+        self,
+        *,
+        run_ids: Sequence[str],
+        owner_user_id: str,
+        situation_id: str,
+    ) -> int:
+        """Delete one explicitly identified terminal development batch.
+
+        This narrow repository operation exists for deterministic development-data
+        rebuilds. It never discovers Runs by a broad predicate: callers must pass every
+        Run ID and the expected owner and Situation boundaries. Immutable snapshots are
+        removed only after their matching terminal Run/result rows are removed.
+        """
+        ids = tuple(dict.fromkeys(str(value).strip() for value in run_ids))
+        if not ids:
+            return 0
+        if any(not value for value in ids):
+            raise RunRepositoryError("run_ids must contain nonblank identifiers")
+        if not isinstance(owner_user_id, str) or not owner_user_id.strip():
+            raise RunRepositoryError("owner_user_id must be nonblank")
+        if not isinstance(situation_id, str) or not situation_id.strip():
+            raise RunRepositoryError("situation_id must be nonblank")
+
+        placeholders = ",".join("?" for _ in ids)
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                f"SELECT run_id, owner_user_id, situation_id, status FROM runs "
+                f"WHERE run_id IN ({placeholders})",
+                ids,
+            ).fetchall()
+            by_id = {row["run_id"]: row for row in rows}
+            missing = sorted(set(ids) - set(by_id))
+            if missing:
+                raise RunRepositoryError(f"Run batch contains missing IDs: {missing}")
+            outside = sorted(
+                run_id
+                for run_id, row in by_id.items()
+                if row["owner_user_id"] != owner_user_id
+                or row["situation_id"] != situation_id
+            )
+            if outside:
+                raise RunRepositoryError(
+                    f"Run batch crosses owner/Situation boundary: {outside}"
+                )
+            active = sorted(
+                run_id
+                for run_id, row in by_id.items()
+                if row["status"] in {"queued", "running"}
+            )
+            if active:
+                raise RunRepositoryError(f"cannot delete active Run batch: {active}")
+
+            conn.execute(
+                f"DELETE FROM run_results WHERE run_id IN ({placeholders})", ids
+            )
+            conn.execute(f"DELETE FROM runs WHERE run_id IN ({placeholders})", ids)
+            conn.execute(
+                f"DELETE FROM run_input_snapshots WHERE run_id IN ({placeholders})", ids
+            )
+        return len(ids)
+
 
 __all__ = [
     "RunRepository",

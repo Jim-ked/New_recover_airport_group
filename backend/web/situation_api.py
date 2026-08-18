@@ -117,10 +117,24 @@ class SituationApi:
 
         return self._handle(action)
 
+    def allocate_id(self, *, principal: Principal) -> ApiResponse:
+        def action() -> ApiResponse:
+            principal.require_permission("situations.write")
+            return ApiResponse({"situation_id": self.situations.allocate_situation_id()}, 201)
+        return self._handle(action)
+
     def create(self, raw_body: Any, *, principal: Principal) -> ApiResponse:
         def action() -> ApiResponse:
             principal.require_permission("situations.write")
-            situation, _ = self._parse_situation(raw_body, allow_hash=False)
+            body = require_object(raw_body)
+            reject_unknown(body, {"situation"})
+            raw_situation = body.get("situation")
+            if not isinstance(raw_situation, Mapping):
+                raise ApiInputError("situation must be a JSON object", field="situation")
+            raw_situation = dict(raw_situation)
+            if not str(raw_situation.get("situation_id") or "").strip():
+                raw_situation["situation_id"] = self.situations.allocate_situation_id()
+            situation = Situation.from_mapping(raw_situation)
             content_hash = self.situations.create_situation(situation, owner_user_id=principal.user_id)
             metadata = self.situations.get_metadata(situation.situation_id) or {}
             return ApiResponse(

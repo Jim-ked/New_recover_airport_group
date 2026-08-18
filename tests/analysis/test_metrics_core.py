@@ -8,8 +8,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from backend.algorithm.runner import run_once
-from backend.analysis.metrics import METRICS_SCHEMA_VERSION, MetricsBuildError, build_metrics_core
+from backend.algorithm.snapshot_adapter import build_algorithm_input
+from backend.analysis.metrics import (
+    METRICS_SCHEMA_VERSION,
+    MetricsBuildError,
+    _build_demand_breakdown,
+    build_metrics_core,
+)
 from backend.domain.solution import Solution, SortieChain
+from original_algorithm_overlay.model.decision_vars import build_base_path_map
 from tests.algorithm.test_runner import RunnerFakeModel, fixed_cluster_selector
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
@@ -29,7 +36,7 @@ class MetricsCoreTests(unittest.TestCase):
         )
         return snapshot, result, metrics
 
-    def test_matches_single_run_frontend_core_facts_without_legacy_completion_metrics(self):
+    def test_matches_single_run_frontend_core_facts_with_canonical_demand_breakdown(self):
         _snapshot, result, metrics = self._fixture()
         self.assertEqual(METRICS_SCHEMA_VERSION, metrics["schema_version"])
         self.assertEqual("R1", metrics["run_id"])
@@ -39,17 +46,72 @@ class MetricsCoreTests(unittest.TestCase):
         self.assertEqual(1, metrics["summary"]["core_airport_count"])
         self.assertEqual(1, metrics["summary"]["mission_count"])
         self.assertEqual(2, metrics["summary"]["required_sorties_total"])
+        self.assertEqual(2, metrics["summary"]["fulfilled_sorties_total"])
+        self.assertEqual(0, metrics["summary"]["unmet_sorties_total"])
+        self.assertEqual(0, metrics["summary"]["additional_sorties_total"])
         self.assertEqual(2, metrics["summary"]["scheduled_sorties_total"])
+        self.assertEqual(1.0, metrics["summary"]["completion_ratio"])
         self.assertEqual(2, metrics["summary"]["returned_sorties_total"])
         self.assertEqual(
             {"airport_id": "A1", "sorties": 2, "share": 1.0},
             metrics["summary"]["max_airport_departure"],
         )
-        self.assertNotIn("completion_ratio", str(metrics))
-        self.assertNotIn("shortfall", str(metrics))
         self.assertNotIn("top", metrics["airports"])
         self.assertEqual(result.objective, metrics["technical"]["objective"])
-        self.assertEqual(2, metrics["tasks"]["M1"]["required_total"])
+        task = metrics["tasks"]["M1"]
+        self.assertEqual(2, task["required_total"])
+        self.assertEqual(2, task["fulfilled_total"])
+        self.assertEqual(0, task["unmet_total"])
+        self.assertEqual(0, task["additional_total"])
+        self.assertEqual(2, task["scheduled_total"])
+        self.assertEqual(1.0, task["completion_ratio"])
+
+    def test_demand_breakdown_covers_under_exact_and_over_scheduling(self):
+        cases = (
+            (5, 3, {"fulfilled": 3, "unmet": 2, "additional": 0}),
+            (5, 5, {"fulfilled": 5, "unmet": 0, "additional": 0}),
+            (5, 8, {"fulfilled": 5, "unmet": 0, "additional": 3}),
+        )
+        for required, scheduled, expected in cases:
+            with self.subTest(required=required, scheduled=scheduled):
+                row = _build_demand_breakdown(
+                    {"fighter": required}, {"fighter": scheduled}
+                )
+                self.assertEqual(expected["fulfilled"], row["fulfilled_by_aircraft"]["fighter"])
+                self.assertEqual(expected["unmet"], row["unmet_by_aircraft"]["fighter"])
+                self.assertEqual(expected["additional"], row["additional_by_aircraft"]["fighter"])
+                self.assertEqual(scheduled, row["fulfilled_total"] + row["additional_total"])
+                self.assertEqual(required, row["fulfilled_total"] + row["unmet_total"])
+
+    def test_demand_breakdown_isolated_by_mission_and_aircraft_and_aggregates(self):
+        rows = {
+            "M1": _build_demand_breakdown(
+                {"fighter": 5, "bomber": 2},
+                {"fighter": 7, "bomber": 1},
+            ),
+            "M2": _build_demand_breakdown(
+                {"fighter": 3, "transport": 4},
+                {"fighter": 2, "transport": 6},
+            ),
+        }
+
+        self.assertEqual(2, rows["M1"]["additional_by_aircraft"]["fighter"])
+        self.assertEqual(1, rows["M1"]["unmet_by_aircraft"]["bomber"])
+        self.assertEqual(1, rows["M2"]["unmet_by_aircraft"]["fighter"])
+        self.assertEqual(2, rows["M2"]["additional_by_aircraft"]["transport"])
+
+        totals = {
+            key: sum(row[key] for row in rows.values())
+            for key in (
+                "required_total",
+                "scheduled_total",
+                "fulfilled_total",
+                "unmet_total",
+                "additional_total",
+            )
+        }
+        self.assertEqual(totals["scheduled_total"], totals["fulfilled_total"] + totals["additional_total"])
+        self.assertEqual(totals["required_total"], totals["fulfilled_total"] + totals["unmet_total"])
 
     def test_all_airports_are_preserved_even_when_one_has_zero_sorties(self):
         _snapshot, _result, metrics = self._fixture()
@@ -151,6 +213,76 @@ class MetricsCoreTests(unittest.TestCase):
         self.assertEqual(2.0, row["available_before_departure"][ready_i])
         self.assertEqual(1.0, row["available_ratio_initial"][ready_i])
         self.assertEqual("consumable_stock_with_replenishment", metrics["resources"]["state_model"])
+
+    def test_terminal_ready_boundary_stays_outside_operational_timelines(self):
+        snapshot = make_snapshot()
+        bundle = build_algorithm_input(snapshot)
+        t_min, t_max = bundle.ds["range"]
+        operational_slots = t_max - t_min + 1
+        paths = build_base_path_map(bundle.ds, bundle.run_params).path_records
+        path = next(
+            row for row in paths
+            if row.origin_airport_id == "A1"
+            and row.return_airport_id == "A1"
+            and row.ready_slot == operational_slots
+        )
+        chain = SortieChain(
+            path_id="P/terminal-ready",
+            origin_airport_id=path.origin_airport_id,
+            mission_id=path.mission_id,
+            return_airport_id=path.return_airport_id,
+            aircraft_type=path.aircraft_type_id,
+            depart_window=t_min + path.depart_slot,
+            return_window=t_min + path.landing_slot,
+            ready_window=t_min + path.ready_slot,
+            sorties=1,
+        )
+        solution = Solution.build(
+            run_id=snapshot.run_id,
+            selected_cluster=("A1", "A2"),
+            sortie_chains=(chain,),
+        )
+
+        metrics = build_metrics_core(snapshot, solution)
+
+        windows = metrics["time_axis"]["windows"]
+        self.assertEqual(list(range(t_min, t_max + 1)), windows)
+        self.assertEqual(operational_slots, len(windows))
+        self.assertEqual(1, metrics["timeline"]["departures_total"][path.depart_slot])
+        self.assertEqual(1, metrics["timeline"]["returns_total"][path.landing_slot])
+        aircraft = metrics["aircraft_inventory"]["by_airport"]["A1"]["fighter"]
+        self.assertEqual([0] * operational_slots, aircraft["ready_releases"])
+        self.assertEqual(1.0, aircraft["in_use"][-1])
+        self.assertEqual(1.0, aircraft["available_before_departure"][-1])
+        self.assertEqual(1.0, aircraft["available_after_departure"][-1])
+
+    def test_ready_after_terminal_boundary_is_rejected_by_frozen_path_set(self):
+        snapshot = make_snapshot()
+        bundle = build_algorithm_input(snapshot)
+        t_min, t_max = bundle.ds["range"]
+        operational_slots = t_max - t_min + 1
+        path = next(
+            row for row in build_base_path_map(bundle.ds, bundle.run_params).path_records
+            if row.ready_slot == operational_slots
+        )
+        solution = Solution.build(
+            run_id=snapshot.run_id,
+            selected_cluster=("A1", "A2"),
+            sortie_chains=(SortieChain(
+                path_id="P/ready-after-terminal",
+                origin_airport_id=path.origin_airport_id,
+                mission_id=path.mission_id,
+                return_airport_id=path.return_airport_id,
+                aircraft_type=path.aircraft_type_id,
+                depart_window=t_min + path.depart_slot,
+                return_window=t_min + path.landing_slot,
+                ready_window=t_min + operational_slots + 1,
+                sorties=1,
+            ),),
+        )
+
+        with self.assertRaisesRegex(MetricsBuildError, "not present in the frozen RunSnapshot path set"):
+            build_metrics_core(snapshot, solution)
 
     def test_solution_from_another_path_set_is_rejected_instead_of_guessed(self):
         snapshot, result, _metrics = self._fixture()

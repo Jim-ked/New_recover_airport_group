@@ -7,6 +7,12 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from backend.domain.run_snapshot import RunSnapshot
 
 COMPARISON_SCHEMA_VERSION = "comparison.v1"
+OBJECTIVE_DEFINITION_FIELDS = (
+    "preference_mode",
+    "alpha",
+    "aircraft_type_weight",
+    "core_airports",
+)
 
 
 class ComparisonError(ValueError):
@@ -91,6 +97,19 @@ def check_configuration_comparable(base: RunSnapshot, other: RunSnapshot) -> Com
     if ca.get("damage_scenario_id") != cb.get("damage_scenario_id"):
         reasons.append("damage_scenario_id differs")
     reasons.extend(_same_fields([ca, cb], ("mip_time_limit_s", "algorithm_seed")))
+    return ComparabilityCheck(not reasons, tuple(reasons))
+
+
+def check_objective_comparable(*snapshots: RunSnapshot) -> ComparabilityCheck:
+    """Whether raw solver objectives share the same coefficient definition.
+
+    Clustering changes the feasible path set, but it does not by itself change an
+    objective coefficient. Core-airport identities and the resolved objective weights
+    do, so they are compared explicitly.
+    """
+
+    configs = [_config(_payload(snapshot)) for snapshot in snapshots]
+    reasons = _same_fields(configs, OBJECTIVE_DEFINITION_FIELDS)
     return ComparabilityCheck(not reasons, tuple(reasons))
 
 
@@ -230,8 +249,8 @@ def build_r0_r1_r2_comparison(
         departure_shares = []
         for metrics in (r0_metrics, r1_metrics, r2_metrics):
             row = ((metrics.get("airports") or {}).get(aid) or {})
-            departure_totals.append(row.get("departures_total", 0))
-            departure_shares.append(row.get("departure_share", 0.0))
+            departure_totals.append(row.get("departures_total"))
+            departure_shares.append(row.get("departure_share"))
         airports[aid] = {
             "departures_total": _scalar_delta(*departure_totals),
             "departure_share": _scalar_delta(*departure_shares),
@@ -244,8 +263,13 @@ def build_r0_r1_r2_comparison(
     )
     tasks: Dict[str, Any] = {}
     for mid in mission_ids:
-        vals = [((m.get("tasks") or {}).get(mid) or {}).get("scheduled_total", 0) for m in (r0_metrics, r1_metrics, r2_metrics)]
-        tasks[mid] = {"scheduled_total": _scalar_delta(*vals)}
+        tasks[mid] = {}
+        for field in ("required_total", "scheduled_total"):
+            vals = [
+                ((m.get("tasks") or {}).get(mid) or {}).get(field)
+                for m in (r0_metrics, r1_metrics, r2_metrics)
+            ]
+            tasks[mid][field] = _scalar_delta(*vals)
 
     aircraft_ids = sorted(
         set((r0_metrics.get("aircraft") or {}).keys())
@@ -254,7 +278,7 @@ def build_r0_r1_r2_comparison(
     )
     aircraft: Dict[str, Any] = {}
     for fid in aircraft_ids:
-        vals = [((m.get("aircraft") or {}).get(fid) or {}).get("scheduled_total", 0) for m in (r0_metrics, r1_metrics, r2_metrics)]
+        vals = [((m.get("aircraft") or {}).get(fid) or {}).get("scheduled_total") for m in (r0_metrics, r1_metrics, r2_metrics)]
         aircraft[fid] = {"scheduled_total": _scalar_delta(*vals)}
 
     resource_min: Dict[str, Any] = {}
@@ -284,6 +308,12 @@ def build_r0_r1_r2_comparison(
         "R1": _comparison_summary(r1_metrics),
         "R2": _comparison_summary(r2_metrics),
     }
+    run_summaries = {
+        r0_snapshot.run_id: _run_summary_projection(r0_metrics),
+        r1_snapshot.run_id: _run_summary_projection(r1_metrics),
+        r2_snapshot.run_id: _run_summary_projection(r2_metrics),
+    }
+    objective_check = check_objective_comparable(r0_snapshot, r1_snapshot, r2_snapshot)
     slot_minutes_value = next(iter(slot_minutes))
 
     peak_window = _scalar_delta(
@@ -336,6 +366,10 @@ def build_r0_r1_r2_comparison(
             "damage_delta": "R1-R0",
             "cluster_delta": "R2-R1",
         },
+        "objective_comparable": objective_check.comparable,
+        "objective_comparability_reasons": list(objective_check.reasons),
+        "run_summaries": run_summaries,
+        "labels": _frozen_labels(r0_snapshot),
         "comparison_summary": role_summaries,
         "difference_overview": {
             "peak_window": peak_window,
@@ -372,7 +406,12 @@ def build_r0_r1_r2_comparison(
             ),
         },
         "summary": {
+            "required_sorties_total": summary_metric("required_sorties_total"),
+            "fulfilled_sorties_total": summary_metric("fulfilled_sorties_total"),
+            "unmet_sorties_total": summary_metric("unmet_sorties_total"),
+            "additional_sorties_total": summary_metric("additional_sorties_total"),
             "scheduled_sorties_total": summary_metric("scheduled_sorties_total"),
+            "completion_ratio": summary_metric("completion_ratio"),
             "participating_airport_count": summary_metric("participating_airport_count"),
         },
         "airports": airports,
@@ -444,12 +483,72 @@ def _minimum_resource_summary(metrics: Mapping[str, Any]) -> Optional[Dict[str, 
     return {"ratio": ratio, "category": category, **detail}
 
 
+def _run_summary_projection(metrics: Mapping[str, Any]) -> Dict[str, Any]:
+    """Copy the canonical per-Run facts shared by every Comparison mode."""
+    summary = metrics.get("summary") or {}
+    collaboration = metrics.get("collaboration") or {}
+    peak = summary.get("peak_departure_slot")
+    max_airport = summary.get("max_airport_departure")
+    return {
+        "mission_count": summary.get("mission_count"),
+        "required_sorties_total": summary.get("required_sorties_total"),
+        "scheduled_sorties_total": summary.get("scheduled_sorties_total"),
+        "returned_sorties_total": summary.get("returned_sorties_total"),
+        "selected_cluster_count": summary.get("selected_cluster_count"),
+        "participating_airport_count": summary.get("participating_airport_count"),
+        "peak_departure_slot": dict(peak) if isinstance(peak, Mapping) else None,
+        "max_airport_departure": (
+            dict(max_airport) if isinstance(max_airport, Mapping) else None
+        ),
+        "minimum_resource_remaining": _minimum_resource_summary(metrics),
+        "departure_hhi": collaboration.get("departure_hhi"),
+        "cross_return_ratio": collaboration.get("cross_return_ratio"),
+    }
+
+
+def _frozen_labels(snapshot: RunSnapshot) -> Dict[str, Dict[str, str]]:
+    """Project display labels exclusively from the immutable RunSnapshot."""
+    payload = _payload(snapshot)
+    situation = payload.get("situation") or {}
+    catalogs = payload.get("catalogs") or {}
+    airports: Dict[str, str] = {}
+    for item in situation.get("airports") or []:
+        airport = item.get("airport") if isinstance(item, Mapping) else None
+        if not isinstance(airport, Mapping):
+            continue
+        airport_id = airport.get("airport_id")
+        if isinstance(airport_id, str) and airport_id:
+            airports[airport_id] = str(airport.get("airport_name") or airport_id)
+    missions: Dict[str, str] = {}
+    for mission in situation.get("missions") or []:
+        if not isinstance(mission, Mapping):
+            continue
+        mission_id = mission.get("mission_id")
+        if isinstance(mission_id, str) and mission_id:
+            missions[mission_id] = str(mission.get("name") or mission_id)
+    aircraft: Dict[str, str] = {}
+    for item in catalogs.get("aircraft_types") or []:
+        if not isinstance(item, Mapping):
+            continue
+        aircraft_type_id = item.get("aircraft_type_id")
+        if isinstance(aircraft_type_id, str) and aircraft_type_id:
+            aircraft[aircraft_type_id] = str(item.get("name") or aircraft_type_id)
+    return {"airports": airports, "missions": missions, "aircraft": aircraft}
+
+
 def _comparison_summary(metrics: Mapping[str, Any]) -> Dict[str, Any]:
     summary = metrics.get("summary") or {}
     peak = summary.get("peak_departure_slot") or {}
     max_airport = summary.get("max_airport_departure") or {}
     collaboration = metrics.get("collaboration") or {}
+    technical = metrics.get("technical") or {}
     return {
+        "required_sorties_total": summary.get("required_sorties_total"),
+        "fulfilled_sorties_total": summary.get("fulfilled_sorties_total"),
+        "unmet_sorties_total": summary.get("unmet_sorties_total"),
+        "additional_sorties_total": summary.get("additional_sorties_total"),
+        "scheduled_sorties_total": summary.get("scheduled_sorties_total"),
+        "completion_ratio": summary.get("completion_ratio"),
         "peak_window": peak.get("window"),
         "peak_sorties": peak.get("sorties"),
         "max_airport_departure": dict(max_airport) if isinstance(max_airport, Mapping) else None,
@@ -458,6 +557,7 @@ def _comparison_summary(metrics: Mapping[str, Any]) -> Dict[str, Any]:
         "selected_cluster_count": summary.get("selected_cluster_count"),
         "departure_hhi": collaboration.get("departure_hhi"),
         "cross_return_ratio": collaboration.get("cross_return_ratio"),
+        "objective": technical.get("objective"),
     }
 
 
@@ -496,7 +596,7 @@ def _full_object_rows(
         by_run: Dict[str, Any] = {}
         for snapshot, metrics in rows:
             source = ((metrics.get(block_name) or {}).get(object_id) or {})
-            by_run[snapshot.run_id] = {field: source.get(field, 0) for field in value_fields}
+            by_run[snapshot.run_id] = {field: source.get(field) for field in value_fields}
         out[object_id] = by_run
     return out
 
@@ -545,6 +645,11 @@ def build_multi_scenario_comparison(
     slot_minutes, windows = _require_common_metrics_contract(rows)
 
     summaries = {snapshot.run_id: _comparison_summary(metrics) for snapshot, metrics in rows}
+    run_summaries = {
+        snapshot.run_id: _run_summary_projection(metrics)
+        for snapshot, metrics in rows
+    }
+    objective_check = check_objective_comparable(*(snapshot for snapshot, _metrics in rows))
     configurations = {
         snapshot.run_id: {
             "damage_scenario_id": (_config(snapshot.to_dict())).get("damage_scenario_id"),
@@ -597,15 +702,29 @@ def build_multi_scenario_comparison(
         for rid, row in summaries.items()
     }
     participant_counts = {rid: row.get("participating_airport_count") for rid, row in summaries.items()}
+    fulfilled_totals = {rid: row.get("fulfilled_sorties_total") for rid, row in summaries.items()}
+    unmet_totals = {rid: row.get("unmet_sorties_total") for rid, row in summaries.items()}
+    additional_totals = {rid: row.get("additional_sorties_total") for rid, row in summaries.items()}
+    scheduled_totals = {rid: row.get("scheduled_sorties_total") for rid, row in summaries.items()}
+    completion_ratios = {rid: row.get("completion_ratio") for rid, row in summaries.items()}
 
     return {
         "schema_version": COMPARISON_SCHEMA_VERSION,
         "mode": "multi_scenario",
         "run_ids": run_ids,
         "configurations": configurations,
+        "objective_comparable": objective_check.comparable,
+        "objective_comparability_reasons": list(objective_check.reasons),
+        "run_summaries": run_summaries,
+        "labels": _frozen_labels(rows[0][0]),
         "summary": summaries,
         "timeline": timeline,
         "difference_overview": {
+            "fulfilled_sorties_total": _extrema(fulfilled_totals, low_name="lowest", high_name="highest"),
+            "unmet_sorties_total": _extrema(unmet_totals, low_name="lowest", high_name="highest"),
+            "additional_sorties_total": _extrema(additional_totals, low_name="lowest", high_name="highest"),
+            "scheduled_sorties_total": _extrema(scheduled_totals, low_name="lowest", high_name="highest"),
+            "completion_ratio": _extrema(completion_ratios, low_name="lowest", high_name="highest"),
             "peak_sorties": _extrema(peak_values, low_name="lowest", high_name="highest"),
             "peak_window": _extrema(peak_windows, low_name="earliest", high_name="latest"),
             "max_airport_departure_share": _extrema(max_shares, low_name="lowest", high_name="highest"),
@@ -613,7 +732,11 @@ def build_multi_scenario_comparison(
             "participating_airport_count": _extrema(participant_counts, low_name="lowest", high_name="highest"),
         },
         "airports": _full_object_rows(rows, block_name="airports", value_fields=("departures_total", "departure_share")),
-        "tasks": _full_object_rows(rows, block_name="tasks", value_fields=("scheduled_total",)),
+        "tasks": _full_object_rows(
+            rows,
+            block_name="tasks",
+            value_fields=("required_total", "scheduled_total"),
+        ),
         "aircraft": _full_object_rows(rows, block_name="aircraft", value_fields=("scheduled_total", "scheduled_share")),
         "resources": {"category_min_remaining_ratio": resources},
         "scheme": scheme,
@@ -651,6 +774,11 @@ def build_configuration_comparison(
     slot_minutes, windows = _require_common_metrics_contract(rows)
 
     summaries = {snapshot.run_id: _comparison_summary(metrics) for snapshot, metrics in rows}
+    run_summaries = {
+        snapshot.run_id: _run_summary_projection(metrics)
+        for snapshot, metrics in rows
+    }
+    objective_check = check_objective_comparable(*(snapshot for snapshot, _metrics in rows))
     baseline_summary = summaries[baseline_run_id]
     summary_deltas: Dict[str, Any] = {}
     for rid, summary in summaries.items():
@@ -660,6 +788,24 @@ def build_configuration_comparison(
         base_share = (baseline_summary.get("max_airport_departure") or {}).get("share")
         slot_delta = _delta_from_baseline(summary.get("peak_window"), baseline_summary.get("peak_window"))
         summary_deltas[rid] = {
+            "required_sorties_total_delta": _delta_from_baseline(
+                summary.get("required_sorties_total"), baseline_summary.get("required_sorties_total")
+            ),
+            "fulfilled_sorties_total_delta": _delta_from_baseline(
+                summary.get("fulfilled_sorties_total"), baseline_summary.get("fulfilled_sorties_total")
+            ),
+            "unmet_sorties_total_delta": _delta_from_baseline(
+                summary.get("unmet_sorties_total"), baseline_summary.get("unmet_sorties_total")
+            ),
+            "additional_sorties_total_delta": _delta_from_baseline(
+                summary.get("additional_sorties_total"), baseline_summary.get("additional_sorties_total")
+            ),
+            "scheduled_sorties_total_delta": _delta_from_baseline(
+                summary.get("scheduled_sorties_total"), baseline_summary.get("scheduled_sorties_total")
+            ),
+            "completion_ratio_delta": _delta_from_baseline(
+                summary.get("completion_ratio"), baseline_summary.get("completion_ratio")
+            ),
             "peak_window_delta_slots": slot_delta,
             "peak_time_delta_minutes": None if slot_delta is None else slot_delta * slot_minutes,
             "peak_sorties_delta": _delta_from_baseline(summary.get("peak_sorties"), baseline_summary.get("peak_sorties")),
@@ -705,10 +851,10 @@ def build_configuration_comparison(
         for snapshot, metrics in rows:
             row = ((metrics.get("airports") or {}).get(aid) or {})
             out[snapshot.run_id] = {
-                "departures_total": row.get("departures_total", 0),
-                "departure_share": row.get("departure_share", 0),
-                "departures_total_delta": _delta_from_baseline(row.get("departures_total", 0), base_row.get("departures_total", 0)),
-                "departure_share_delta": _delta_from_baseline(row.get("departure_share", 0), base_row.get("departure_share", 0)),
+                "departures_total": row.get("departures_total"),
+                "departure_share": row.get("departure_share"),
+                "departures_total_delta": _delta_from_baseline(row.get("departures_total"), base_row.get("departures_total")),
+                "departure_share_delta": _delta_from_baseline(row.get("departure_share"), base_row.get("departure_share")),
             }
         airports[aid] = out
 
@@ -717,17 +863,43 @@ def build_configuration_comparison(
         output: Dict[str, Any] = {}
         base_block = baseline_metrics.get(block_name) or {}
         for oid in ids:
-            base_value = ((base_block.get(oid) or {}).get(value_field, 0))
+            base_value = ((base_block.get(oid) or {}).get(value_field))
             output[oid] = {
                 snapshot.run_id: {
-                    "value": ((metrics.get(block_name) or {}).get(oid) or {}).get(value_field, 0),
+                    "value": ((metrics.get(block_name) or {}).get(oid) or {}).get(value_field),
                     "delta_vs_baseline": _delta_from_baseline(
-                        ((metrics.get(block_name) or {}).get(oid) or {}).get(value_field, 0),
+                        ((metrics.get(block_name) or {}).get(oid) or {}).get(value_field),
                         base_value,
                     ),
                 }
                 for snapshot, metrics in rows
             }
+        return output
+
+    def task_rows_with_deltas() -> Dict[str, Any]:
+        fields = ("required_total", "scheduled_total")
+        ids = sorted({oid for _snapshot, metrics in rows for oid in (metrics.get("tasks") or {})})
+        output: Dict[str, Any] = {}
+        base_block = baseline_metrics.get("tasks") or {}
+        for oid in ids:
+            base_row = base_block.get(oid) or {}
+            output[oid] = {}
+            for snapshot, metrics in rows:
+                source = ((metrics.get("tasks") or {}).get(oid) or {})
+                row = {
+                    field: source.get(field)
+                    for field in fields
+                }
+                row.update({
+                    f"{field}_delta_vs_baseline": _delta_from_baseline(
+                        source.get(field), base_row.get(field)
+                    )
+                    for field in fields
+                })
+                # Preserve the established scheduled-total aliases for API consumers.
+                row["value"] = row["scheduled_total"]
+                row["delta_vs_baseline"] = row["scheduled_total_delta_vs_baseline"]
+                output[oid][snapshot.run_id] = row
         return output
 
     base_resource = ((baseline_metrics.get("resources") or {}).get("category_min_remaining_ratio") or {})
@@ -753,11 +925,15 @@ def build_configuration_comparison(
         "configurations": {
             snapshot.run_id: _config(snapshot.to_dict()) for snapshot, _metrics in rows
         },
+        "objective_comparable": objective_check.comparable,
+        "objective_comparability_reasons": list(objective_check.reasons),
+        "run_summaries": run_summaries,
+        "labels": _frozen_labels(rows[0][0]),
         "summary": summaries,
         "summary_deltas_vs_baseline": summary_deltas,
         "timeline": timeline,
         "airports": airports,
-        "tasks": object_with_delta("tasks", "scheduled_total"),
+        "tasks": task_rows_with_deltas(),
         "aircraft": object_with_delta("aircraft", "scheduled_total"),
         "resources": {"category_min_remaining_ratio": resource_rows},
         "scheme": {
@@ -778,6 +954,7 @@ __all__ = [
     "ComparabilityCheck",
     "check_multi_scenario_comparable",
     "check_configuration_comparable",
+    "check_objective_comparable",
     "check_r0_r1_r2",
     "build_r0_r1_r2_comparison",
     "build_multi_scenario_comparison",

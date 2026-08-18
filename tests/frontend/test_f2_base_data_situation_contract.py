@@ -12,23 +12,29 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         cls.bd_html = (ROOT / "frontend/templates/pages/base_data.html").read_text(encoding="utf-8")
         cls.bd_js = (ROOT / "frontend/static/js/modules/base-data.js").read_text(encoding="utf-8")
         cls.sit_html = (ROOT / "frontend/templates/pages/situations.html").read_text(encoding="utf-8")
-        cls.sit_js = (ROOT / "frontend/static/js/modules/situations.js").read_text(encoding="utf-8")
+        cls.sit_main = (ROOT / "frontend/static/js/modules/situations.js").read_text(encoding="utf-8")
+        cls.sit_map = (ROOT / "frontend/static/js/modules/situation-map.js").read_text(encoding="utf-8")
+        cls.sit_panels = (ROOT / "frontend/static/js/modules/situation-panels.js").read_text(encoding="utf-8")
+        cls.sit_state = (ROOT / "frontend/static/js/modules/situation-state.js").read_text(encoding="utf-8")
+        cls.sit_js = "\n".join((cls.sit_main, cls.sit_map, cls.sit_panels, cls.sit_state))
 
     def test_situation_is_real_primary_navigation_and_base_data_is_secondary(self):
         self.assertIn("ui_v1.situations_page", self.base)
         self.assertIn("/situations", self.ui)
         self.assertIn("/base-data", self.ui)
-        self.assertNotIn('href="{{ url_for(\'ui_v1.base_data_page\') }}"', self.base)
-        self.assertIn("ui_v1.base_data_page", self.sit_html)
+        footer = self.base[self.base.index('class="sidebar-footer"'):]
+        self.assertIn("ui_v1.base_data_page", footer)
+        self.assertIn("data-base-data-url", self.sit_html)
 
     def test_base_data_uses_current_state_crud_and_replace_import(self):
         for path in (
             "/api/airports", "/api/missions", "/api/aircraft-types", "/api/resource-types",
-            "/api/aircraft-resource-requirements", "/api/base-data/import",
+            "/resource-requirements", "/api/base-data/import",
         ):
             self.assertIn(path, self.bd_js)
         self.assertIn("expected_revision", self.bd_js)
-        self.assertIn("覆盖导入", self.bd_html)
+        self.assertIn("导入并替换当前基础数据", self.bd_html)
+        self.assertIn("以一个事务替换", self.bd_html)
         self.assertIn("不生成可选择的历史版本", self.bd_html)
         self.assertNotIn("/api/scenes", self.bd_js)
 
@@ -48,14 +54,16 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         self.assertIn("navigation_delay", self.sit_js)
         self.assertIn("aircraft_damage", self.sit_js)
         self.assertNotIn("情境校验", self.sit_html)
-        self.assertIn("跑道/保障要素 target_id 不在前端虚构", self.sit_js)
+        self.assertIn("target_type:'airport',target_id:null", self.sit_main)
+        self.assertNotIn("target_type:'runway'", self.sit_main)
 
     def test_situation_map_is_local_leaflet_with_truthful_fallback(self):
-        self.assertIn("/static/vendor/leaflet/leaflet.css", self.sit_js)
-        self.assertIn("/static/vendor/leaflet/leaflet.js", self.sit_js)
+        self.assertIn("vendor/leaflet/leaflet.css", self.sit_html)
+        self.assertIn("vendor/leaflet/leaflet.js", self.sit_html)
+        self.assertIn("globalThis.L.map", self.sit_map)
         self.assertIn("无底图坐标视图", self.sit_html)
-        self.assertNotIn("https://", self.sit_js)
-        self.assertNotIn("http://", self.sit_js)
+        self.assertNotIn("https://", self.sit_map)
+        self.assertNotIn("http://", self.sit_map)
 
 
     def test_situation_applies_edits_through_server_canonical_working_copy(self):
@@ -75,23 +83,30 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         self.assertIn("longitude:num($('edMissionLon').value)", self.bd_js)
         self.assertNotIn("longitude:Number($('edLon').value)", self.bd_js)
 
+    def test_project_ids_are_backend_allocated_and_business_labels_are_primary(self):
+        self.assertIn("airportNumber", self.bd_js)
+        self.assertIn("create?'':inputField('技术编号'", self.bd_js)
+        self.assertIn("/api/situations/allocate-id", self.sit_main)
+        self.assertIn('type="hidden" value="${esc(id)}"', self.sit_main)
+        self.assertNotIn('placeholder="例如 SITUATION-01"', self.sit_main)
 
-    def test_editors_protect_local_drafts_and_support_cross_page_detail(self):
+
+    def test_editors_protect_local_drafts_across_workspace_lifecycle(self):
         self.assertIn("editorDirty", self.bd_js)
         self.assertIn("canLeaveEditor", self.bd_js)
         self.assertIn("beforeunload", self.bd_js)
-        self.assertIn("panelDraftDirty", self.sit_js)
-        self.assertIn("canDiscardPanelDraft", self.sit_js)
+        self.assertIn("panelDraftDirty", self.sit_state)
+        self.assertIn("requestPanelTransition", self.sit_main)
         for token in ("cancelSituationInfo", "cancelAirportEdit", "cancelMissionEdit", "cancelDamageEdit"):
-            self.assertIn(token, self.sit_js)
-        self.assertIn("/base-data?tab=airports&id=", self.sit_js)
-        self.assertIn("URLSearchParams(window.location.search)", self.bd_js)
+            self.assertIn(token, self.sit_main)
+        self.assertIn("beforeLeave", self.sit_main)
+        self.assertIn("export async function beforeLeave", self.bd_js)
 
     def test_f2_respects_permission_aware_mutation(self):
         self.assertIn("/api/me", self.bd_js)
         self.assertIn("catalog.write", self.bd_js)
-        self.assertIn("/api/me", self.sit_js)
-        self.assertIn("situations.write", self.sit_js)
+        self.assertIn("/api/me", self.sit_main)
+        self.assertIn("situations.write", self.sit_state)
 
 
 if __name__ == "__main__":

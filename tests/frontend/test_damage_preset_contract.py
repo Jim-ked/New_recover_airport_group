@@ -7,31 +7,38 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class DamagePresetFrontendContractTests(unittest.TestCase):
-    def test_template_loads_quick_fill_module_and_style(self):
-        text = (ROOT / "frontend/templates/pages/situations.html").read_text(encoding="utf-8")
-        self.assertIn("damage-presets.css", text)
-        self.assertIn("damage-presets.js", text)
+    @classmethod
+    def setUpClass(cls):
+        cls.html = (ROOT / "frontend/templates/pages/situations.html").read_text(encoding="utf-8")
+        cls.js = (ROOT / "frontend/static/js/modules/situations.js").read_text(encoding="utf-8")
+        cls.css = (ROOT / "frontend/static/css/situations.css").read_text(encoding="utf-8")
+
+    def test_template_loads_current_situation_module_and_integrated_style(self):
+        self.assertIn("css/situations.css", self.html)
+        self.assertIn("js/modules/situations.js", self.html)
+        self.assertIn(".damage-preset", self.css)
+        self.assertNotIn("damage-presets.js", self.html)
 
     def test_quick_fill_is_ui_only_and_uses_existing_capacity_event_fields(self):
-        text = (ROOT / "frontend/static/js/modules/damage-presets.js").read_text(encoding="utf-8")
-        self.assertIn("remainingPercent: 80", text)
-        self.assertIn("remainingPercent: 50", text)
-        self.assertIn("remainingPercent: 20", text)
-        self.assertIn(".ev-cap", text)
-        self.assertIn(".ev-closed", text)
-        self.assertIn("capacity", text)
-        self.assertNotIn("/api/damage-template", text)
-        self.assertNotIn("DamageProjection", text)
+        self.assertIn("ratio: 0.80", self.js)
+        self.assertIn("ratio: 0.50", self.js)
+        self.assertIn("ratio: 0.20", self.js)
+        self.assertIn(".ev-cap", self.js)
+        self.assertIn(".ev-closed", self.js)
+        self.assertIn("remaining_capacity_per_window", self.js)
+        self.assertNotIn("/api/damage-template", self.js)
+        self.assertNotIn("DamageProjection", self.js)
 
     def test_existing_events_are_not_silently_overwritten(self):
-        text = (ROOT / "frontend/static/js/modules/damage-presets.js").read_text(encoding="utf-8")
-        self.assertIn("globalThis.confirm", text)
-        self.assertIn("会替换这些尚未应用的事件", text)
+        self.assertIn("confirmAction", self.js)
+        self.assertIn("预设将替换当前草稿中的事件", self.js)
 
     def test_unsaved_working_copy_is_not_resolved_against_stale_saved_capacity(self):
-        text = (ROOT / "frontend/static/js/modules/damage-presets.js").read_text(encoding="utf-8")
-        self.assertIn("当前 Working Copy 有未保存修改", text)
-        self.assertIn("/api/situations/", text)
+        start = self.js.index("async function applyDamagePresetDraft()")
+        end = self.js.index("\nfunction renderDamageEditor", start)
+        function_body = self.js[start:end]
+        self.assertIn("airportItem(airportId).operational_profile.capacity_per_window", function_body)
+        self.assertNotIn("apiFetch(", function_body)
 
 
 if __name__ == "__main__":

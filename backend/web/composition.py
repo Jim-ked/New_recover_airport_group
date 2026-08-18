@@ -99,8 +99,9 @@ def build_indicator_api(db_path: str | Path) -> IndicatorApi:
     return IndicatorApi(repository=IndicatorRepository(db_path))
 
 
-def build_account_api() -> AccountApi:
-    return AccountApi()
+def build_account_api(db_path: str | Path | None = None) -> AccountApi:
+    repository = UserRepository(db_path) if db_path is not None else None
+    return AccountApi(user_repository=repository)
 
 
 def build_user_repository(db_path: str | Path) -> UserRepository:

@@ -5,7 +5,7 @@ const state = {
   runId: page?.dataset.runId || '', runtime: null, metrics: null, run: null,
   frameIndex: 0, playing: false, timer: null, map: null, playbackMs: 900, trailWindows: 1,
   markers: new Map(), outboundLayers: [], returnLayers: [], routeById: new Map(),
-  selected: { type: null, id: null }, detailTab: 'airport',
+  selected: { type: null, id: null }, detailTab: 'airport', mapErrorShown: false,
 };
 const $ = (id) => document.getElementById(id);
 const refs = {
@@ -22,6 +22,13 @@ function showError(error) {
   refs.error.textContent = error instanceof ApiError ? error.message : '运行态势加载失败';
   refs.error.classList.remove('hidden');
 }
+function showMapError(error) {
+  if (state.mapErrorShown) return;
+  state.mapErrorShown = true;
+  console.error(error);
+  refs.kernel.textContent = '地图加载失败；运行结果数据已正常读取，时间轴与对象详情仍可用。';
+  refs.kernel.classList.remove('hidden');
+}
 function escapeHtml(value) { return String(value ?? '—').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function percent(v) { return typeof v === 'number' && Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : '—'; }
 function windowLabel(v) { return Number.isInteger(v) ? `T${v}` : '—'; }
@@ -29,7 +36,11 @@ function frame() { return state.runtime?.frames?.[state.frameIndex] || null; }
 function airport(id) { return state.runtime.airports.find((x) => x.airport_id === id); }
 function mission(id) { return state.runtime.missions.find((x) => x.mission_id === id); }
 function airportName(id) { return airport(id)?.airport_name || id; }
-function missionName(id) { const m = mission(id); return m ? `${m.name}（${id}）` : id; }
+function shortRunId(id) { const match=/^RUN-([a-f0-9]{8})/i.exec(String(id||''));return match?`R-${match[1].toUpperCase()}`:String(id||'—'); }
+function airportNumber(id) { const match=/^AP(\d+)$/i.exec(String(id||''));return match?match[1].padStart(3,'0'):''; }
+function shortAirportName(id) { const name=airportName(id);return name.replace(/\s+(?:International\s+|General\s+)?(?:Airport|Air Base)$/i,'').trim()||name; }
+function airportDisplay(id) { const number=airportNumber(id);return `${number?`${number} `:''}${shortAirportName(id)}`; }
+function missionName(id) { const m = mission(id); return m?.name || id; }
 
 function loadStyle(href) {
   if ([...document.styleSheets].some((x) => x.href && x.href.includes(href))) return Promise.resolve();
@@ -161,14 +172,18 @@ async function initMap() {
   }
   const L = globalThis.L; state.map = L.map(refs.map, { zoomControl: true, attributionControl: false, preferCanvas: false });
   const tileTemplate = page.dataset.tileTemplate;
-  if (tileTemplate) L.tileLayer(tileTemplate, { maxZoom: 12, minZoom: 2, noWrap: true }).addTo(state.map);
+  if (tileTemplate) {
+    const tiles = L.tileLayer(tileTemplate, { maxZoom: 12, minZoom: 2, noWrap: true });
+    tiles.on('tileerror', () => showMapError(new Error('local tile unavailable')));
+    tiles.addTo(state.map);
+  }
   drawMap(); fitMap('run');
 }
 
 function renderBadges() {
   const damage = state.runtime.damage_scenario;
   refs.badges.innerHTML = [
-    `<span>${escapeHtml(state.runId)}</span>`, `<span>${escapeHtml(state.run?.situation?.name || state.run?.situation?.situation_id)}</span>`,
+    `<span>${escapeHtml(shortRunId(state.runId))}</span>`, `<span>${escapeHtml(state.run?.situation?.name || state.run?.situation?.situation_id)}</span>`,
     `<span>${damage ? `损毁 ${escapeHtml(damage.name || damage.damage_scenario_id)}` : '无损毁'}</span>`,
     `<span>${state.runtime.time_axis.slot_minutes} min/窗</span>`,
   ].join('');
@@ -180,7 +195,7 @@ function renderFrame() {
   refs.windowFacts.textContent = `出动 ${f.departures_total} 架次 · 返航 ${f.returns_total} 架次`;
   refs.inspectorWindow.textContent = windowLabel(f.window);
   const events = f.damage_events || [];
-  refs.damageStrip.textContent = events.length ? events.map((e) => `${e.event_id} ${e.damage_type} / ${e.phase} / ${airportName(e.airport_id)}`).join('　') : '当前时间窗无有效损毁状态';
+  refs.damageStrip.textContent = events.length ? events.map((e) => `${airportDisplay(e.airport_id)} · ${e.damage_type} · ${e.phase}`).join('　') : '当前时间窗无有效损毁状态';
   drawMap(); renderInspector(); if (state.dock.classList.contains('open')) renderDetail(state.detailTab);
 }
 function setFrameIndex(index) { state.frameIndex = Math.max(0, Math.min(state.runtime.frames.length - 1, Number(index) || 0)); renderFrame(); }
@@ -196,11 +211,11 @@ function renderInspector() {
   if (!state.selected.type) { refs.inspector.innerHTML = `当前窗 ${windowLabel(f.window)}：出动 ${f.departures_total}，返航 ${f.returns_total}。点击地图对象查看冻结事实。`; return; }
   if (state.selected.type === 'airport') {
     const id = state.selected.id, a = airport(id), row = f.airports[id] || {};
-    refs.inspector.innerHTML = inspectorRows([['机场',airportName(id)],['角色',[a.is_core?'核心':null,a.is_selected_cluster?'组选':null,a.is_participating?'参与':null].filter(Boolean).join(' / ')||'未参与'],['可用容量',row.capacity_available],['出动占用',row.capacity_used_departure],['返航占用',row.capacity_used_arrival],['容量利用率',percent(row.capacity_utilization)],['离场附加延迟',`${row.departure_delay_slots || 0} 窗`],['返航附加延迟',`${row.return_delay_slots || 0} 窗`],['损毁事件',(row.damage_event_ids||[]).join(', ')||'无']]);
+    refs.inspector.innerHTML = inspectorRows([['机场',airportDisplay(id)],['角色',[a.is_core?'核心':null,a.is_selected_cluster?'组选':null,a.is_participating?'参与':null].filter(Boolean).join(' / ')||'未参与'],['可用容量',row.capacity_available],['出动占用',row.capacity_used_departure],['返航占用',row.capacity_used_arrival],['容量利用率',percent(row.capacity_utilization)],['离场附加延迟',`${row.departure_delay_slots || 0} 窗`],['返航附加延迟',`${row.return_delay_slots || 0} 窗`],['损毁事件',(row.damage_event_ids||[]).join(', ')||'无']]);
   } else if (state.selected.type === 'mission') {
     const m = mission(state.selected.id); refs.inspector.innerHTML = inspectorRows([['任务',missionName(m.mission_id)],['任务窗',`${windowLabel(m.window_start_slot)}–${windowLabel(m.window_end_slot)} [start,end)`],['当前窗',windowLabel(f.window)]]);
   } else {
-    const r = currentRoute(state.selected.id); refs.inspector.innerHTML = inspectorRows([['Path ID',r.path_id],['出发',airportName(r.origin_airport_id)],['任务',missionName(r.mission_id)],['返场',airportName(r.return_airport_id)],['机型',r.aircraft_type],['出动窗',windowLabel(r.depart_window)],['返航窗',windowLabel(r.return_window)],['Ready',windowLabel(r.ready_window)],['架次',r.sorties]]);
+    const r = currentRoute(state.selected.id); refs.inspector.innerHTML = inspectorRows([['航链',`${airportDisplay(r.origin_airport_id)} → ${missionName(r.mission_id)} → ${airportDisplay(r.return_airport_id)}`],['机型',r.aircraft_type],['出动窗',windowLabel(r.depart_window)],['返航窗',windowLabel(r.return_window)],['再次可用',windowLabel(r.ready_window)],['架次',r.sorties]]);
   }
 }
 function selectObject(type, id) { state.selected = { type, id }; renderInspector(); if (type === 'airport') openDock('airport'); else if (type === 'mission') openDock('mission'); else openDock('technical'); }
@@ -214,7 +229,7 @@ function renderDetail(tab) {
   const f = frame(); let html = '';
   if (tab === 'airport') {
     const id = selectedAirportId(), row = state.metrics.airports?.[id], current = f.airports[id] || {};
-    html = detailItems([['机场',airportName(id)],['累计出动',row?.departures_total],['累计返航',row?.returns_total],['承接占比',percent(row?.departure_share)],['当前容量',current.capacity_available],['当前利用率',percent(current.capacity_utilization)]]) + pillRows([row?.is_core?'核心机场':null,row?.is_selected_cluster?'最终组群':null,row?.is_participating?'实际参与':null].filter(Boolean));
+    html = detailItems([['机场',airportDisplay(id)],['累计出动',row?.departures_total],['累计返航',row?.returns_total],['承接占比',percent(row?.departure_share)],['当前容量',current.capacity_available],['当前利用率',percent(current.capacity_utilization)]]) + pillRows([row?.is_core?'核心机场':null,row?.is_selected_cluster?'最终组群':null,row?.is_participating?'实际参与':null].filter(Boolean));
   } else if (tab === 'mission') {
     const id = selectedMissionId(), row = state.metrics.tasks?.[id], m = mission(id);
     html = detailItems([['任务',missionName(id)],['需求架次',row?.required_total],['已调度',row?.scheduled_total],['任务窗',`${windowLabel(m?.window_start_slot)}–${windowLabel(m?.window_end_slot)}`]]) + pillRows(Object.entries(row?.by_origin_airport || {}).map(([aid,q]) => `${airportName(aid)} ${q} 架次`));
@@ -222,10 +237,10 @@ function renderDetail(tab) {
     html = Object.entries(state.metrics.aircraft || {}).map(([id,row]) => detailItems([['机型',id],['投入架次',row.scheduled_total],['投入占比',percent(row.scheduled_share)],['状态模型',state.metrics.aircraft_inventory?.state_model || '—']])).join('');
   } else if (tab === 'resource') {
     const aid = selectedAirportId(), rows = f.airports[aid]?.resources || {}, meta = state.metrics.resources?.resource_types || {};
-    html = `<strong>${escapeHtml(airportName(aid))} · ${windowLabel(f.window)}</strong>` + pillRows(Object.entries(rows).map(([rid,row]) => `${meta[rid]?.name || rid}: 余量 ${row.remaining} ${meta[rid]?.unit || ''} / 初始比 ${percent(row.remaining_ratio_initial)}`));
+    html = `<strong>${escapeHtml(airportDisplay(aid))} · ${windowLabel(f.window)}</strong>` + pillRows(Object.entries(rows).map(([rid,row]) => `${meta[rid]?.name || rid}: 余量 ${row.remaining} ${meta[rid]?.unit || ''} / 初始比 ${percent(row.remaining_ratio_initial)}`));
   } else {
     const route = state.selected.type === 'route' ? currentRoute(state.selected.id) : null;
-    html = detailItems([['Runtime Schema',state.runtime.schema_version],['Metrics Schema',state.metrics.schema_version],['Snapshot Hash',state.metrics.technical?.snapshot_hash],['当前窗',windowLabel(f.window)],['当前 Path',route?.path_id || '—'],['Solver',state.metrics.technical?.solver_status || '—']]);
+    html = detailItems([['完整 Run ID',state.runId],['Runtime Schema',state.runtime.schema_version],['Metrics Schema',state.metrics.schema_version],['Snapshot Hash',state.metrics.technical?.snapshot_hash],['当前窗',windowLabel(f.window)],['当前 Path',route?.path_id || '—'],['Solver',state.metrics.technical?.solver_status || '—']]);
   }
   refs.dockBody.innerHTML = html || '当前没有可展示事实';
 }
@@ -250,8 +265,9 @@ async function init() {
     if (run.status !== 'succeeded') throw new ApiError(`运行态势仅支持成功 Run；当前状态=${run.status}`, { status:409, code:'RUN_NOT_SUCCEEDED' });
     if (runtime.run_id !== state.runId || metrics.run_id !== state.runId) throw new Error('Run identity mismatch');
     state.run=run; state.runtime=runtime; state.metrics=metrics; state.routeById=new Map(runtime.routes.map((x)=>[x.path_id,x]));
-    refs.slider.max=String(Math.max(0,runtime.frames.length-1)); renderBadges(); renderFrame(); await initMap();
-  } catch (error) { showError(error); }
+    refs.slider.max=String(Math.max(0,runtime.frames.length-1)); renderBadges(); renderFrame();
+  } catch (error) { showError(error); return; }
+  try { await initMap(); } catch (error) { showMapError(error); }
 }
 
 document.addEventListener('DOMContentLoaded', init);

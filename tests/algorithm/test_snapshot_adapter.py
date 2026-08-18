@@ -79,21 +79,24 @@ def make_snapshot(
     algorithm_seed: int = 42,
     run_id: str = "R1",
     available_scenarios: tuple[DamageScenario, ...] = (),
+    situation_id: str = "S1",
+    airport_ids: tuple[str, str] = ("A1", "A2"),
 ) -> RunSnapshot:
+    first_airport_id, second_airport_id = airport_ids
     mission = Mission(
         mission_id="M1", name="Mission", longitude=120.0, latitude=32.0,
         window_start_slot=4, window_end_slot=8,
         aircraft_requirements=(MissionAircraftRequirement("fighter", 2, 1),),
     )
-    situation = Situation.create(situation_id="S1", name="S").with_airport(
+    situation = Situation.create(situation_id=situation_id, name="S").with_airport(
         airport(
-            "A1",
+            first_airport_id,
             fuel_initial=a1_fuel_initial,
             replenishment_capacity=a1_replenishment_capacity,
             replenishments=a1_replenishments,
         )
     ).with_airport(
-        airport("A2", qty=0)
+        airport(second_airport_id, qty=0)
     ).with_mission(mission)
     damage_id = None
     scenario_map = {row.damage_scenario_id: row for row in available_scenarios}
@@ -108,7 +111,7 @@ def make_snapshot(
         "preference_mode": preference_mode,
         "cluster_enabled": cluster_enabled,
         "cluster_size": 2 if cluster_enabled else None,
-        "core_airports": ["A1"] if cluster_enabled else [],
+        "core_airports": [first_airport_id] if cluster_enabled else [],
         "aircraft_type_weight": {"fighter": 1.2},
         "mip_time_limit_s": mip_time_limit_s,
         "algorithm_seed": algorithm_seed,
@@ -117,8 +120,8 @@ def make_snapshot(
         run_id=run_id, situation=situation,
         aircraft_types=ac, resource_types=res, aircraft_resource_requirements=req,
         od_distances=[
-            ODDistance("A1", "M1", 100),
-            ODDistance("A2", "M1", 120),
+            ODDistance(first_airport_id, "M1", 100),
+            ODDistance(second_airport_id, "M1", 120),
         ],
         run_config=config,
     )

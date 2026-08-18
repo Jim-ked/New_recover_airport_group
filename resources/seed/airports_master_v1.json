@@ -5,7 +5,7 @@
   "count": 566,
   "airports": [
     {
-      "airport_id": "oa:27188",
+      "airport_id": "AP001",
       "airport_name": "Beijing Capital International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -92,7 +92,7 @@
       ]
     },
     {
-      "airport_id": "oa:330820",
+      "airport_id": "AP002",
       "airport_name": "Beijing Daxing International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -202,7 +202,7 @@
       ]
     },
     {
-      "airport_id": "oa:348158",
+      "airport_id": "AP003",
       "airport_name": "Beijing Nanjiao Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -243,7 +243,7 @@
       ]
     },
     {
-      "airport_id": "oa:44093",
+      "airport_id": "AP004",
       "airport_name": "Beijing Nanyuan Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -260,7 +260,7 @@
       "runways": []
     },
     {
-      "airport_id": "oa:44082",
+      "airport_id": "AP005",
       "airport_name": "Beijing Shahezhen Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -277,7 +277,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44083",
+      "airport_id": "AP006",
       "airport_name": "Beijing Tongxian Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -294,7 +294,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32006",
+      "airport_id": "AP007",
       "airport_name": "Beijing Xijiao Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -335,7 +335,7 @@
       ]
     },
     {
-      "airport_id": "oa:312491",
+      "airport_id": "AP008",
       "airport_name": "Beijing Yanqing Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -376,7 +376,7 @@
       ]
     },
     {
-      "airport_id": "oa:563855",
+      "airport_id": "AP009",
       "airport_name": "China Aviation Museum Airfield",
       "facility_type": "small_airport",
       "role": "civil",
@@ -393,7 +393,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44092",
+      "airport_id": "AP010",
       "airport_name": "Liangxiangzhen Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -410,7 +410,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:351028",
+      "airport_id": "AP011",
       "airport_name": "Miyun/Mujiayu",
       "facility_type": "small_airport",
       "role": "civil",
@@ -451,7 +451,7 @@
       ]
     },
     {
-      "airport_id": "oa:44098",
+      "airport_id": "AP012",
       "airport_name": "Yongning Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -468,7 +468,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44094",
+      "airport_id": "AP013",
       "airport_name": "Tangguantun Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -485,7 +485,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348696",
+      "airport_id": "AP014",
       "airport_name": "Tianjin Binhai Douzhuang Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -502,7 +502,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27192",
+      "airport_id": "AP015",
       "airport_name": "Tianjin Binhai International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -566,7 +566,7 @@
       ]
     },
     {
-      "airport_id": "oa:354335",
+      "airport_id": "AP016",
       "airport_name": "Tianjin Tanggu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -583,7 +583,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44097",
+      "airport_id": "AP017",
       "airport_name": "Yangcun Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -600,7 +600,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:318172",
+      "airport_id": "AP018",
       "airport_name": "Baoding Huangzhang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -617,7 +617,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44168",
+      "airport_id": "AP019",
       "airport_name": "Cangxian Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -658,7 +658,7 @@
       ]
     },
     {
-      "airport_id": "oa:327347",
+      "airport_id": "AP020",
       "airport_name": "Chengde Puning Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -699,7 +699,7 @@
       ]
     },
     {
-      "airport_id": "oa:348155",
+      "airport_id": "AP021",
       "airport_name": "Dingxing Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -716,7 +716,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44089",
+      "airport_id": "AP022",
       "airport_name": "Fengning Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -733,7 +733,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348156",
+      "airport_id": "AP023",
       "airport_name": "Gaobeidian Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -750,7 +750,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:300860",
+      "airport_id": "AP024",
       "airport_name": "Handan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -791,7 +791,7 @@
       ]
     },
     {
-      "airport_id": "oa:605892",
+      "airport_id": "AP025",
       "airport_name": "Hebei Renqiu Bayangdian Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -808,7 +808,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348695",
+      "airport_id": "AP026",
       "airport_name": "Huanghua Fanghuang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -825,7 +825,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44172",
+      "airport_id": "AP027",
       "airport_name": "Jiugucheng Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -842,7 +842,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350855",
+      "airport_id": "AP028",
       "airport_name": "PLAAF Shijiazhuang Flight Academy",
       "facility_type": "small_airport",
       "role": "military",
@@ -859,7 +859,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44279",
+      "airport_id": "AP029",
       "airport_name": "Pingquan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -876,7 +876,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:318174",
+      "airport_id": "AP030",
       "airport_name": "Qinhuangdao Beidaihe Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -917,7 +917,7 @@
       ]
     },
     {
-      "airport_id": "oa:32295",
+      "airport_id": "AP031",
       "airport_name": "Qinhuangdao Shanhaiguan Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -934,7 +934,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348149",
+      "airport_id": "AP032",
       "airport_name": "Shijiazhuang Luancheng Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -951,7 +951,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27191",
+      "airport_id": "AP033",
       "airport_name": "Shijiazhuang Zhengding International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -992,7 +992,7 @@
       ]
     },
     {
-      "airport_id": "oa:43975",
+      "airport_id": "AP034",
       "airport_name": "Tangshan Sannühe Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -1033,7 +1033,7 @@
       ]
     },
     {
-      "airport_id": "oa:44101",
+      "airport_id": "AP035",
       "airport_name": "Tangshan Zunhua Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -1050,7 +1050,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:308722",
+      "airport_id": "AP036",
       "airport_name": "Xingtai Dalian Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -1067,7 +1067,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348154",
+      "airport_id": "AP037",
       "airport_name": "Xishanbei Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -1084,7 +1084,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44100",
+      "airport_id": "AP038",
       "airport_name": "Zhangjiakou Ningyuan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -1125,7 +1125,7 @@
       ]
     },
     {
-      "airport_id": "oa:348157",
+      "airport_id": "AP039",
       "airport_name": "Zhuozhou Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -1142,7 +1142,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:30830",
+      "airport_id": "AP040",
       "airport_name": "Changzhi Wangcun Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -1183,7 +1183,7 @@
       ]
     },
     {
-      "airport_id": "oa:350852",
+      "airport_id": "AP041",
       "airport_name": "Datong Qingshuihe Air Base",
       "facility_type": "small_airport",
       "role": "joint",
@@ -1200,7 +1200,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:30876",
+      "airport_id": "AP042",
       "airport_name": "Datong Yungang International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -1241,7 +1241,7 @@
       ]
     },
     {
-      "airport_id": "oa:44091",
+      "airport_id": "AP043",
       "airport_name": "Huairen Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -1258,7 +1258,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:323216",
+      "airport_id": "AP044",
       "airport_name": "Linfen Yaodu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -1299,7 +1299,7 @@
       ]
     },
     {
-      "airport_id": "oa:318175",
+      "airport_id": "AP045",
       "airport_name": "Linfen Yaomiao Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -1316,7 +1316,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:526860",
+      "airport_id": "AP046",
       "airport_name": "Shuozhou Zirun Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -1357,7 +1357,7 @@
       ]
     },
     {
-      "airport_id": "oa:27193",
+      "airport_id": "AP047",
       "airport_name": "Taiyuan Wusu International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -1421,7 +1421,7 @@
       ]
     },
     {
-      "airport_id": "oa:352226",
+      "airport_id": "AP048",
       "airport_name": "Taiyuan Yaocheng Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1438,7 +1438,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44096",
+      "airport_id": "AP049",
       "airport_name": "Wenshui Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -1455,7 +1455,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:323217",
+      "airport_id": "AP050",
       "airport_name": "Xinzhou Wutaishan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1496,7 +1496,7 @@
       ]
     },
     {
-      "airport_id": "oa:315169",
+      "airport_id": "AP051",
       "airport_name": "Yongji Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -1513,7 +1513,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:314558",
+      "airport_id": "AP052",
       "airport_name": "Alxa Left Banner Bayanhot Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -1554,7 +1554,7 @@
       ]
     },
     {
-      "airport_id": "oa:314557",
+      "airport_id": "AP053",
       "airport_name": "Alxa Right Banner Badanjilin Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -1595,7 +1595,7 @@
       ]
     },
     {
-      "airport_id": "oa:330359",
+      "airport_id": "AP054",
       "airport_name": "Ar Horqin Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1612,7 +1612,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:609056",
+      "airport_id": "AP055",
       "airport_name": "Arun Banner Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1629,7 +1629,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:315854",
+      "airport_id": "AP056",
       "airport_name": "Arxan Yi'ershi Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -1670,7 +1670,7 @@
       ]
     },
     {
-      "airport_id": "oa:525152",
+      "airport_id": "AP057",
       "airport_name": "Bailing Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1687,7 +1687,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:30679",
+      "airport_id": "AP058",
       "airport_name": "Baotou Donghe International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -1728,7 +1728,7 @@
       ]
     },
     {
-      "airport_id": "oa:354512",
+      "airport_id": "AP059",
       "airport_name": "Bayannur Ming'an Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1745,7 +1745,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:314499",
+      "airport_id": "AP060",
       "airport_name": "Bayannur Tianjitai Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -1786,7 +1786,7 @@
       ]
     },
     {
-      "airport_id": "oa:335267",
+      "airport_id": "AP061",
       "airport_name": "Chaor Airstrip",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1803,7 +1803,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:30829",
+      "airport_id": "AP062",
       "airport_name": "Chifeng Yulong Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -1844,7 +1844,7 @@
       ]
     },
     {
-      "airport_id": "oa:355962",
+      "airport_id": "AP063",
       "airport_name": "Dengkou General Aviation Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1861,7 +1861,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:314559",
+      "airport_id": "AP064",
       "airport_name": "Ejin Banner Taolai Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1902,7 +1902,7 @@
       ]
     },
     {
-      "airport_id": "oa:300671",
+      "airport_id": "AP065",
       "airport_name": "Erenhot Saiwusu International Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -1943,7 +1943,7 @@
       ]
     },
     {
-      "airport_id": "oa:552936",
+      "airport_id": "AP066",
       "airport_name": "E’Tuo Ke Qian Qi general airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1960,7 +1960,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:335271",
+      "airport_id": "AP067",
       "airport_name": "Genhe Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -1977,7 +1977,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:335266",
+      "airport_id": "AP068",
       "airport_name": "Hailar Southwest Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -1994,7 +1994,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27189",
+      "airport_id": "AP069",
       "airport_name": "Hohhot Baita International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -2035,7 +2035,7 @@
       ]
     },
     {
-      "airport_id": "oa:44090",
+      "airport_id": "AP070",
       "airport_name": "Hohhot Bikeqi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -2052,7 +2052,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:525766",
+      "airport_id": "AP071",
       "airport_name": "Hohhot Shengle International Airport (under construction)",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2116,7 +2116,7 @@
       ]
     },
     {
-      "airport_id": "oa:327443",
+      "airport_id": "AP072",
       "airport_name": "Holingol Huolinhe Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2157,7 +2157,7 @@
       ]
     },
     {
-      "airport_id": "oa:542685",
+      "airport_id": "AP073",
       "airport_name": "Huhe Tata Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2174,7 +2174,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27190",
+      "airport_id": "AP074",
       "airport_name": "Hulunbuir Hailar Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -2215,7 +2215,7 @@
       ]
     },
     {
-      "airport_id": "oa:322165",
+      "airport_id": "AP075",
       "airport_name": "Manzhouli Xijiao Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -2256,7 +2256,7 @@
       ]
     },
     {
-      "airport_id": "oa:342426",
+      "airport_id": "AP076",
       "airport_name": "Morin Dawa Banner Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2297,7 +2297,7 @@
       ]
     },
     {
-      "airport_id": "oa:332207",
+      "airport_id": "AP077",
       "airport_name": "New Barag Right Banner Baogede Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2314,7 +2314,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:300513",
+      "airport_id": "AP078",
       "airport_name": "Ordos Ejin Horo International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -2355,7 +2355,7 @@
       ]
     },
     {
-      "airport_id": "oa:548188",
+      "airport_id": "AP079",
       "airport_name": "Otog Banner Wulan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2372,7 +2372,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:525160",
+      "airport_id": "AP080",
       "airport_name": "Otog Front Banner Oljoq Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2389,7 +2389,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:523113",
+      "airport_id": "AP081",
       "airport_name": "Ruad Zhongqi Hailiutu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2406,7 +2406,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32440",
+      "airport_id": "AP082",
       "airport_name": "Tongliao Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2447,7 +2447,7 @@
       ]
     },
     {
-      "airport_id": "oa:35315",
+      "airport_id": "AP083",
       "airport_name": "Ulanhot Yilelite Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2488,7 +2488,7 @@
       ]
     },
     {
-      "airport_id": "oa:327445",
+      "airport_id": "AP084",
       "airport_name": "Ulanqab Jining Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2529,7 +2529,7 @@
       ]
     },
     {
-      "airport_id": "oa:355960",
+      "airport_id": "AP085",
       "airport_name": "Urad Front Banner Gongmiaozi Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -2546,7 +2546,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:328940",
+      "airport_id": "AP086",
       "airport_name": "Urad Middle Banner Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2563,7 +2563,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:308728",
+      "airport_id": "AP087",
       "airport_name": "Wuhai Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2604,7 +2604,7 @@
       ]
     },
     {
-      "airport_id": "oa:32700",
+      "airport_id": "AP088",
       "airport_name": "Xilinhot Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2645,7 +2645,7 @@
       ]
     },
     {
-      "airport_id": "oa:323666",
+      "airport_id": "AP089",
       "airport_name": "Zhalantun Genghis Khan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2686,7 +2686,7 @@
       ]
     },
     {
-      "airport_id": "oa:30646",
+      "airport_id": "AP090",
       "airport_name": "Anshan Teng'ao Airport / Anshan Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -2727,7 +2727,7 @@
       ]
     },
     {
-      "airport_id": "oa:300858",
+      "airport_id": "AP091",
       "airport_name": "Changhai Dachangshandao Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -2768,7 +2768,7 @@
       ]
     },
     {
-      "airport_id": "oa:30827",
+      "airport_id": "AP092",
       "airport_name": "Chaoyang Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -2809,7 +2809,7 @@
       ]
     },
     {
-      "airport_id": "oa:27242",
+      "airport_id": "AP093",
       "airport_name": "Dalian Zhoushuizi International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -2850,7 +2850,7 @@
       ]
     },
     {
-      "airport_id": "oa:44267",
+      "airport_id": "AP094",
       "airport_name": "Dandong Langtou International Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -2891,7 +2891,7 @@
       ]
     },
     {
-      "airport_id": "oa:350923",
+      "airport_id": "AP095",
       "airport_name": "Faku Caihu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -2908,7 +2908,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44269",
+      "airport_id": "AP096",
       "airport_name": "Fuxin Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -2925,7 +2925,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:552678",
+      "airport_id": "AP097",
       "airport_name": "Gujiatun Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -2942,7 +2942,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:339961",
+      "airport_id": "AP098",
       "airport_name": "Huangdicun Naval Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -2959,7 +2959,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44272",
+      "airport_id": "AP099",
       "airport_name": "Jinxi Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -2976,7 +2976,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:339959",
+      "airport_id": "AP100",
       "airport_name": "Jinzhou Bay Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -3017,7 +3017,7 @@
       ]
     },
     {
-      "airport_id": "oa:31706",
+      "airport_id": "AP101",
       "airport_name": "Jinzhou Xiaolingzi Air Base",
       "facility_type": "small_airport",
       "role": "joint",
@@ -3034,7 +3034,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44275",
+      "airport_id": "AP102",
       "airport_name": "Kaiyuan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3051,7 +3051,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:43972",
+      "airport_id": "AP103",
       "airport_name": "Laohutun Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3068,7 +3068,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:335272",
+      "airport_id": "AP104",
       "airport_name": "Liaoyang Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -3085,7 +3085,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44273",
+      "airport_id": "AP105",
       "airport_name": "Liushuibao Airfield",
       "facility_type": "small_airport",
       "role": "military",
@@ -3102,7 +3102,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:356373",
+      "airport_id": "AP106",
       "airport_name": "Panjin Chenjia General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3119,7 +3119,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:43973",
+      "airport_id": "AP107",
       "airport_name": "Pulandian Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3136,7 +3136,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:43974",
+      "airport_id": "AP108",
       "airport_name": "Sanshilipu Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3153,7 +3153,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44282",
+      "airport_id": "AP109",
       "airport_name": "Shenyang Beiling Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3170,7 +3170,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32753",
+      "airport_id": "AP110",
       "airport_name": "Shenyang Dongta Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3187,7 +3187,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27243",
+      "airport_id": "AP111",
       "airport_name": "Shenyang Taoxian International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -3228,7 +3228,7 @@
       ]
     },
     {
-      "airport_id": "oa:44284",
+      "airport_id": "AP112",
       "airport_name": "Shenyang Yuhong Quansheng Airport",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3245,7 +3245,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44287",
+      "airport_id": "AP113",
       "airport_name": "Suizhong Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3262,7 +3262,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348697",
+      "airport_id": "AP114",
       "airport_name": "Tai'an Xinkaihe Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3279,7 +3279,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44288",
+      "airport_id": "AP115",
       "airport_name": "Tuchengzi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3296,7 +3296,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44182",
+      "airport_id": "AP116",
       "airport_name": "Xingcheng Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3313,7 +3313,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:317861",
+      "airport_id": "AP117",
       "airport_name": "Yingkou Lanqi Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3354,7 +3354,7 @@
       ]
     },
     {
-      "airport_id": "oa:316519",
+      "airport_id": "AP118",
       "airport_name": "Baicheng Chang'an Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3395,7 +3395,7 @@
       ]
     },
     {
-      "airport_id": "oa:300544",
+      "airport_id": "AP119",
       "airport_name": "Changbaishan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -3436,7 +3436,7 @@
       ]
     },
     {
-      "airport_id": "oa:44263",
+      "airport_id": "AP120",
       "airport_name": "Changchun Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3453,7 +3453,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27237",
+      "airport_id": "AP121",
       "airport_name": "Changchun Longjia International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -3494,7 +3494,7 @@
       ]
     },
     {
-      "airport_id": "oa:356372",
+      "airport_id": "AP122",
       "airport_name": "Changchun Yushu General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3511,7 +3511,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348167",
+      "airport_id": "AP123",
       "airport_name": "Datun Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -3528,7 +3528,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:605830",
+      "airport_id": "AP124",
       "airport_name": "Dunhua 93246 Troop 75 Detachment Aerodrome",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3545,7 +3545,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44270",
+      "airport_id": "AP125",
       "airport_name": "Gongzhuling Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3562,7 +3562,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31701",
+      "airport_id": "AP126",
       "airport_name": "Jilin Ertaizi Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -3579,7 +3579,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:605831",
+      "airport_id": "AP127",
       "airport_name": "Ning'an Airfield",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3596,7 +3596,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44286",
+      "airport_id": "AP128",
       "airport_name": "Siping Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -3613,7 +3613,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:327451",
+      "airport_id": "AP129",
       "airport_name": "Songyuan Chaganhu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -3654,7 +3654,7 @@
       ]
     },
     {
-      "airport_id": "oa:307013",
+      "airport_id": "AP130",
       "airport_name": "Tonghua Sanyuanpu Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3695,7 +3695,7 @@
       ]
     },
     {
-      "airport_id": "oa:27244",
+      "airport_id": "AP131",
       "airport_name": "Yanji Chaoyangchuan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -3736,7 +3736,7 @@
       ]
     },
     {
-      "airport_id": "oa:598863",
+      "airport_id": "AP132",
       "airport_name": "Baoquanling General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3753,7 +3753,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:307017",
+      "airport_id": "AP133",
       "airport_name": "Da Hinggan Ling Targen Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -3770,7 +3770,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:300323",
+      "airport_id": "AP134",
       "airport_name": "Daqing Sartu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3811,7 +3811,7 @@
       ]
     },
     {
-      "airport_id": "oa:301009",
+      "airport_id": "AP135",
       "airport_name": "Daxing'anling Elunchun Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -3852,7 +3852,7 @@
       ]
     },
     {
-      "airport_id": "oa:313994",
+      "airport_id": "AP136",
       "airport_name": "Fuyuan Dongji Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -3893,7 +3893,7 @@
       ]
     },
     {
-      "airport_id": "oa:350957",
+      "airport_id": "AP137",
       "airport_name": "Gannan Chahayang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -3910,7 +3910,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44271",
+      "airport_id": "AP138",
       "airport_name": "Harbin Pingfang Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -3927,7 +3927,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27238",
+      "airport_id": "AP139",
       "airport_name": "Harbin Taiping International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -3991,7 +3991,7 @@
       ]
     },
     {
-      "airport_id": "oa:352494",
+      "airport_id": "AP140",
       "airport_name": "Hegang Luobei Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4008,7 +4008,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31576",
+      "airport_id": "AP141",
       "airport_name": "Heihe Aihui Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -4049,7 +4049,7 @@
       ]
     },
     {
-      "airport_id": "oa:350964",
+      "airport_id": "AP142",
       "airport_name": "Jiamusi Sanhetun General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4066,7 +4066,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27239",
+      "airport_id": "AP143",
       "airport_name": "Jiamusi Songjiang International Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -4107,7 +4107,7 @@
       ]
     },
     {
-      "airport_id": "oa:327450",
+      "airport_id": "AP144",
       "airport_name": "Jiansanjiang Shidi Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -4148,7 +4148,7 @@
       ]
     },
     {
-      "airport_id": "oa:313337",
+      "airport_id": "AP145",
       "airport_name": "Jixi Xingkaihu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -4189,7 +4189,7 @@
       ]
     },
     {
-      "airport_id": "oa:350959",
+      "airport_id": "AP146",
       "airport_name": "Keshan Farm Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4206,7 +4206,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44276",
+      "airport_id": "AP147",
       "airport_name": "Lalin Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -4223,7 +4223,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:301193",
+      "airport_id": "AP148",
       "airport_name": "Mohe Gulian Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -4264,7 +4264,7 @@
       ]
     },
     {
-      "airport_id": "oa:27240",
+      "airport_id": "AP149",
       "airport_name": "Mudanjiang Hailang International Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -4305,7 +4305,7 @@
       ]
     },
     {
-      "airport_id": "oa:344104",
+      "airport_id": "AP150",
       "airport_name": "Nenjiang Melgen Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -4322,7 +4322,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350924",
+      "airport_id": "AP151",
       "airport_name": "Qindeli Farm Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4339,7 +4339,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27241",
+      "airport_id": "AP152",
       "airport_name": "Qiqihar Sanjiazi Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -4403,7 +4403,7 @@
       ]
     },
     {
-      "airport_id": "oa:350966",
+      "airport_id": "AP153",
       "airport_name": "Raohe Bawujiu Farm Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4420,7 +4420,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44285",
+      "airport_id": "AP154",
       "airport_name": "Shuangcheng Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -4437,7 +4437,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:45046",
+      "airport_id": "AP155",
       "airport_name": "Shuangyushu Airfield",
       "facility_type": "small_airport",
       "role": "military",
@@ -4454,7 +4454,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350958",
+      "airport_id": "AP156",
       "airport_name": "Suibin Erjiuling Farm Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4471,7 +4471,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:525154",
+      "airport_id": "AP157",
       "airport_name": "Suifenhe Dongning Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4488,7 +4488,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350963",
+      "airport_id": "AP158",
       "airport_name": "Tongjiang Nongjiang Farm Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4505,7 +4505,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:45045",
+      "airport_id": "AP159",
       "airport_name": "Wanggang Airfield",
       "facility_type": "small_airport",
       "role": "military",
@@ -4522,7 +4522,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:327349",
+      "airport_id": "AP160",
       "airport_name": "Wudalianchi Dedu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -4563,7 +4563,7 @@
       ]
     },
     {
-      "airport_id": "oa:350960",
+      "airport_id": "AP161",
       "airport_name": "Wudalianchi Longmen Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4580,7 +4580,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350961",
+      "airport_id": "AP162",
       "airport_name": "Wudalianchi Longzhen General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4597,7 +4597,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350954",
+      "airport_id": "AP163",
       "airport_name": "Wudalianchi Xingfu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4614,7 +4614,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:600625",
+      "airport_id": "AP164",
       "airport_name": "Yichun Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4631,7 +4631,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:307012",
+      "airport_id": "AP165",
       "airport_name": "Yichun Lindu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -4672,7 +4672,7 @@
       ]
     },
     {
-      "airport_id": "oa:350965",
+      "airport_id": "AP166",
       "airport_name": "Zhaodong Beidahuang General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -4689,7 +4689,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:342174",
+      "airport_id": "AP167",
       "airport_name": "Shanghai Chongming Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -4706,7 +4706,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44247",
+      "airport_id": "AP168",
       "airport_name": "Shanghai Dachang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -4723,7 +4723,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348164",
+      "airport_id": "AP169",
       "airport_name": "Shanghai Gaodong Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -4740,7 +4740,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27225",
+      "airport_id": "AP170",
       "airport_name": "Shanghai Hongqiao International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -4804,7 +4804,7 @@
       ]
     },
     {
-      "airport_id": "oa:27223",
+      "airport_id": "AP171",
       "airport_name": "Shanghai Pudong International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -4937,7 +4937,7 @@
       ]
     },
     {
-      "airport_id": "oa:35312",
+      "airport_id": "AP172",
       "airport_name": "Baitabu Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -4978,7 +4978,7 @@
       ]
     },
     {
-      "airport_id": "oa:30871",
+      "airport_id": "AP173",
       "airport_name": "Changzhou Benniu International Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -5019,7 +5019,7 @@
       ]
     },
     {
-      "airport_id": "oa:353993",
+      "airport_id": "AP174",
       "airport_name": "Chenghu General Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -5060,7 +5060,7 @@
       ]
     },
     {
-      "airport_id": "oa:300863",
+      "airport_id": "AP175",
       "airport_name": "Huai'an Lianshui Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -5101,7 +5101,7 @@
       ]
     },
     {
-      "airport_id": "oa:350874",
+      "airport_id": "AP176",
       "airport_name": "Jiangning Tushan Air Base",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5118,7 +5118,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44167",
+      "airport_id": "AP177",
       "airport_name": "Lianyungang Huaguoshan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -5159,7 +5159,7 @@
       ]
     },
     {
-      "airport_id": "oa:348699",
+      "airport_id": "AP178",
       "airport_name": "Luhe Ma'an Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5176,7 +5176,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27221",
+      "airport_id": "AP179",
       "airport_name": "Nanjing Lukou International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -5240,7 +5240,7 @@
       ]
     },
     {
-      "airport_id": "oa:32048",
+      "airport_id": "AP180",
       "airport_name": "Nantong Xingdong International Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -5281,7 +5281,7 @@
       ]
     },
     {
-      "airport_id": "oa:32235",
+      "airport_id": "AP181",
       "airport_name": "Rugao Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -5298,7 +5298,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348172",
+      "airport_id": "AP182",
       "airport_name": "Sheyang General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5315,7 +5315,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32684",
+      "airport_id": "AP183",
       "airport_name": "Sunan Shuofang International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -5356,7 +5356,7 @@
       ]
     },
     {
-      "airport_id": "oa:32420",
+      "airport_id": "AP184",
       "airport_name": "Suzhou Guangfu Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -5373,7 +5373,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44184",
+      "airport_id": "AP185",
       "airport_name": "Xuzhou Daguozhang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -5390,7 +5390,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32713",
+      "airport_id": "AP186",
       "airport_name": "Xuzhou Guanyin International Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -5431,7 +5431,7 @@
       ]
     },
     {
-      "airport_id": "oa:348165",
+      "airport_id": "AP187",
       "airport_name": "Xuzhou Jiulishan Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -5448,7 +5448,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44183",
+      "airport_id": "AP188",
       "airport_name": "Xuzhou Yangmiao Agricultural Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5465,7 +5465,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350946",
+      "airport_id": "AP189",
       "airport_name": "Yancheng Jianhu General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5482,7 +5482,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:35316",
+      "airport_id": "AP190",
       "airport_name": "Yancheng Nanyang International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -5523,7 +5523,7 @@
       ]
     },
     {
-      "airport_id": "oa:317774",
+      "airport_id": "AP191",
       "airport_name": "Yangzhou Taizhou Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -5564,7 +5564,7 @@
       ]
     },
     {
-      "airport_id": "oa:593591",
+      "airport_id": "AP192",
       "airport_name": "Yixing Dingshu General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5605,7 +5605,7 @@
       ]
     },
     {
-      "airport_id": "oa:349715",
+      "airport_id": "AP193",
       "airport_name": "Zhenjiang Dalu Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -5646,7 +5646,7 @@
       ]
     },
     {
-      "airport_id": "oa:354040",
+      "airport_id": "AP194",
       "airport_name": "Anji Tianzihu General Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -5687,7 +5687,7 @@
       ]
     },
     {
-      "airport_id": "oa:44223",
+      "airport_id": "AP195",
       "airport_name": "Changxing Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -5704,7 +5704,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44224",
+      "airport_id": "AP196",
       "airport_name": "Daishan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -5721,7 +5721,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:336115",
+      "airport_id": "AP197",
       "airport_name": "Deqing Moganshan Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -5738,7 +5738,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350886",
+      "airport_id": "AP198",
       "airport_name": "Dongyang Hengdian General Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -5755,7 +5755,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44231",
+      "airport_id": "AP199",
       "airport_name": "Hangzhou Jianqiao Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -5772,7 +5772,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27218",
+      "airport_id": "AP200",
       "airport_name": "Hangzhou Xiaoshan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -5836,7 +5836,7 @@
       ]
     },
     {
-      "airport_id": "oa:350949",
+      "airport_id": "AP201",
       "airport_name": "Jiande Qiandaohu General Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -5853,7 +5853,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44232",
+      "airport_id": "AP202",
       "airport_name": "Jiaxing Nanhu Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -5894,7 +5894,7 @@
       ]
     },
     {
-      "airport_id": "oa:525774",
+      "airport_id": "AP203",
       "airport_name": "Lishui Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -5911,7 +5911,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27220",
+      "airport_id": "AP204",
       "airport_name": "Ningbo Lishe International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -5952,7 +5952,7 @@
       ]
     },
     {
-      "airport_id": "oa:44243",
+      "airport_id": "AP205",
       "airport_name": "Ningbo Zhuangqiao Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -5969,7 +5969,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31714",
+      "airport_id": "AP206",
       "airport_name": "Quzhou Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -6010,7 +6010,7 @@
       ]
     },
     {
-      "airport_id": "oa:557189",
+      "airport_id": "AP207",
       "airport_name": "Taizhou Bay Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -6027,7 +6027,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31658",
+      "airport_id": "AP208",
       "airport_name": "Taizhou Luqiao Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -6068,7 +6068,7 @@
       ]
     },
     {
-      "airport_id": "oa:32672",
+      "airport_id": "AP209",
       "airport_name": "Wenzhou Longwan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -6109,7 +6109,7 @@
       ]
     },
     {
-      "airport_id": "oa:350951",
+      "airport_id": "AP210",
       "airport_name": "Xinchang Wanfeng General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -6126,7 +6126,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32726",
+      "airport_id": "AP211",
       "airport_name": "Yiwu Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -6167,7 +6167,7 @@
       ]
     },
     {
-      "airport_id": "oa:31624",
+      "airport_id": "AP212",
       "airport_name": "Zhoushan Putuoshan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -6208,7 +6208,7 @@
       ]
     },
     {
-      "airport_id": "oa:30650",
+      "airport_id": "AP213",
       "airport_name": "Anqing Tianzhushan Airport / Anqing North Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -6249,7 +6249,7 @@
       ]
     },
     {
-      "airport_id": "oa:301883",
+      "airport_id": "AP214",
       "airport_name": "Bengbu Renheji Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -6266,7 +6266,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:598595",
+      "airport_id": "AP215",
       "airport_name": "Bengbu Tenghu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -6307,7 +6307,7 @@
       ]
     },
     {
-      "airport_id": "oa:525151",
+      "airport_id": "AP216",
       "airport_name": "Bozhou Airport (under construction)",
       "facility_type": "small_airport",
       "role": "civil",
@@ -6324,7 +6324,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:308641",
+      "airport_id": "AP217",
       "airport_name": "Chizhou Jiuhuashan Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -6365,7 +6365,7 @@
       ]
     },
     {
-      "airport_id": "oa:44225",
+      "airport_id": "AP218",
       "airport_name": "Feidong Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -6382,7 +6382,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:604748",
+      "airport_id": "AP219",
       "airport_name": "Feidong Bailong General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -6399,7 +6399,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:308240",
+      "airport_id": "AP220",
       "airport_name": "Fuyang Xiguan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -6440,7 +6440,7 @@
       ]
     },
     {
-      "airport_id": "oa:348168",
+      "airport_id": "AP221",
       "airport_name": "Hefei Luogang Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -6457,7 +6457,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27222",
+      "airport_id": "AP222",
       "airport_name": "Hefei Xinqiao International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -6498,7 +6498,7 @@
       ]
     },
     {
-      "airport_id": "oa:32489",
+      "airport_id": "AP223",
       "airport_name": "Huangshan Tunxi International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -6539,7 +6539,7 @@
       ]
     },
     {
-      "airport_id": "oa:32649",
+      "airport_id": "AP224",
       "airport_name": "Wuhu Wanli Airport / Wuhu Air Base",
       "facility_type": "small_airport",
       "role": "joint",
@@ -6556,7 +6556,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348698",
+      "airport_id": "AP225",
       "airport_name": "Wuhu Xuanzhou Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -6597,7 +6597,7 @@
       ]
     },
     {
-      "airport_id": "oa:44227",
+      "airport_id": "AP226",
       "airport_name": "Fuzhou Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -6638,7 +6638,7 @@
       ]
     },
     {
-      "airport_id": "oa:27217",
+      "airport_id": "AP227",
       "airport_name": "Fuzhou Changle International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -6679,7 +6679,7 @@
       ]
     },
     {
-      "airport_id": "oa:44230",
+      "airport_id": "AP228",
       "airport_name": "Huian Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -6696,7 +6696,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44234",
+      "airport_id": "AP229",
       "airport_name": "Liancheng Guanzhishan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -6737,7 +6737,7 @@
       ]
     },
     {
-      "airport_id": "oa:44236",
+      "airport_id": "AP230",
       "airport_name": "Longtian Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -6754,7 +6754,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32683",
+      "airport_id": "AP231",
       "airport_name": "Nanping Wuyishan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -6795,7 +6795,7 @@
       ]
     },
     {
-      "airport_id": "oa:31705",
+      "airport_id": "AP232",
       "airport_name": "Quanzhou Jinjiang International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -6836,7 +6836,7 @@
       ]
     },
     {
-      "airport_id": "oa:316774",
+      "airport_id": "AP233",
       "airport_name": "Sanming Shaxian Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -6877,7 +6877,7 @@
       ]
     },
     {
-      "airport_id": "oa:595940",
+      "airport_id": "AP234",
       "airport_name": "Shuimen Airbase",
       "facility_type": "small_airport",
       "role": "military",
@@ -6894,7 +6894,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27215",
+      "airport_id": "AP235",
       "airport_name": "Xiamen Gaoqi International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -6935,7 +6935,7 @@
       ]
     },
     {
-      "airport_id": "oa:356102",
+      "airport_id": "AP236",
       "airport_name": "Zhangpu Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -6952,7 +6952,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44261",
+      "airport_id": "AP237",
       "airport_name": "Zhangzhou Longxi Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -6969,7 +6969,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31769",
+      "airport_id": "AP238",
       "airport_name": "Ganzhou Huangjin Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7010,7 +7010,7 @@
       ]
     },
     {
-      "airport_id": "oa:354722",
+      "airport_id": "AP239",
       "airport_name": "Ganzhou Ruijin Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7027,7 +7027,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31695",
+      "airport_id": "AP240",
       "airport_name": "Jingdezhen Luojia Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -7068,7 +7068,7 @@
       ]
     },
     {
-      "airport_id": "oa:44159",
+      "airport_id": "AP241",
       "airport_name": "Jinggangshan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -7109,7 +7109,7 @@
       ]
     },
     {
-      "airport_id": "oa:35309",
+      "airport_id": "AP242",
       "airport_name": "Jiujiang Lushan Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -7150,7 +7150,7 @@
       ]
     },
     {
-      "airport_id": "oa:27216",
+      "airport_id": "AP243",
       "airport_name": "Nanchang Changbei International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -7191,7 +7191,7 @@
       ]
     },
     {
-      "airport_id": "oa:44241",
+      "airport_id": "AP244",
       "airport_name": "Nanchang Xiangtang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -7208,7 +7208,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:525775",
+      "airport_id": "AP245",
       "airport_name": "Nanchang Yaohu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7225,7 +7225,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:316767",
+      "airport_id": "AP246",
       "airport_name": "Shangrao Sanqingshan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -7266,7 +7266,7 @@
       ]
     },
     {
-      "airport_id": "oa:44216",
+      "airport_id": "AP247",
       "airport_name": "Xincheng Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -7283,7 +7283,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:315853",
+      "airport_id": "AP248",
       "airport_name": "Yichun Mingyueshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -7324,7 +7324,7 @@
       ]
     },
     {
-      "airport_id": "oa:44260",
+      "airport_id": "AP249",
       "airport_name": "Zhangshu Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -7341,7 +7341,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348690",
+      "airport_id": "AP250",
       "airport_name": "Binzhou Dagao General Aviation Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7382,7 +7382,7 @@
       ]
     },
     {
-      "airport_id": "oa:44169",
+      "airport_id": "AP251",
       "airport_name": "Dongying Shengli Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -7423,7 +7423,7 @@
       ]
     },
     {
-      "airport_id": "oa:348169",
+      "airport_id": "AP252",
       "airport_name": "Gaomi Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -7440,7 +7440,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:329666",
+      "airport_id": "AP253",
       "airport_name": "Guodu Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -7457,7 +7457,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:352633",
+      "airport_id": "AP254",
       "airport_name": "Heze Mudan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -7498,7 +7498,7 @@
       ]
     },
     {
-      "airport_id": "oa:44170",
+      "airport_id": "AP255",
       "airport_name": "Jiaozhou Jiaocheng Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -7515,7 +7515,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348693",
+      "airport_id": "AP256",
       "airport_name": "Jinan Pingyin Agricultural Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7532,7 +7532,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44171",
+      "airport_id": "AP257",
       "airport_name": "Jinan Qihe Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -7549,7 +7549,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27219",
+      "airport_id": "AP258",
       "airport_name": "Jinan Yaoqiang International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -7590,7 +7590,7 @@
       ]
     },
     {
-      "airport_id": "oa:548284",
+      "airport_id": "AP259",
       "airport_name": "Jining Da'an Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -7631,7 +7631,7 @@
       ]
     },
     {
-      "airport_id": "oa:44174",
+      "airport_id": "AP260",
       "airport_name": "Laiyang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -7648,7 +7648,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31871",
+      "airport_id": "AP261",
       "airport_name": "Linyi Qiyang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -7689,7 +7689,7 @@
       ]
     },
     {
-      "airport_id": "oa:348688",
+      "airport_id": "AP262",
       "airport_name": "Longkou Huangshan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7706,7 +7706,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348689",
+      "airport_id": "AP263",
       "airport_name": "Penglai Shahekou Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7723,7 +7723,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44178",
+      "airport_id": "AP264",
       "airport_name": "Qingdao Cangkou Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -7740,7 +7740,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:351909",
+      "airport_id": "AP265",
       "airport_name": "Qingdao Cihang General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7757,7 +7757,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:342096",
+      "airport_id": "AP266",
       "airport_name": "Qingdao Jiaodong International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -7821,7 +7821,7 @@
       ]
     },
     {
-      "airport_id": "oa:604764",
+      "airport_id": "AP267",
       "airport_name": "Qingdao Laixi Dianbu General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7838,7 +7838,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:597727",
+      "airport_id": "AP268",
       "airport_name": "Rizhao City Lanshan General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7855,7 +7855,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:323218",
+      "airport_id": "AP269",
       "airport_name": "Rizhao Shanzihe Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -7896,7 +7896,7 @@
       ]
     },
     {
-      "airport_id": "oa:509740",
+      "airport_id": "AP270",
       "airport_name": "Shidaojiao",
       "facility_type": "small_airport",
       "role": "civil",
@@ -7913,7 +7913,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32646",
+      "airport_id": "AP271",
       "airport_name": "Weifang Nanyuan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -7954,7 +7954,7 @@
       ]
     },
     {
-      "airport_id": "oa:27226",
+      "airport_id": "AP272",
       "airport_name": "Weihai Dashuibo Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -7995,7 +7995,7 @@
       ]
     },
     {
-      "airport_id": "oa:350948",
+      "airport_id": "AP273",
       "airport_name": "Xueye Aeronautics Technology Sports Park",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8012,7 +8012,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27227",
+      "airport_id": "AP274",
       "airport_name": "Yantai Laishan Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -8053,7 +8053,7 @@
       ]
     },
     {
-      "airport_id": "oa:332096",
+      "airport_id": "AP275",
       "airport_name": "Yantai Penglai International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -8094,7 +8094,7 @@
       ]
     },
     {
-      "airport_id": "oa:44187",
+      "airport_id": "AP276",
       "airport_name": "Yidu Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -8111,7 +8111,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:525771",
+      "airport_id": "AP277",
       "airport_name": "Zaozhuang Yiyun Airport (under construction)",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8128,7 +8128,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44189",
+      "airport_id": "AP278",
       "airport_name": "Zhucheng Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8145,7 +8145,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348694",
+      "airport_id": "AP279",
       "airport_name": "Zibo Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -8162,7 +8162,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:518484",
+      "airport_id": "AP280",
       "airport_name": "Anyang Hongqiqu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8203,7 +8203,7 @@
       ]
     },
     {
-      "airport_id": "oa:30670",
+      "airport_id": "AP281",
       "airport_name": "Anyang Yindu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8220,7 +8220,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:354511",
+      "airport_id": "AP282",
       "airport_name": "Industrial Airport 601",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8237,7 +8237,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44173",
+      "airport_id": "AP283",
       "airport_name": "Kaifeng Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8254,7 +8254,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31870",
+      "airport_id": "AP284",
       "airport_name": "Luoyang Beijiao Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -8295,7 +8295,7 @@
       ]
     },
     {
-      "airport_id": "oa:44175",
+      "airport_id": "AP285",
       "airport_name": "Luyang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8312,7 +8312,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32041",
+      "airport_id": "AP286",
       "airport_name": "Nanyang Jiangying Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8353,7 +8353,7 @@
       ]
     },
     {
-      "airport_id": "oa:599958",
+      "airport_id": "AP287",
       "airport_name": "Neixiang Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -8370,7 +8370,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:324349",
+      "airport_id": "AP288",
       "airport_name": "Shangqiu Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -8387,7 +8387,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:605893",
+      "airport_id": "AP289",
       "airport_name": "Tangzhuang General Aviation Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8404,7 +8404,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350856",
+      "airport_id": "AP290",
       "airport_name": "Xinxiang Helicopter Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -8421,7 +8421,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:605894",
+      "airport_id": "AP291",
       "airport_name": "Xinxiang Pingyuan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8438,7 +8438,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:323907",
+      "airport_id": "AP292",
       "airport_name": "Xinyang Minggang Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -8479,7 +8479,7 @@
       ]
     },
     {
-      "airport_id": "oa:324768",
+      "airport_id": "AP293",
       "airport_name": "Zhengzhou Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8496,7 +8496,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:319812",
+      "airport_id": "AP294",
       "airport_name": "Zhengzhou Shangjie Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -8513,7 +8513,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27199",
+      "airport_id": "AP295",
       "airport_name": "Zhengzhou Xinzheng International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -8577,7 +8577,7 @@
       ]
     },
     {
-      "airport_id": "oa:44134",
+      "airport_id": "AP296",
       "airport_name": "Dangyang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8594,7 +8594,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31006",
+      "airport_id": "AP297",
       "airport_name": "Enshi Xujiaping Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -8635,7 +8635,7 @@
       ]
     },
     {
-      "airport_id": "oa:347108",
+      "airport_id": "AP298",
       "airport_name": "Ezhou Huahu International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -8699,7 +8699,7 @@
       ]
     },
     {
-      "airport_id": "oa:348170",
+      "airport_id": "AP299",
       "airport_name": "Guangshui Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -8716,7 +8716,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31818",
+      "airport_id": "AP300",
       "airport_name": "Guangzhou MR Air Base / Guanghua Airport",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8733,7 +8733,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348171",
+      "airport_id": "AP301",
       "airport_name": "Huangpi Air Base",
       "facility_type": "small_airport",
       "role": "joint",
@@ -8750,7 +8750,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350889",
+      "airport_id": "AP302",
       "airport_name": "Jingmen Zhanghe General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -8767,7 +8767,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:347636",
+      "airport_id": "AP303",
       "airport_name": "Jingzhou Shashi Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -8808,7 +8808,7 @@
       ]
     },
     {
-      "airport_id": "oa:354657",
+      "airport_id": "AP304",
       "airport_name": "Paozhuwan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8825,7 +8825,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:354658",
+      "airport_id": "AP305",
       "airport_name": "Shanpo Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -8842,7 +8842,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:319811",
+      "airport_id": "AP306",
       "airport_name": "Shennongjia Hongping Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -8883,7 +8883,7 @@
       ]
     },
     {
-      "airport_id": "oa:318173",
+      "airport_id": "AP307",
       "airport_name": "Shiyan Wudangshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -8924,7 +8924,7 @@
       ]
     },
     {
-      "airport_id": "oa:348150",
+      "airport_id": "AP308",
       "airport_name": "Wuhan Hannan Municipal Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -8941,7 +8941,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27200",
+      "airport_id": "AP309",
       "airport_name": "Wuhan Tianhe International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -9028,7 +9028,7 @@
       ]
     },
     {
-      "airport_id": "oa:32697",
+      "airport_id": "AP310",
       "airport_name": "Xiangyang Liuji Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9069,7 +9069,7 @@
       ]
     },
     {
-      "airport_id": "oa:350871",
+      "airport_id": "AP311",
       "airport_name": "Xiantao General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9086,7 +9086,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44163",
+      "airport_id": "AP312",
       "airport_name": "Xiaogan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -9103,7 +9103,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32723",
+      "airport_id": "AP313",
       "airport_name": "Yichang Sanxia Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9144,7 +9144,7 @@
       ]
     },
     {
-      "airport_id": "oa:30825",
+      "airport_id": "AP314",
       "airport_name": "Changde Taohuayuan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9185,7 +9185,7 @@
       ]
     },
     {
-      "airport_id": "oa:44133",
+      "airport_id": "AP315",
       "airport_name": "Changsha Datuopu Airport / Changsha Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -9202,7 +9202,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27195",
+      "airport_id": "AP316",
       "airport_name": "Changsha Huanghua International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -9266,7 +9266,7 @@
       ]
     },
     {
-      "airport_id": "oa:352634",
+      "airport_id": "AP317",
       "airport_name": "Chenzhou Beihu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9307,7 +9307,7 @@
       ]
     },
     {
-      "airport_id": "oa:31610",
+      "airport_id": "AP318",
       "airport_name": "Hengyang Nanyue Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9348,7 +9348,7 @@
       ]
     },
     {
-      "airport_id": "oa:300890",
+      "airport_id": "AP319",
       "airport_name": "Huaihua Zhijiang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9389,7 +9389,7 @@
       ]
     },
     {
-      "airport_id": "oa:44149",
+      "airport_id": "AP320",
       "airport_name": "Leiyang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -9406,7 +9406,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:507629",
+      "airport_id": "AP321",
       "airport_name": "Ningxiang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9423,7 +9423,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:430508",
+      "airport_id": "AP322",
       "airport_name": "Shaodong Airport",
       "facility_type": "medium_airport",
       "role": "military",
@@ -9440,7 +9440,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:327446",
+      "airport_id": "AP323",
       "airport_name": "Shaoyang Wugang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9481,7 +9481,7 @@
       ]
     },
     {
-      "airport_id": "oa:514411",
+      "airport_id": "AP324",
       "airport_name": "Xiangxi Biancheng Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9522,7 +9522,7 @@
       ]
     },
     {
-      "airport_id": "oa:308238",
+      "airport_id": "AP325",
       "airport_name": "Yongzhou Lingling Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -9563,7 +9563,7 @@
       ]
     },
     {
-      "airport_id": "oa:325171",
+      "airport_id": "AP326",
       "airport_name": "Yueyang Sanhe Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -9604,7 +9604,7 @@
       ]
     },
     {
-      "airport_id": "oa:30958",
+      "airport_id": "AP327",
       "airport_name": "Zhangjiajie Hehua International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -9645,7 +9645,7 @@
       ]
     },
     {
-      "airport_id": "oa:595941",
+      "airport_id": "AP328",
       "airport_name": "Zhuzhou Lusong Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9662,7 +9662,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:510539",
+      "airport_id": "AP329",
       "airport_name": "East Red Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9679,7 +9679,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:508920",
+      "airport_id": "AP330",
       "airport_name": "Fanhu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9696,7 +9696,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44139",
+      "airport_id": "AP331",
       "airport_name": "Foshan Shadi Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -9737,7 +9737,7 @@
       ]
     },
     {
-      "airport_id": "oa:27194",
+      "airport_id": "AP332",
       "airport_name": "Guangzhou Baiyun International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -9870,7 +9870,7 @@
       ]
     },
     {
-      "airport_id": "oa:44137",
+      "airport_id": "AP333",
       "airport_name": "Guangzhou East Airfield",
       "facility_type": "small_airport",
       "role": "military",
@@ -9887,7 +9887,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44146",
+      "airport_id": "AP334",
       "airport_name": "Huizhou Pingtan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -9928,7 +9928,7 @@
       ]
     },
     {
-      "airport_id": "oa:32400",
+      "airport_id": "AP335",
       "airport_name": "Jieyang Chaoshan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -9969,7 +9969,7 @@
       ]
     },
     {
-      "airport_id": "oa:308237",
+      "airport_id": "AP336",
       "airport_name": "Luoding Sulong Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -9986,7 +9986,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:35314",
+      "airport_id": "AP337",
       "airport_name": "Meizhou Meixian Changgangji International Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10027,7 +10027,7 @@
       ]
     },
     {
-      "airport_id": "oa:315143",
+      "airport_id": "AP338",
       "airport_name": "Shantou Waisha Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -10068,7 +10068,7 @@
       ]
     },
     {
-      "airport_id": "oa:44157",
+      "airport_id": "AP339",
       "airport_name": "Shaoguan Danxia Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -10109,7 +10109,7 @@
       ]
     },
     {
-      "airport_id": "oa:27198",
+      "airport_id": "AP340",
       "airport_name": "Shenzhen Bao'an International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -10196,7 +10196,7 @@
       ]
     },
     {
-      "airport_id": "oa:44158",
+      "airport_id": "AP341",
       "airport_name": "Suixi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -10237,7 +10237,7 @@
       ]
     },
     {
-      "airport_id": "oa:32701",
+      "airport_id": "AP342",
       "airport_name": "Xingning Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -10278,7 +10278,7 @@
       ]
     },
     {
-      "airport_id": "oa:351135",
+      "airport_id": "AP343",
       "airport_name": "Yangjiang Heshan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10295,7 +10295,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:430483",
+      "airport_id": "AP344",
       "airport_name": "Zhanjiang Jiushashi Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10312,7 +10312,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:354995",
+      "airport_id": "AP345",
       "airport_name": "Zhanjiang Wuchuan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -10353,7 +10353,7 @@
       ]
     },
     {
-      "airport_id": "oa:337836",
+      "airport_id": "AP346",
       "airport_name": "Zhongshan Sanjiao Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10394,7 +10394,7 @@
       ]
     },
     {
-      "airport_id": "oa:30593",
+      "airport_id": "AP347",
       "airport_name": "Zhuhai Jinwan Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -10435,7 +10435,7 @@
       ]
     },
     {
-      "airport_id": "oa:337835",
+      "airport_id": "AP348",
       "airport_name": "Zhuhai Jiuzhou Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10452,7 +10452,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:351137",
+      "airport_id": "AP349",
       "airport_name": "Zhuhai Lianzhou General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10469,7 +10469,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44131",
+      "airport_id": "AP350",
       "airport_name": "Baihe Ningming Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -10486,7 +10486,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44160",
+      "airport_id": "AP351",
       "airport_name": "Baise (Bose) Bama Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -10527,7 +10527,7 @@
       ]
     },
     {
-      "airport_id": "oa:30708",
+      "airport_id": "AP352",
       "airport_name": "Beihai Fucheng Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -10568,7 +10568,7 @@
       ]
     },
     {
-      "airport_id": "oa:27196",
+      "airport_id": "AP353",
       "airport_name": "Guilin Liangjiang International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -10609,7 +10609,7 @@
       ]
     },
     {
-      "airport_id": "oa:342115",
+      "airport_id": "AP354",
       "airport_name": "Guilin Qifengling Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -10626,7 +10626,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44141",
+      "airport_id": "AP355",
       "airport_name": "Guiping Mengxu Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -10643,7 +10643,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:318152",
+      "airport_id": "AP356",
       "airport_name": "Hechi Jinchengjiang Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -10684,7 +10684,7 @@
       ]
     },
     {
-      "airport_id": "oa:31874",
+      "airport_id": "AP357",
       "airport_name": "Liuzhou Bailian Airport / Bailian Air Base",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -10725,7 +10725,7 @@
       ]
     },
     {
-      "airport_id": "oa:27197",
+      "airport_id": "AP358",
       "airport_name": "Nanning Wuxu International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -10766,7 +10766,7 @@
       ]
     },
     {
-      "airport_id": "oa:336110",
+      "airport_id": "AP359",
       "airport_name": "Wuzhou Xijiang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -10807,7 +10807,7 @@
       ]
     },
     {
-      "airport_id": "oa:344100",
+      "airport_id": "AP360",
       "airport_name": "Yulin Fumian Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -10848,7 +10848,7 @@
       ]
     },
     {
-      "airport_id": "oa:44135",
+      "airport_id": "AP361",
       "airport_name": "Foluo Northeast Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -10865,7 +10865,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:351131",
+      "airport_id": "AP362",
       "airport_name": "Haikou Jiazi Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -10882,7 +10882,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27201",
+      "airport_id": "AP363",
       "airport_name": "Haikou Meilan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -10946,7 +10946,7 @@
       ]
     },
     {
-      "airport_id": "oa:44147",
+      "airport_id": "AP364",
       "airport_name": "Jialaishi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -10963,7 +10963,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44150",
+      "airport_id": "AP365",
       "airport_name": "Lingshui Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -10980,7 +10980,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:337839",
+      "airport_id": "AP366",
       "airport_name": "Meiji Jiao (Mischief Reef) Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -10997,7 +10997,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:323220",
+      "airport_id": "AP367",
       "airport_name": "Qionghai Bo'ao Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -11038,7 +11038,7 @@
       ]
     },
     {
-      "airport_id": "oa:351133",
+      "airport_id": "AP368",
       "airport_name": "Sanya Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -11055,7 +11055,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27202",
+      "airport_id": "AP369",
       "airport_name": "Sanya Phoenix International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -11096,7 +11096,7 @@
       ]
     },
     {
-      "airport_id": "oa:351130",
+      "airport_id": "AP370",
       "airport_name": "Xiqing General Aviation Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11113,7 +11113,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:314644",
+      "airport_id": "AP371",
       "airport_name": "Yongshu Jiao (Fiery Cross Reef) Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -11130,7 +11130,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:337838",
+      "airport_id": "AP372",
       "airport_name": "Zhubi Jiao (Subi Reef) Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -11147,7 +11147,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44106",
+      "airport_id": "AP373",
       "airport_name": "Chongqing Baishiyi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -11164,7 +11164,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27228",
+      "airport_id": "AP374",
       "airport_name": "Chongqing Jiangbei International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -11274,7 +11274,7 @@
       ]
     },
     {
-      "airport_id": "oa:336105",
+      "airport_id": "AP375",
       "airport_name": "Chongqing Wushan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11315,7 +11315,7 @@
       ]
     },
     {
-      "airport_id": "oa:350117",
+      "airport_id": "AP376",
       "airport_name": "Chongqing Xiannüshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -11356,7 +11356,7 @@
       ]
     },
     {
-      "airport_id": "oa:44110",
+      "airport_id": "AP377",
       "airport_name": "Dazu Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -11373,7 +11373,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:507438",
+      "airport_id": "AP378",
       "airport_name": "Fuling Airfield",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11390,7 +11390,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31819",
+      "airport_id": "AP379",
       "airport_name": "Liangping Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -11407,7 +11407,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:300865",
+      "airport_id": "AP380",
       "airport_name": "Qianjiang Wulingshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -11448,7 +11448,7 @@
       ]
     },
     {
-      "airport_id": "oa:32688",
+      "airport_id": "AP381",
       "airport_name": "Wanzhou Wuqiao Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11489,7 +11489,7 @@
       ]
     },
     {
-      "airport_id": "oa:347519",
+      "airport_id": "AP382",
       "airport_name": "Yongchuan Da'an General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11530,7 +11530,7 @@
       ]
     },
     {
-      "airport_id": "oa:323881",
+      "airport_id": "AP383",
       "airport_name": "Bazhong Enyang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -11571,7 +11571,7 @@
       ]
     },
     {
-      "airport_id": "oa:554921",
+      "airport_id": "AP384",
       "airport_name": "Beichuan Yongchang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11598,7 +11598,7 @@
       ]
     },
     {
-      "airport_id": "oa:350939",
+      "airport_id": "AP385",
       "airport_name": "Chengdu Fenghuangshan Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -11615,7 +11615,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:351149",
+      "airport_id": "AP386",
       "airport_name": "Chengdu Huaizhou Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -11632,7 +11632,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44102",
+      "airport_id": "AP387",
       "airport_name": "Chengdu Huangtianba Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -11649,7 +11649,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27230",
+      "airport_id": "AP388",
       "airport_name": "Chengdu Shuangliu International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -11713,7 +11713,7 @@
       ]
     },
     {
-      "airport_id": "oa:350940",
+      "airport_id": "AP389",
       "airport_name": "Chengdu Taipingsi Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -11730,7 +11730,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:342095",
+      "airport_id": "AP390",
       "airport_name": "Chengdu Tianfu International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -11817,7 +11817,7 @@
       ]
     },
     {
-      "airport_id": "oa:350942",
+      "airport_id": "AP391",
       "airport_name": "Chengdu Xinjin Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11834,7 +11834,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350941",
+      "airport_id": "AP392",
       "airport_name": "Chongzhou Haoyun General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11851,7 +11851,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:35307",
+      "airport_id": "AP393",
       "airport_name": "Dachuan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -11892,7 +11892,7 @@
       ]
     },
     {
-      "airport_id": "oa:327348",
+      "airport_id": "AP394",
       "airport_name": "Daocheng Yading Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -11933,7 +11933,7 @@
       ]
     },
     {
-      "airport_id": "oa:352223",
+      "airport_id": "AP395",
       "airport_name": "Dazhou Jinya Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -11974,7 +11974,7 @@
       ]
     },
     {
-      "airport_id": "oa:336107",
+      "airport_id": "AP396",
       "airport_name": "Garze Gesar Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -12015,7 +12015,7 @@
       ]
     },
     {
-      "airport_id": "oa:308739",
+      "airport_id": "AP397",
       "airport_name": "Guanghan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -12056,7 +12056,7 @@
       ]
     },
     {
-      "airport_id": "oa:31562",
+      "airport_id": "AP398",
       "airport_name": "Guangyuan Panlong Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12097,7 +12097,7 @@
       ]
     },
     {
-      "airport_id": "oa:312371",
+      "airport_id": "AP399",
       "airport_name": "Hongyuan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12138,7 +12138,7 @@
       ]
     },
     {
-      "airport_id": "oa:597654",
+      "airport_id": "AP400",
       "airport_name": "Hump Tongyong Aviation",
       "facility_type": "small_airport",
       "role": "civil",
@@ -12155,7 +12155,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:300512",
+      "airport_id": "AP401",
       "airport_name": "Jiuzhai Huanglong Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12196,7 +12196,7 @@
       ]
     },
     {
-      "airport_id": "oa:327350",
+      "airport_id": "AP402",
       "airport_name": "Kangding Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12237,7 +12237,7 @@
       ]
     },
     {
-      "airport_id": "oa:354840",
+      "airport_id": "AP403",
       "airport_name": "Langzhong Gucheng Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12264,7 +12264,7 @@
       ]
     },
     {
-      "airport_id": "oa:350945",
+      "airport_id": "AP404",
       "airport_name": "Leshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12281,7 +12281,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:318170",
+      "airport_id": "AP405",
       "airport_name": "Leshan Jiajiang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -12298,7 +12298,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:336114",
+      "airport_id": "AP406",
       "airport_name": "Luzhou Yunlong Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12339,7 +12339,7 @@
       ]
     },
     {
-      "airport_id": "oa:31908",
+      "airport_id": "AP407",
       "airport_name": "Mianyang Nanjiao Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12380,7 +12380,7 @@
       ]
     },
     {
-      "airport_id": "oa:32003",
+      "airport_id": "AP408",
       "airport_name": "Nanchong Gaoping Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -12421,7 +12421,7 @@
       ]
     },
     {
-      "airport_id": "oa:44126",
+      "airport_id": "AP409",
       "airport_name": "Panzhihua Bao'anying Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12462,7 +12462,7 @@
       ]
     },
     {
-      "airport_id": "oa:350943",
+      "airport_id": "AP410",
       "airport_name": "Pengshan Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -12479,7 +12479,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44121",
+      "airport_id": "AP411",
       "airport_name": "Qionglai Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -12496,7 +12496,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:323880",
+      "airport_id": "AP412",
       "airport_name": "Suining Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -12513,7 +12513,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27231",
+      "airport_id": "AP413",
       "airport_name": "Xichang Qingshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12554,7 +12554,7 @@
       ]
     },
     {
-      "airport_id": "oa:336111",
+      "airport_id": "AP414",
       "airport_name": "Yibin Wuliangye Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -12595,7 +12595,7 @@
       ]
     },
     {
-      "airport_id": "oa:323879",
+      "airport_id": "AP415",
       "airport_name": "Zigong Fengming Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -12612,7 +12612,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:300785",
+      "airport_id": "AP416",
       "airport_name": "Anshun Huangguoshu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12653,7 +12653,7 @@
       ]
     },
     {
-      "airport_id": "oa:318169",
+      "airport_id": "AP417",
       "airport_name": "Bijie Feixiong Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12694,7 +12694,7 @@
       ]
     },
     {
-      "airport_id": "oa:323884",
+      "airport_id": "AP418",
       "airport_name": "Guiyang Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -12711,7 +12711,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27229",
+      "airport_id": "AP419",
       "airport_name": "Guiyang Longdongbao International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -12775,7 +12775,7 @@
       ]
     },
     {
-      "airport_id": "oa:354509",
+      "airport_id": "AP420",
       "airport_name": "Jiuzhou Airport",
       "facility_type": "medium_airport",
       "role": "military",
@@ -12816,7 +12816,7 @@
       ]
     },
     {
-      "airport_id": "oa:313427",
+      "airport_id": "AP421",
       "airport_name": "Kaili Huangping Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12857,7 +12857,7 @@
       ]
     },
     {
-      "airport_id": "oa:327351",
+      "airport_id": "AP422",
       "airport_name": "Libo Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -12898,7 +12898,7 @@
       ]
     },
     {
-      "airport_id": "oa:308782",
+      "airport_id": "AP423",
       "airport_name": "Liping Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12939,7 +12939,7 @@
       ]
     },
     {
-      "airport_id": "oa:327352",
+      "airport_id": "AP424",
       "airport_name": "Liupanshui Yuezhao Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12980,7 +12980,7 @@
       ]
     },
     {
-      "airport_id": "oa:600647",
+      "airport_id": "AP425",
       "airport_name": "Tongren Dejiang Airport (Under Construction)",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -12997,7 +12997,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:302314",
+      "airport_id": "AP426",
       "airport_name": "Tongren Fenghuang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13038,7 +13038,7 @@
       ]
     },
     {
-      "airport_id": "oa:301647",
+      "airport_id": "AP427",
       "airport_name": "Xingyi Wanfenglin Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13079,7 +13079,7 @@
       ]
     },
     {
-      "airport_id": "oa:327355",
+      "airport_id": "AP428",
       "airport_name": "Zunyi Maotai Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13120,7 +13120,7 @@
       ]
     },
     {
-      "airport_id": "oa:308403",
+      "airport_id": "AP429",
       "airport_name": "Zunyi Xinzhou Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13161,7 +13161,7 @@
       ]
     },
     {
-      "airport_id": "oa:44103",
+      "airport_id": "AP430",
       "airport_name": "Baoshan Yunrui Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13202,7 +13202,7 @@
       ]
     },
     {
-      "airport_id": "oa:327447",
+      "airport_id": "AP431",
       "airport_name": "Cangyuan Washan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13243,7 +13243,7 @@
       ]
     },
     {
-      "airport_id": "oa:30925",
+      "airport_id": "AP432",
       "airport_name": "Dali Fengyi Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13284,7 +13284,7 @@
       ]
     },
     {
-      "airport_id": "oa:31862",
+      "airport_id": "AP433",
       "airport_name": "Dehong Mangshi International Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -13325,7 +13325,7 @@
       ]
     },
     {
-      "airport_id": "oa:30916",
+      "airport_id": "AP434",
       "airport_name": "Diqing Shangri-La Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13366,7 +13366,7 @@
       ]
     },
     {
-      "airport_id": "oa:525772",
+      "airport_id": "AP435",
       "airport_name": "Honghe Mengzi Airport (under construction)",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13383,7 +13383,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44119",
+      "airport_id": "AP436",
       "airport_name": "Honghe Mengzi Airport / Mengzi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -13400,7 +13400,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27214",
+      "airport_id": "AP437",
       "airport_name": "Kunming Changshui International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -13464,7 +13464,7 @@
       ]
     },
     {
-      "airport_id": "oa:327448",
+      "airport_id": "AP438",
       "airport_name": "Lancang Jingmai Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13505,7 +13505,7 @@
       ]
     },
     {
-      "airport_id": "oa:430024",
+      "airport_id": "AP439",
       "airport_name": "Lanping Fenghua General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13522,7 +13522,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44115",
+      "airport_id": "AP440",
       "airport_name": "Lijiang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13539,7 +13539,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31828",
+      "airport_id": "AP441",
       "airport_name": "Lijiang Sanyi International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -13580,7 +13580,7 @@
       ]
     },
     {
-      "airport_id": "oa:44116",
+      "airport_id": "AP442",
       "airport_name": "Lincang Boshang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13621,7 +13621,7 @@
       ]
     },
     {
-      "airport_id": "oa:430023",
+      "airport_id": "AP443",
       "airport_name": "Longchuan Guangsong Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13638,7 +13638,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44117",
+      "airport_id": "AP444",
       "airport_name": "Luliang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -13655,7 +13655,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:430022",
+      "airport_id": "AP445",
       "airport_name": "Mile Dongfeng Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13672,7 +13672,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:316547",
+      "airport_id": "AP446",
       "airport_name": "Ninglang Luguhu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13713,7 +13713,7 @@
       ]
     },
     {
-      "airport_id": "oa:32417",
+      "airport_id": "AP447",
       "airport_name": "Pu'er Simao Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -13754,7 +13754,7 @@
       ]
     },
     {
-      "airport_id": "oa:300514",
+      "airport_id": "AP448",
       "airport_name": "Tengchong Tuofeng Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13795,7 +13795,7 @@
       ]
     },
     {
-      "airport_id": "oa:44124",
+      "airport_id": "AP449",
       "airport_name": "Wenshan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -13812,7 +13812,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:318119",
+      "airport_id": "AP450",
       "airport_name": "Wenshan Puzhehei Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13853,7 +13853,7 @@
       ]
     },
     {
-      "airport_id": "oa:44125",
+      "airport_id": "AP451",
       "airport_name": "Xiangyun Midu Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -13870,7 +13870,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27213",
+      "airport_id": "AP452",
       "airport_name": "Xishuangbanna Gasa International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -13911,7 +13911,7 @@
       ]
     },
     {
-      "airport_id": "oa:44127",
+      "airport_id": "AP453",
       "airport_name": "Yuanmou Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -13928,7 +13928,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32740",
+      "airport_id": "AP454",
       "airport_name": "Zhaotong Airport (Old)",
       "facility_type": "small_airport",
       "role": "civil",
@@ -13969,7 +13969,7 @@
       ]
     },
     {
-      "airport_id": "oa:525773",
+      "airport_id": "AP455",
       "airport_name": "Zhaotong Zhaoyang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -13986,7 +13986,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:355511",
+      "airport_id": "AP456",
       "airport_name": "Ali Pulan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -14003,7 +14003,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44109",
+      "airport_id": "AP457",
       "airport_name": "Damxung Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -14020,7 +14020,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31867",
+      "airport_id": "AP458",
       "airport_name": "Lhasa Gonggar International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -14107,7 +14107,7 @@
       ]
     },
     {
-      "airport_id": "oa:300545",
+      "airport_id": "AP459",
       "airport_name": "Ngari Gunsa Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -14148,7 +14148,7 @@
       ]
     },
     {
-      "airport_id": "oa:31876",
+      "airport_id": "AP460",
       "airport_name": "Nyingchi Mainling Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -14189,7 +14189,7 @@
       ]
     },
     {
-      "airport_id": "oa:30788",
+      "airport_id": "AP461",
       "airport_name": "Qamdo Bangda Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -14230,7 +14230,7 @@
       ]
     },
     {
-      "airport_id": "oa:509453",
+      "airport_id": "AP462",
       "airport_name": "Shannan Longzi Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14247,7 +14247,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350882",
+      "airport_id": "AP463",
       "airport_name": "Shigatse Tingri Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -14288,7 +14288,7 @@
       ]
     },
     {
-      "airport_id": "oa:44122",
+      "airport_id": "AP464",
       "airport_name": "Xigaze Peace Airport / Shigatse Air Base",
       "facility_type": "large_airport",
       "role": "joint",
@@ -14352,7 +14352,7 @@
       ]
     },
     {
-      "airport_id": "oa:30632",
+      "airport_id": "AP465",
       "airport_name": "Ankang Fuqiang Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -14393,7 +14393,7 @@
       ]
     },
     {
-      "airport_id": "oa:44192",
+      "airport_id": "AP466",
       "airport_name": "Baoji Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -14410,7 +14410,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:348151",
+      "airport_id": "AP467",
       "airport_name": "Baoji Lingyuan General Aviation Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14427,7 +14427,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:606039",
+      "airport_id": "AP468",
       "airport_name": "Hancheng Heyang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -14444,7 +14444,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31659",
+      "airport_id": "AP469",
       "airport_name": "Hanzhong Chenggu Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -14485,7 +14485,7 @@
       ]
     },
     {
-      "airport_id": "oa:595414",
+      "airport_id": "AP470",
       "airport_name": "Jingbian Haizetan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14502,7 +14502,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:327444",
+      "airport_id": "AP471",
       "airport_name": "Lüliang Dawu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -14543,7 +14543,7 @@
       ]
     },
     {
-      "airport_id": "oa:323883",
+      "airport_id": "AP472",
       "airport_name": "Pucheng Neifu Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -14560,7 +14560,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:324348",
+      "airport_id": "AP473",
       "airport_name": "Shangluo Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14577,7 +14577,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44212",
+      "airport_id": "AP474",
       "airport_name": "Wugong Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -14594,7 +14594,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350952",
+      "airport_id": "AP475",
       "airport_name": "Xi'an Aerospace Base General Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14611,7 +14611,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44215",
+      "airport_id": "AP476",
       "airport_name": "Xi'an Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -14628,7 +14628,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27205",
+      "airport_id": "AP477",
       "airport_name": "Xi'an Xianyang International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -14738,7 +14738,7 @@
       ]
     },
     {
-      "airport_id": "oa:32299",
+      "airport_id": "AP478",
       "airport_name": "Xi'an Xiguan Airport",
       "facility_type": "medium_airport",
       "role": "military",
@@ -14755,7 +14755,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:336112",
+      "airport_id": "AP479",
       "airport_name": "Yan'an Nanniwan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -14796,7 +14796,7 @@
       ]
     },
     {
-      "airport_id": "oa:44218",
+      "airport_id": "AP480",
       "airport_name": "Yanliang Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -14813,7 +14813,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32563",
+      "airport_id": "AP481",
       "airport_name": "Yulin Yuyang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -14854,7 +14854,7 @@
       ]
     },
     {
-      "airport_id": "oa:300455",
+      "airport_id": "AP482",
       "airport_name": "Yuncheng Yanhu International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -14895,7 +14895,7 @@
       ]
     },
     {
-      "airport_id": "oa:44268",
+      "airport_id": "AP483",
       "airport_name": "Dingxin-Shuangchengzi Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -14912,7 +14912,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:605835",
+      "airport_id": "AP484",
       "airport_name": "Dunhuang Mingshashan General Aviation Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14929,7 +14929,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:30929",
+      "airport_id": "AP485",
       "airport_name": "Dunhuang Mogao International Airport",
       "facility_type": "large_airport",
       "role": "joint",
@@ -14970,7 +14970,7 @@
       ]
     },
     {
-      "airport_id": "oa:605838",
+      "airport_id": "AP486",
       "airport_name": "Dunhuang Yadan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -14987,7 +14987,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:312986",
+      "airport_id": "AP487",
       "airport_name": "Gannan Xiahe Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15028,7 +15028,7 @@
       ]
     },
     {
-      "airport_id": "oa:355970",
+      "airport_id": "AP488",
       "airport_name": "Gaotai Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -15045,7 +15045,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31699",
+      "airport_id": "AP489",
       "airport_name": "Jiayuguan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -15086,7 +15086,7 @@
       ]
     },
     {
-      "airport_id": "oa:301010",
+      "airport_id": "AP490",
       "airport_name": "Jinchang Jinchuan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15127,7 +15127,7 @@
       ]
     },
     {
-      "airport_id": "oa:44201",
+      "airport_id": "AP491",
       "airport_name": "Lanzhou Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -15144,7 +15144,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27204",
+      "airport_id": "AP492",
       "airport_name": "Lanzhou Zhongchuan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -15231,7 +15231,7 @@
       ]
     },
     {
-      "airport_id": "oa:44203",
+      "airport_id": "AP493",
       "airport_name": "Lintao Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -15248,7 +15248,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:349472",
+      "airport_id": "AP494",
       "airport_name": "Linze Danxia Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -15265,7 +15265,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:327544",
+      "airport_id": "AP495",
       "airport_name": "Longnan Chengzhou Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15306,7 +15306,7 @@
       ]
     },
     {
-      "airport_id": "oa:354382",
+      "airport_id": "AP496",
       "airport_name": "Mazongshan Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -15323,7 +15323,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44205",
+      "airport_id": "AP497",
       "airport_name": "Qingshui Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -15340,7 +15340,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31685",
+      "airport_id": "AP498",
       "airport_name": "Qingyang Xifeng Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15381,7 +15381,7 @@
       ]
     },
     {
-      "airport_id": "oa:355969",
+      "airport_id": "AP499",
       "airport_name": "Shuangchengzi North Airfield",
       "facility_type": "small_airport",
       "role": "military",
@@ -15398,7 +15398,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44208",
+      "airport_id": "AP500",
       "airport_name": "Tianshui Maijishan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15439,7 +15439,7 @@
       ]
     },
     {
-      "airport_id": "oa:44214",
+      "airport_id": "AP501",
       "airport_name": "Wuwei Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -15456,7 +15456,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44221",
+      "airport_id": "AP502",
       "airport_name": "Zhangye Ganzhou Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -15497,7 +15497,7 @@
       ]
     },
     {
-      "airport_id": "oa:35308",
+      "airport_id": "AP503",
       "airport_name": "Golmud Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -15538,7 +15538,7 @@
       ]
     },
     {
-      "airport_id": "oa:319715",
+      "airport_id": "AP504",
       "airport_name": "Golog Maqên Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15579,7 +15579,7 @@
       ]
     },
     {
-      "airport_id": "oa:318340",
+      "airport_id": "AP505",
       "airport_name": "Haibei Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -15596,7 +15596,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:333096",
+      "airport_id": "AP506",
       "airport_name": "Haibei Qilian Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -15637,7 +15637,7 @@
       ]
     },
     {
-      "airport_id": "oa:44195",
+      "airport_id": "AP507",
       "airport_name": "Hainanzhou Gonghe Airport",
       "facility_type": "medium_airport",
       "role": "military",
@@ -15654,7 +15654,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:318171",
+      "airport_id": "AP508",
       "airport_name": "Haixi Delingha Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -15695,7 +15695,7 @@
       ]
     },
     {
-      "airport_id": "oa:319417",
+      "airport_id": "AP509",
       "airport_name": "Huatugou Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -15736,7 +15736,7 @@
       ]
     },
     {
-      "airport_id": "oa:32709",
+      "airport_id": "AP510",
       "airport_name": "Xining Caojiabao International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -15777,7 +15777,7 @@
       ]
     },
     {
-      "airport_id": "oa:300516",
+      "airport_id": "AP511",
       "airport_name": "Yushu Batang Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15818,7 +15818,7 @@
       ]
     },
     {
-      "airport_id": "oa:300741",
+      "airport_id": "AP512",
       "airport_name": "Guyuan Liupanshan Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15859,7 +15859,7 @@
       ]
     },
     {
-      "airport_id": "oa:298989",
+      "airport_id": "AP513",
       "airport_name": "Yinchuan Hedong International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -15900,7 +15900,7 @@
       ]
     },
     {
-      "airport_id": "oa:31677",
+      "airport_id": "AP514",
       "airport_name": "Yinchuan Helanshan Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -15941,7 +15941,7 @@
       ]
     },
     {
-      "airport_id": "oa:355963",
+      "airport_id": "AP515",
       "airport_name": "Yinchuan Yueyahu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -15958,7 +15958,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:308462",
+      "airport_id": "AP516",
       "airport_name": "Zhongwei Shapotou Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -15999,7 +15999,7 @@
       ]
     },
     {
-      "airport_id": "oa:30635",
+      "airport_id": "AP517",
       "airport_name": "Aksu Hongqipo Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16040,7 +16040,7 @@
       ]
     },
     {
-      "airport_id": "oa:349470",
+      "airport_id": "AP518",
       "airport_name": "Aksu Zhicheng Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16057,7 +16057,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:342841",
+      "airport_id": "AP519",
       "airport_name": "Alar Lanpowan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16098,7 +16098,7 @@
       ]
     },
     {
-      "airport_id": "oa:44191",
+      "airport_id": "AP520",
       "airport_name": "Altay Xuedu Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16139,7 +16139,7 @@
       ]
     },
     {
-      "airport_id": "oa:354654",
+      "airport_id": "AP521",
       "airport_name": "Aral Tarim Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16180,7 +16180,7 @@
       ]
     },
     {
-      "airport_id": "oa:605890",
+      "airport_id": "AP522",
       "airport_name": "Barkol Dahe Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16197,7 +16197,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350987",
+      "airport_id": "AP523",
       "airport_name": "Beitun Fengqing Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16214,7 +16214,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:46650",
+      "airport_id": "AP524",
       "airport_name": "Bole Alashankou Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16255,7 +16255,7 @@
       ]
     },
     {
-      "airport_id": "oa:350990",
+      "airport_id": "AP525",
       "airport_name": "Burqin Kaerqisi Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16272,7 +16272,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:313426",
+      "airport_id": "AP526",
       "airport_name": "Burqin Kanas Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16313,7 +16313,7 @@
       ]
     },
     {
-      "airport_id": "oa:323219",
+      "airport_id": "AP527",
       "airport_name": "Fuyun Koktokay Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16354,7 +16354,7 @@
       ]
     },
     {
-      "airport_id": "oa:350989",
+      "airport_id": "AP528",
       "airport_name": "Fuyun Tuerhong Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16371,7 +16371,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31609",
+      "airport_id": "AP529",
       "airport_name": "Hami Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16412,7 +16412,7 @@
       ]
     },
     {
-      "airport_id": "oa:525153",
+      "airport_id": "AP530",
       "airport_name": "Hejing Bayinbuluke Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16429,7 +16429,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27235",
+      "airport_id": "AP531",
       "airport_name": "Hotan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16470,7 +16470,7 @@
       ]
     },
     {
-      "airport_id": "oa:350988",
+      "airport_id": "AP532",
       "airport_name": "Huyanghe Wuwu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16487,7 +16487,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:32725",
+      "airport_id": "AP533",
       "airport_name": "Ili Yining International Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16528,7 +16528,7 @@
       ]
     },
     {
-      "airport_id": "oa:35310",
+      "airport_id": "AP534",
       "airport_name": "Karamay Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16569,7 +16569,7 @@
       ]
     },
     {
-      "airport_id": "oa:27234",
+      "airport_id": "AP535",
       "airport_name": "Kashgar Laining International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -16610,7 +16610,7 @@
       ]
     },
     {
-      "airport_id": "oa:31771",
+      "airport_id": "AP536",
       "airport_name": "Korla Licheng Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16651,7 +16651,7 @@
       ]
     },
     {
-      "airport_id": "oa:31731",
+      "airport_id": "AP537",
       "airport_name": "Kuqa Qiuci Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -16692,7 +16692,7 @@
       ]
     },
     {
-      "airport_id": "oa:44211",
+      "airport_id": "AP538",
       "airport_name": "Malan Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -16709,7 +16709,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:31684",
+      "airport_id": "AP539",
       "airport_name": "Qiemo Yudu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16750,7 +16750,7 @@
       ]
     },
     {
-      "airport_id": "oa:525757",
+      "airport_id": "AP540",
       "airport_name": "Qitai Jiangbulake Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16767,7 +16767,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:333070",
+      "airport_id": "AP541",
       "airport_name": "Ruoqiang Loulan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16808,7 +16808,7 @@
       ]
     },
     {
-      "airport_id": "oa:326731",
+      "airport_id": "AP542",
       "airport_name": "Shache Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -16849,7 +16849,7 @@
       ]
     },
     {
-      "airport_id": "oa:32406",
+      "airport_id": "AP543",
       "airport_name": "Shanshan Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -16866,7 +16866,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:316764",
+      "airport_id": "AP544",
       "airport_name": "Shihezi Huayuan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16907,7 +16907,7 @@
       ]
     },
     {
-      "airport_id": "oa:44207",
+      "airport_id": "AP545",
       "airport_name": "Shihezi Shandanhu General Airport",
       "facility_type": "small_airport",
       "role": "joint",
@@ -16924,7 +16924,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350981",
+      "airport_id": "AP546",
       "airport_name": "Shihezi Tuoling Mengpo Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16941,7 +16941,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:28144",
+      "airport_id": "AP547",
       "airport_name": "Tacheng Qianquan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -16982,7 +16982,7 @@
       ]
     },
     {
-      "airport_id": "oa:354929",
+      "airport_id": "AP548",
       "airport_name": "Taklamkan Desert Military Airport",
       "facility_type": "small_airport",
       "role": "military",
@@ -17023,7 +17023,7 @@
       ]
     },
     {
-      "airport_id": "oa:350883",
+      "airport_id": "AP549",
       "airport_name": "Tashikuergan Hongqilafu Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -17050,7 +17050,7 @@
       ]
     },
     {
-      "airport_id": "oa:350991",
+      "airport_id": "AP550",
       "airport_name": "Tekes Zhuque Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17067,7 +17067,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350982",
+      "airport_id": "AP551",
       "airport_name": "Tiemenguan Shuangfeng Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17084,7 +17084,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350983",
+      "airport_id": "AP552",
       "airport_name": "Tumxuk Hedong Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17101,7 +17101,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:336113",
+      "airport_id": "AP553",
       "airport_name": "Tumxuk Tangwangcheng Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17142,7 +17142,7 @@
       ]
     },
     {
-      "airport_id": "oa:314799",
+      "airport_id": "AP554",
       "airport_name": "Turpan Jiaohe Airport",
       "facility_type": "medium_airport",
       "role": "joint",
@@ -17183,7 +17183,7 @@
       ]
     },
     {
-      "airport_id": "oa:599310",
+      "airport_id": "AP555",
       "airport_name": "Urumqi Xishan Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17200,7 +17200,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:354507",
+      "airport_id": "AP556",
       "airport_name": "Wuerhe Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17217,7 +17217,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350980",
+      "airport_id": "AP557",
       "airport_name": "Xinhe Qianfu Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17234,7 +17234,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:354931",
+      "airport_id": "AP558",
       "airport_name": "Xinkaiping Air Base",
       "facility_type": "small_airport",
       "role": "military",
@@ -17251,7 +17251,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:350985",
+      "airport_id": "AP559",
       "airport_name": "Xinyuan Gongnaisi Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17268,7 +17268,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:316548",
+      "airport_id": "AP560",
       "airport_name": "Xinyuan Nalati Airport",
       "facility_type": "medium_airport",
       "role": "civil",
@@ -17309,7 +17309,7 @@
       ]
     },
     {
-      "airport_id": "oa:342843",
+      "airport_id": "AP561",
       "airport_name": "Yutian Wanfang Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17350,7 +17350,7 @@
       ]
     },
     {
-      "airport_id": "oa:355952",
+      "airport_id": "AP562",
       "airport_name": "Zhaosu Tianma Airport",
       "facility_type": "small_airport",
       "role": "civil",
@@ -17391,7 +17391,7 @@
       ]
     },
     {
-      "airport_id": "oa:44213",
+      "airport_id": "AP563",
       "airport_name": "Ürümqi Changji Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -17408,7 +17408,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:44210",
+      "airport_id": "AP564",
       "airport_name": "Ürümqi South Air Base",
       "facility_type": "medium_airport",
       "role": "military",
@@ -17425,7 +17425,7 @@
       "runways": null
     },
     {
-      "airport_id": "oa:27236",
+      "airport_id": "AP565",
       "airport_name": "Ürümqi Tianshan International Airport",
       "facility_type": "large_airport",
       "role": "civil",
@@ -17512,7 +17512,7 @@
       ]
     },
     {
-      "airport_id": "oa:350986",
+      "airport_id": "AP566",
       "airport_name": "Ürümqi Yaxin General Airport",
       "facility_type": "small_airport",
       "role": "civil",

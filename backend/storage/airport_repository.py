@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -51,6 +52,21 @@ class AirportRepository:
     def init_schema(self) -> None:
         initialize_database(self.db_path)
 
+    @staticmethod
+    def _advance_airport_sequence(conn: sqlite3.Connection, airport_ids: Iterable[str]) -> None:
+        numbers = [
+            int(match.group(1))
+            for airport_id in airport_ids
+            if (match := re.fullmatch(r"AP([0-9]+)", airport_id)) is not None
+        ]
+        if not numbers:
+            return
+        conn.execute(
+            "INSERT INTO identifier_sequences(namespace, next_value) VALUES ('airport', ?) "
+            "ON CONFLICT(namespace) DO UPDATE SET next_value=MAX(identifier_sequences.next_value, excluded.next_value)",
+            (max(numbers) + 1,),
+        )
+
     # ---------- static airports ----------
 
     def save_airport(self, airport: AirportBase) -> None:
@@ -96,8 +112,10 @@ class AirportRepository:
             if airport.runways is not None:
                 for runway in airport.runways:
                     self._insert_runway(conn, airport.airport_id, runway)
+            self._advance_airport_sequence(conn, (airport.airport_id,))
 
     def save_airports(self, airports: Iterable[AirportBase]) -> None:
+        airports = tuple(airports)
         with self.connect() as conn:
             for airport in airports:
                 conn.execute(
@@ -141,6 +159,7 @@ class AirportRepository:
                 if airport.runways is not None:
                     for runway in airport.runways:
                         self._insert_runway(conn, airport.airport_id, runway)
+            self._advance_airport_sequence(conn, (airport.airport_id for airport in airports))
 
     def _insert_runway(self, conn: sqlite3.Connection, airport_id: str, runway: RunwayBase) -> None:
         lo = runway.low_end
@@ -200,6 +219,30 @@ class AirportRepository:
         with self.connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS c FROM airports").fetchone()
         return int(row["c"])
+
+    def allocate_airport_id(self) -> str:
+        """Reserve the next monotonic project airport ID for a new catalog record."""
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT next_value FROM identifier_sequences WHERE namespace='airport'"
+            ).fetchone()
+            next_value = int(row["next_value"]) if row else 1
+            current = max(
+                (
+                    int(match.group(1))
+                    for item in conn.execute("SELECT airport_id FROM airports WHERE airport_id LIKE 'AP%'")
+                    if (match := re.fullmatch(r"AP([0-9]+)", item["airport_id"]))
+                ),
+                default=0,
+            )
+            next_value = max(next_value, current + 1)
+            conn.execute(
+                "INSERT INTO identifier_sequences(namespace, next_value) VALUES ('airport', ?) "
+                "ON CONFLICT(namespace) DO UPDATE SET next_value=excluded.next_value",
+                (next_value + 1,),
+            )
+        return f"AP{next_value:03d}"
 
     @staticmethod
     def _end_from_row(row: sqlite3.Row, prefix: str) -> Optional[RunwayEnd]:
@@ -687,6 +730,7 @@ class AirportRepository:
                     f"airport revision conflict: expected {expected_revision}, current {row['revision']}"
                 )
             self._write_airport(conn, airport, is_create=not exists)
+            self._advance_airport_sequence(conn, (airport.airport_id,))
             if operational_profile is not None:
                 self._write_profile(conn, operational_profile)
         return self.get_airport_bundle(airport.airport_id)
@@ -892,6 +936,7 @@ class AirportRepository:
             new_ids = set(ids)
             for airport_id in sorted(old_ids - new_ids):
                 conn.execute("DELETE FROM airports WHERE airport_id=?", (airport_id,))
+            self._advance_airport_sequence(conn, ids)
         return self._summary_counts(old_ids, set(ids))
 
     def replace_airport_bases_preserving_profiles(
@@ -916,6 +961,7 @@ class AirportRepository:
             new_ids = set(ids)
             for airport_id in sorted(old_ids - new_ids):
                 conn.execute("DELETE FROM airports WHERE airport_id=?", (airport_id,))
+            self._advance_airport_sequence(conn, ids)
         return self._summary_counts(old_ids, set(ids))
 
     def replace_aircraft_types_current(self, items: Sequence[AircraftType]) -> Dict[str, int]:
@@ -1013,4 +1059,3 @@ class AirportRepository:
             "deleted": len(old_keys - new_keys),
             "total": len(new_keys),
         }
-

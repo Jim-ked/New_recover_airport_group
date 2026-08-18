@@ -4,48 +4,144 @@
 {% block content %}
 <main class="settings-page shell-content" id="settingsPage">
   <header class="settings-head">
-    <div><h1>系统设置</h1><p>账户、权限与管理员用户维护</p></div>
-    <span id="settingsRoleBadge" class="badge">正在读取账户…</span>
+    <h1>系统设置</h1>
+    <nav id="settingsTabs" class="settings-tabs" role="tablist" aria-label="系统设置">
+      <button class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="accountWorkspace" data-settings-tab="account">账户与安全</button>
+      <button class="settings-tab settings-tab-admin hidden" type="button" role="tab" aria-selected="false" aria-controls="userWorkspace" data-settings-tab="users" data-permission="users.admin">用户管理</button>
+      <button class="settings-tab settings-tab-admin hidden" type="button" role="tab" aria-selected="false" aria-controls="auditWorkspace" data-settings-tab="audit" data-permission="audit.read">审计日志</button>
+    </nav>
   </header>
 
-  <section class="settings-section account-section">
-    <header><div><strong>当前账户</strong><small>服务器返回的实际角色与权限</small></div><button id="settingsChangePassword" class="btn" type="button">修改密码</button></header>
-    <div id="settingsAccountBody" class="settings-account-grid"><div class="empty-state">正在读取账户信息…</div></div>
-  </section>
+  <div class="settings-workspace">
+    <section id="accountWorkspace" class="settings-panel account-workspace" role="tabpanel" data-settings-panel="account">
+      <section class="settings-block">
+        <header class="settings-block-head"><h2>账户信息</h2></header>
+        <dl id="settingsAccountBody" class="account-fact-grid" aria-live="polite">
+          <div class="settings-state">正在读取账户信息…</div>
+        </dl>
+      </section>
 
-  <section id="userAdminSection" class="settings-section hidden">
-    <header>
-      <div><strong>用户管理</strong><small>创建本地账户，调整角色、启用状态与密码</small></div>
-      <div class="settings-user-actions"><input id="userSearch" class="control" type="search" placeholder="搜索登录名或显示名"><button id="createUserButton" class="btn primary" type="button">新建账号</button></div>
-    </header>
-    <div class="settings-table-wrap">
-      <table class="settings-table">
-        <thead><tr><th>账户</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead>
-        <tbody id="userTableBody"><tr><td colspan="5"><div class="empty-state">正在读取用户…</div></td></tr></tbody>
-      </table>
-    </div>
-  </section>
+      <section class="settings-block">
+        <header class="settings-block-head"><h2>权限范围</h2></header>
+        <div id="settingsPermissionSummary" class="permission-summary" aria-live="polite"></div>
+      </section>
 
-  <section id="settingsNoAdmin" class="settings-section hidden">
-    <header><div><strong>管理权限</strong><small>当前账户没有用户管理权限</small></div></header>
-    <div class="settings-note">你可以查看自己的账户与权限，并通过上方入口修改密码。用户、角色和审计维护仅向管理员开放。</div>
-  </section>
+      <section class="settings-block">
+        <header class="settings-block-head"><h2>账户安全</h2></header>
+        <div class="account-security-row">
+          <div><strong>密码</strong><small>已设置 · 修改后需要重新登录</small></div>
+          <button id="settingsChangePassword" class="btn" type="button">修改密码</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="userWorkspace" class="settings-panel hidden" role="tabpanel" data-settings-panel="users" aria-hidden="true">
+      <div class="settings-toolbar user-toolbar">
+        <div class="settings-search">
+          <input id="userSearch" class="control" type="search" name="settings-user-search" autocomplete="off" placeholder="搜索账号或显示名">
+          <button id="userSearchButton" class="btn" type="button">搜索</button>
+          <button id="userSearchClear" class="btn ghost hidden" type="button">清除</button>
+        </div>
+        <label><span class="sr-only">角色筛选</span><select id="userRoleFilter" class="control">
+          <option value="">全部角色</option><option value="viewer">游客</option><option value="operator">操作员</option><option value="admin">管理员</option>
+        </select></label>
+        <label><span class="sr-only">状态筛选</span><select id="userStatusFilter" class="control">
+          <option value="">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option>
+        </select></label>
+        <span class="settings-toolbar-spacer"></span>
+        <button id="refreshUsersButton" class="btn ghost" type="button">刷新</button>
+        <button id="createUserButton" class="btn primary" type="button">新建用户</button>
+      </div>
+
+      <div class="settings-master-detail">
+        <section class="settings-list-pane" aria-label="用户列表">
+          <div id="userListState" class="settings-list-state hidden" role="status"></div>
+          <div class="settings-table-wrap">
+            <table class="settings-table">
+              <thead><tr><th>账户</th><th>显示名称</th><th>角色</th><th>状态</th><th>最近登录</th></tr></thead>
+              <tbody id="userTableBody"></tbody>
+            </table>
+          </div>
+          <footer class="settings-list-footer"><span id="userCount">0 个账户</span></footer>
+        </section>
+        <aside id="userInspector" class="settings-inspector hidden" aria-labelledby="userInspectorTitle">
+          <header class="inspector-head">
+            <div><h2 id="userInspectorTitle">用户信息</h2><small id="userInspectorSubtitle"></small></div>
+            <button id="closeUserInspector" class="inspector-close" type="button" aria-label="关闭用户详情">×</button>
+          </header>
+          <div id="userInspectorBody" class="inspector-body"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="auditWorkspace" class="settings-panel hidden" role="tabpanel" data-settings-panel="audit" aria-hidden="true">
+      <div class="settings-toolbar audit-toolbar">
+        <input id="auditKeyword" class="control" type="search" placeholder="关键词" aria-label="审计关键词">
+        <select id="auditActorFilter" class="control" aria-label="用户"><option value="">全部用户</option></select>
+        <select id="auditOutcomeFilter" class="control" aria-label="结果">
+          <option value="">全部结果</option><option value="success">成功</option><option value="denied">拒绝</option><option value="error">错误</option>
+        </select>
+        <select id="auditResourceFilter" class="control" aria-label="对象类型">
+          <option value="">全部对象</option>
+          <option value="airports">机场</option><option value="missions">任务模板</option>
+          <option value="aircraft-types">机型</option><option value="resource-types">保障资源</option>
+          <option value="base-data">基础数据导入</option><option value="aircraft-resource-requirements">机型资源关系</option>
+          <option value="situations">情境</option><option value="indicators">指标</option>
+          <option value="indicator-sets">指标集</option><option value="experts">专家</option>
+          <option value="expert-scores">专家评分</option><option value="indicator-weights">指标权重</option>
+          <option value="runs">算法运行</option><option value="results">结果分析</option>
+          <option value="users">用户</option><option value="auth">认证</option>
+          <option value="audit-events">审计日志</option><option value="me">当前账户</option>
+        </select>
+        <input id="auditCreatedAfter" class="control" type="datetime-local" aria-label="开始时间">
+        <input id="auditCreatedBefore" class="control" type="datetime-local" aria-label="结束时间">
+        <button id="auditQuery" class="btn primary" type="button">查询</button>
+        <button id="auditReset" class="btn ghost" type="button">重置</button>
+        <button id="auditRefresh" class="btn ghost" type="button">刷新</button>
+      </div>
+
+      <div class="settings-master-detail">
+        <section class="settings-list-pane" aria-label="审计日志列表">
+          <div id="auditListState" class="settings-list-state hidden" role="status"></div>
+          <div class="settings-table-wrap">
+            <table class="settings-table audit-table">
+              <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>对象</th><th>结果</th></tr></thead>
+              <tbody id="auditTableBody"></tbody>
+            </table>
+          </div>
+          <footer class="settings-pagination">
+            <span id="auditRange">0 条记录</span>
+            <div><button id="auditPrev" class="btn ghost" type="button">上一页</button><button id="auditNext" class="btn ghost" type="button">下一页</button></div>
+          </footer>
+        </section>
+        <aside id="auditInspector" class="settings-inspector hidden" aria-labelledby="auditInspectorTitle">
+          <header class="inspector-head">
+            <div><h2 id="auditInspectorTitle">审计详情</h2><small id="auditInspectorSubtitle"></small></div>
+            <button id="closeAuditInspector" class="inspector-close" type="button" aria-label="关闭审计详情">×</button>
+          </header>
+          <div id="auditInspectorBody" class="inspector-body"></div>
+        </aside>
+      </div>
+    </section>
+  </div>
 
   <div id="settingsMessage" class="workspace-message hidden" role="alert"></div>
 
   <div id="createUserModal" class="shell-modal-backdrop" aria-hidden="true">
     <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="createUserTitle">
-      <header><strong id="createUserTitle">新建账号</strong></header>
+      <header><strong id="createUserTitle">新建用户</strong></header>
       <div class="body settings-form-grid">
-        <div id="createUserMessage" class="inline-message hidden"></div>
-        <div class="field"><label for="createLoginName">登录名</label><input id="createLoginName" class="control" autocomplete="off"></div>
-        <div class="field"><label for="createDisplayName">显示名</label><input id="createDisplayName" class="control"></div>
-        <div class="field"><label for="createRole">角色</label><select id="createRole" class="control"><option value="viewer">查看用户</option><option value="operator" selected>操作用户</option><option value="admin">管理员</option></select></div>
-        <div class="field"><label for="createPassword">初始密码</label><input id="createPassword" class="control" type="password" autocomplete="new-password"></div>
-        <div class="field"><label for="createPasswordAgain">确认密码</label><input id="createPasswordAgain" class="control" type="password" autocomplete="new-password"></div>
+        <div id="createUserMessage" class="inline-message hidden" role="alert"></div>
+        <div class="field required"><label for="createLoginName">登录名</label><input id="createLoginName" class="control" name="settings-create-login" autocomplete="off"></div>
+        <div class="field"><label for="createDisplayName">显示名</label><input id="createDisplayName" class="control" name="settings-create-display" autocomplete="off"></div>
+        <div class="field required"><label for="createRole">角色</label><select id="createRole" class="control">
+          <option value="viewer">游客</option><option value="operator" selected>操作员</option><option value="admin">管理员</option>
+        </select><small id="createRoleDescription" class="role-description"></small></div>
+        <div class="field required"><label for="createPassword">初始密码</label><input id="createPassword" class="control" type="password" autocomplete="new-password"></div>
+        <div class="field required"><label for="createPasswordAgain">确认密码</label><input id="createPasswordAgain" class="control" type="password" autocomplete="new-password"></div>
         <div class="field-note">密码至少 8 个字符。内部用户编号由系统自动生成。</div>
       </div>
-      <footer><button id="createUserCancel" class="btn ghost" type="button">取消</button><button id="createUserSave" class="btn primary" type="button">创建账号</button></footer>
+      <footer><button id="createUserCancel" class="btn ghost" type="button">取消</button><button id="createUserSave" class="btn primary" type="button">创建用户</button></footer>
     </section>
   </div>
 
@@ -54,9 +150,9 @@
       <header><strong id="resetPasswordTitle">重置密码</strong></header>
       <div class="body settings-form-grid">
         <div id="resetPasswordTarget" class="settings-note"></div>
-        <div id="resetPasswordMessage" class="inline-message hidden"></div>
-        <div class="field"><label for="resetPasswordValue">新密码</label><input id="resetPasswordValue" class="control" type="password" autocomplete="new-password"></div>
-        <div class="field"><label for="resetPasswordAgain">确认密码</label><input id="resetPasswordAgain" class="control" type="password" autocomplete="new-password"></div>
+        <div id="resetPasswordMessage" class="inline-message hidden" role="alert"></div>
+        <div class="field required"><label for="resetPasswordValue">新密码</label><input id="resetPasswordValue" class="control" type="password" autocomplete="new-password"></div>
+        <div class="field required"><label for="resetPasswordAgain">确认密码</label><input id="resetPasswordAgain" class="control" type="password" autocomplete="new-password"></div>
         <div class="field-note">重置后该用户当前所有旧会话立即失效。</div>
       </div>
       <footer><button id="resetPasswordCancel" class="btn ghost" type="button">取消</button><button id="resetPasswordSave" class="btn primary" type="button">重置密码</button></footer>

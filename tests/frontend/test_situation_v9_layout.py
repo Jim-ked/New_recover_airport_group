@@ -32,17 +32,21 @@ class SituationV9LayoutTests(unittest.TestCase):
 
     def test_fit_extent_is_leaflet_control_not_top_toolbar_button(self):
         html=(ROOT/"frontend/templates/pages/situations.html").read_text(encoding="utf-8")
-        js=(ROOT/"frontend/static/js/situation-map-bootstrap.js").read_text(encoding="utf-8")
-        self.assertIn('class="hidden-control"', html)
+        js=(ROOT/"frontend/static/js/modules/situation-map.js").read_text(encoding="utf-8")
         self.assertIn("leaflet-control-fit", js)
-        self.assertIn('getElementById("fitSituationButton")', js)
+        self.assertIn("function addFitControl()", js)
+        self.assertIn("addFitControl();", js)
+        self.assertNotIn("fitSituationButton", html)
 
     def test_old_dom_polish_layers_are_not_loaded(self):
         text=(ROOT/"frontend/templates/pages/situations.html").read_text(encoding="utf-8")
+        main=(ROOT/"frontend/static/js/modules/situations.js").read_text(encoding="utf-8")
         self.assertNotIn("situation-ux.js", text)
         self.assertNotIn("situation-panel-polish.js", text)
-        self.assertIn("situation-layout.js", text)
-        self.assertIn("situation-display-layers.js", text)
+        self.assertIn("js/modules/situations.js", text)
+        self.assertIn("./situation-map.js", main)
+        self.assertIn("./situation-panels.js", main)
+        self.assertIn("./situation-state.js", main)
 
     def test_base_data_and_settings_are_single_sidebar_entries(self):
         text=(ROOT/"frontend/templates/base.html").read_text(encoding="utf-8")

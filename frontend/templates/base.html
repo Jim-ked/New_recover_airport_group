@@ -94,7 +94,7 @@
   <header class="topbar">
     <div class="brand" aria-label="机场群顽存能力仿真系统">
       <span class="brand-emblem" aria-hidden="true">
-        <svg class="ui-icon brand-icon"><use href="#i-brand"></use></svg>
+        <img class="brand-emblem-image" src="{{ url_for('static', filename='icons/airforce-emblem.png') }}" alt="">
       </span>
       <strong>机场群顽存能力仿真系统</strong>
     </div>
@@ -105,6 +105,8 @@
 
     <div class="top-spacer"></div>
 
+    {% set session_role = session_user.get('role') if session_user else none %}
+    {% set session_role_label = '游客' if session_role == 'viewer' else ('操作员' if session_role in ['operator', 'user'] else ('管理员' if session_role == 'admin' else ('用户' if session_user else '—'))) %}
     <div class="account-menu" id="accountMenu">
       <button id="accountTrigger" class="account-trigger" type="button" aria-haspopup="menu" aria-expanded="false">
         <span class="avatar" aria-hidden="true">
@@ -112,16 +114,16 @@
         </span>
         <span class="account-copy">
           <strong id="accountDisplayName">{% if session_user %}{{ session_user.get('display_name') or session_user.get('login_name') or session_user.get('name') or session_user.get('user_id') or '已登录' }}{% else %}未登录{% endif %}</strong>
-          <small id="accountRole">{% if session_user %}{{ session_user.get('role') or 'viewer' }}{% else %}—{% endif %}</small>
+          <small id="accountRole">{{ session_role_label }}</small>
         </span>
         <svg class="ui-icon account-chevron"><use href="#i-chevron"></use></svg>
       </button>
       <div id="accountPopover" class="account-popover" role="menu" aria-hidden="true">
         <div class="account-summary">
-          <strong id="accountSummaryName">当前账号</strong>
-          <small id="accountSummaryRole">正在读取权限…</small>
+          <strong id="accountSummaryName">{% if session_user %}{{ session_user.get('display_name') or session_user.get('login_name') or session_user.get('user_id') or '当前账号' }}{% else %}未登录{% endif %}</strong>
+          <small id="accountSummaryRole">{{ session_role_label }}</small>
         </div>
-        <button id="accountInfoAction" class="account-action" type="button" role="menuitem">账户信息</button>
+        <a id="accountSettingsAction" class="account-action" href="{{ url_for('ui_v1.settings_page') }}" role="menuitem">账户与安全</a>
         <button id="changePasswordAction" class="account-action" type="button" role="menuitem">修改密码</button>
         <button id="logoutAction" class="account-action danger" type="button" role="menuitem">退出登录</button>
       </div>
@@ -155,14 +157,6 @@
   </aside>
 
   {% block content %}{% endblock %}
-</div>
-
-<div id="accountInfoModal" class="shell-modal-backdrop" aria-hidden="true">
-  <section class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="accountInfoTitle">
-    <header><strong id="accountInfoTitle">账户信息</strong></header>
-    <div id="accountInfoBody" class="body account-info-body"></div>
-    <footer><button id="accountInfoClose" class="btn primary" type="button">关闭</button></footer>
-  </section>
 </div>
 
 <div id="passwordModal" class="shell-modal-backdrop" aria-hidden="true">

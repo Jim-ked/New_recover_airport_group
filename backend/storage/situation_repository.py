@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -47,6 +48,41 @@ class SituationRepository:
 
     def init_schema(self) -> None:
         initialize_database(self.db_path)
+
+    def allocate_situation_id(self) -> str:
+        """Reserve the next monotonic project Situation ID for a new working copy."""
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT next_value FROM identifier_sequences WHERE namespace='situation'"
+            ).fetchone()
+            next_value = int(row["next_value"]) if row else 1
+            current = max(
+                (
+                    int(match.group(1))
+                    for item in conn.execute("SELECT situation_id FROM situations WHERE situation_id LIKE 'ST%'")
+                    if (match := re.fullmatch(r"ST([0-9]+)", item["situation_id"]))
+                ),
+                default=0,
+            )
+            next_value = max(next_value, current + 1)
+            conn.execute(
+                "INSERT INTO identifier_sequences(namespace, next_value) VALUES ('situation', ?) "
+                "ON CONFLICT(namespace) DO UPDATE SET next_value=excluded.next_value",
+                (next_value + 1,),
+            )
+        return f"ST{next_value:03d}"
+
+    @staticmethod
+    def _advance_situation_sequence(conn: sqlite3.Connection, situation_id: str) -> None:
+        match = re.fullmatch(r"ST([0-9]+)", situation_id)
+        if match is None:
+            return
+        conn.execute(
+            "INSERT INTO identifier_sequences(namespace, next_value) VALUES ('situation', ?) "
+            "ON CONFLICT(namespace) DO UPDATE SET next_value=MAX(identifier_sequences.next_value, excluded.next_value)",
+            (int(match.group(1)) + 1,),
+        )
 
     @staticmethod
     def _end_values(end: Optional[RunwayEnd]):
@@ -111,6 +147,7 @@ class SituationRepository:
                 """,
                 (situation.situation_id, situation.name, situation.description, new_hash, effective_owner),
             )
+            self._advance_situation_sequence(conn, situation.situation_id)
             # Replace all children so one call represents the entire saved Working Copy.
             # Damage events reference SituationAirport with RESTRICT: delete them first.
             conn.execute("DELETE FROM situation_damage_events WHERE situation_id = ?", (situation.situation_id,))
@@ -608,4 +645,3 @@ class SituationRepository:
             "historical_run_count": int(metadata.get("historical_run_count") or 0),
             "active_run_count": int(metadata.get("active_run_count") or 0),
         }
-

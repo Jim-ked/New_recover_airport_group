@@ -210,7 +210,7 @@ class AppSettings:
             session_idle_timeout_seconds=idle,
             session_absolute_timeout_seconds=absolute,
             max_content_length_bytes=max_content,
-            gis_tile_template=str(env.get(f"{ENV_PREFIX}GIS_TILE_TEMPLATE", "")).strip(),
+            gis_tile_template=str(env.get(f"{ENV_PREFIX}GIS_TILE_TEMPLATE", "/tiles/{z}/{x}/{y}.jpg")).strip(),
             bootstrap_admin_login=login,
             bootstrap_admin_password=password,
             bootstrap_admin_user_id=user_id,

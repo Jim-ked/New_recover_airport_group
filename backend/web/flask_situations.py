@@ -67,6 +67,16 @@ def create_situation_blueprint(
             return render(api.create(request.get_json(force=False, silent=False), principal=principal))
         return invoke(action)
 
+    @bp.post("/situations/allocate-id")
+    def allocate_situation_id():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            guard(principal)
+            return render(api.allocate_id(principal=principal))
+        return invoke(action)
+
     @bp.post("/situations/working-copy/canonicalize")
     def canonicalize_working_copy():
         def action():

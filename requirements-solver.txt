@@ -1,0 +1,6 @@
+# Real optimization runtime. Kept separate from the portable Web/API layer because
+# Linux/Kylin/offline deployments must validate the matching wheel and bundled SCIP
+# artifacts for their target platform. Version 6.2.1 is verified on Windows/Python 3.14;
+# the compatible 6.2 line is not locked to that one development machine's patch release.
+-r requirements.txt
+PySCIPOpt>=6.2,<6.3

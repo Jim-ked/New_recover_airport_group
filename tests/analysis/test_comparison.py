@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import unittest
 
 from backend.algorithm.runner import run_once
@@ -12,6 +13,7 @@ from backend.analysis.comparison import (
     build_r0_r1_r2_comparison,
     check_configuration_comparable,
     check_multi_scenario_comparable,
+    check_objective_comparable,
     check_r0_r1_r2,
 )
 from backend.analysis.metrics import build_metrics_core
@@ -111,6 +113,31 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(check.comparable)
         self.assertIn("damage_scenario_id differs", check.reasons)
 
+    def test_project_airport_and_situation_ids_are_preserved_in_comparison_projection(self):
+        base = make_snapshot(
+            cluster_enabled=False,
+            run_id="RUN-base",
+            situation_id="ST001",
+            airport_ids=("AP001", "AP002"),
+        )
+        configured = make_snapshot(
+            cluster_enabled=False,
+            preference_mode="resource_min",
+            run_id="RUN-configured",
+            situation_id="ST001",
+            airport_ids=("AP001", "AP002"),
+        )
+        _base_result, base_metrics = solve(base)
+        _configured_result, configured_metrics = solve(configured)
+        comparison = build_configuration_comparison(
+            [(base, base_metrics), (configured, configured_metrics)],
+            baseline_run_id="RUN-base",
+        )
+        payload = json.dumps(comparison, ensure_ascii=False)
+
+        self.assertNotIn("oa:", payload)
+        self.assertEqual("AP001", next(iter(comparison["labels"]["airports"])))
+
     def test_backend_builds_roles_full_airport_rows_and_r1_r0_r2_r1_deltas(self):
         r0, r1, r2 = self._roles()
         _a0, m0 = solve(r0)
@@ -149,6 +176,183 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn("by_airport", out["timeline"])
         self.assertIn("A1", out["timeline"]["by_airport"])
         self.assertIn("scheme", out)
+        self.assertFalse(out["objective_comparable"])
+        self.assertIn("run_config.core_airports differs", out["objective_comparability_reasons"])
+
+    def test_all_comparison_modes_share_canonical_run_summaries_tasks_and_frozen_labels(self):
+        r0, r1, r2 = self._roles()
+        _a0, m0 = solve(r0)
+        _a1, m1 = solve(r1)
+        _a2, m2 = solve(r2)
+        outputs = (
+            build_r0_r1_r2_comparison(
+                r0_snapshot=r0, r0_metrics=m0,
+                r1_snapshot=r1, r1_metrics=m1,
+                r2_snapshot=r2, r2_metrics=m2,
+            ),
+            build_multi_scenario_comparison([(r0, m0), (r1, m1)]),
+            build_configuration_comparison(
+                [(r1, m1), (r2, m2)], baseline_run_id="R1"
+            ),
+        )
+        expected_fields = {
+            "mission_count",
+            "required_sorties_total",
+            "scheduled_sorties_total",
+            "returned_sorties_total",
+            "selected_cluster_count",
+            "participating_airport_count",
+            "peak_departure_slot",
+            "max_airport_departure",
+            "minimum_resource_remaining",
+            "departure_hhi",
+            "cross_return_ratio",
+        }
+        metrics_by_run = {"R0": m0, "R1": m1, "R2": m2}
+
+        for output in outputs:
+            self.assertIn("run_summaries", output)
+            self.assertIn("labels", output)
+            for run_id, projection in output["run_summaries"].items():
+                metrics = metrics_by_run[run_id]
+                summary = metrics["summary"]
+                self.assertEqual(expected_fields, set(projection))
+                for field in (
+                    "mission_count", "required_sorties_total",
+                    "scheduled_sorties_total", "returned_sorties_total",
+                    "selected_cluster_count", "participating_airport_count",
+                ):
+                    self.assertEqual(summary[field], projection[field])
+                self.assertEqual(summary["peak_departure_slot"], projection["peak_departure_slot"])
+                self.assertEqual(summary["max_airport_departure"], projection["max_airport_departure"])
+                self.assertEqual(
+                    metrics["collaboration"]["departure_hhi"], projection["departure_hhi"]
+                )
+                self.assertEqual(
+                    metrics["collaboration"]["cross_return_ratio"],
+                    projection["cross_return_ratio"],
+                )
+
+        payload = r0.to_dict()
+        self.assertEqual(
+            payload["situation"]["airports"][0]["airport"]["airport_name"],
+            outputs[0]["labels"]["airports"][payload["situation"]["airports"][0]["airport"]["airport_id"]],
+        )
+        self.assertEqual(
+            payload["situation"]["missions"][0]["name"],
+            outputs[0]["labels"]["missions"][payload["situation"]["missions"][0]["mission_id"]],
+        )
+        self.assertEqual(
+            payload["catalogs"]["aircraft_types"][0]["name"],
+            outputs[0]["labels"]["aircraft"][payload["catalogs"]["aircraft_types"][0]["aircraft_type_id"]],
+        )
+
+        self.assertEqual(m0["tasks"]["M1"]["required_total"], outputs[0]["tasks"]["M1"]["required_total"]["R0"])
+        self.assertEqual(m0["tasks"]["M1"]["scheduled_total"], outputs[0]["tasks"]["M1"]["scheduled_total"]["R0"])
+        self.assertEqual(m0["tasks"]["M1"]["required_total"], outputs[1]["tasks"]["M1"]["R0"]["required_total"])
+        self.assertEqual(m0["tasks"]["M1"]["scheduled_total"], outputs[1]["tasks"]["M1"]["R0"]["scheduled_total"])
+        self.assertEqual(m1["tasks"]["M1"]["required_total"], outputs[2]["tasks"]["M1"]["R1"]["required_total"])
+        self.assertEqual(m1["tasks"]["M1"]["scheduled_total"], outputs[2]["tasks"]["M1"]["R1"]["scheduled_total"])
+
+    def test_missing_object_metric_stays_missing_instead_of_becoming_zero(self):
+        r0, r1, r2 = self._roles()
+        _a0, m0 = solve(r0)
+        _a1, m1 = solve(r1)
+        _a2, m2 = solve(r2)
+        m0 = copy.deepcopy(m0)
+        del m0["airports"]["A2"]["departure_share"]
+
+        output = build_r0_r1_r2_comparison(
+            r0_snapshot=r0, r0_metrics=m0,
+            r1_snapshot=r1, r1_metrics=m1,
+            r2_snapshot=r2, r2_metrics=m2,
+        )
+
+        self.assertIsNone(output["airports"]["A2"]["departure_share"]["R0"])
+        self.assertIsNone(output["airports"]["A2"]["departure_share"]["damage_delta"])
+
+    def test_scheduled_growth_after_full_demand_is_reported_as_additional_only(self):
+        r0, r1, r2 = self._roles()
+        _a0, m0 = solve(r0)
+        _a1, m1 = solve(r1)
+        _a2, m2 = solve(r2)
+        for metrics, scheduled in ((m0, 2), (m1, 2), (m2, 5)):
+            summary = metrics["summary"]
+            summary.update({
+                "required_sorties_total": 2,
+                "fulfilled_sorties_total": 2,
+                "unmet_sorties_total": 0,
+                "additional_sorties_total": scheduled - 2,
+                "scheduled_sorties_total": scheduled,
+                "completion_ratio": 1.0,
+            })
+
+        out = build_r0_r1_r2_comparison(
+            r0_snapshot=r0, r0_metrics=m0,
+            r1_snapshot=r1, r1_metrics=m1,
+            r2_snapshot=r2, r2_metrics=m2,
+        )
+
+        self.assertEqual(0.0, out["summary"]["fulfilled_sorties_total"]["cluster_delta"])
+        self.assertEqual(0.0, out["summary"]["unmet_sorties_total"]["cluster_delta"])
+        self.assertEqual(3.0, out["summary"]["additional_sorties_total"]["cluster_delta"])
+        self.assertEqual(3.0, out["summary"]["scheduled_sorties_total"]["cluster_delta"])
+
+    def test_unmet_reduction_and_completion_improvement_are_explicit(self):
+        r0, r1, r2 = self._roles()
+        _a0, m0 = solve(r0)
+        _a1, m1 = solve(r1)
+        _a2, m2 = solve(r2)
+        for metrics, fulfilled in ((m0, 2), (m1, 1), (m2, 2)):
+            summary = metrics["summary"]
+            summary.update({
+                "required_sorties_total": 2,
+                "fulfilled_sorties_total": fulfilled,
+                "unmet_sorties_total": 2 - fulfilled,
+                "additional_sorties_total": 0,
+                "scheduled_sorties_total": fulfilled,
+                "completion_ratio": fulfilled / 2,
+            })
+
+        out = build_r0_r1_r2_comparison(
+            r0_snapshot=r0, r0_metrics=m0,
+            r1_snapshot=r1, r1_metrics=m1,
+            r2_snapshot=r2, r2_metrics=m2,
+        )
+
+        self.assertEqual(-1.0, out["summary"]["unmet_sorties_total"]["cluster_delta"])
+        self.assertEqual(1.0, out["summary"]["fulfilled_sorties_total"]["cluster_delta"])
+        self.assertEqual(0.5, out["summary"]["completion_ratio"]["cluster_delta"])
+
+    def test_objective_comparability_uses_coefficient_definition_not_cluster_toggle(self):
+        ds = scenario()
+        common = (ds,)
+        same_a = make_snapshot(
+            scenario=ds, cluster_enabled=False, available_scenarios=common, run_id="SAME-A"
+        )
+        same_b = make_snapshot(
+            scenario=ds, cluster_enabled=False, available_scenarios=common, run_id="SAME-B"
+        )
+        self.assertTrue(check_objective_comparable(same_a, same_b).comparable)
+
+        core_changed = make_snapshot(
+            scenario=ds, cluster_enabled=True, available_scenarios=common, run_id="CORE"
+        )
+        check = check_objective_comparable(same_a, core_changed)
+        self.assertFalse(check.comparable)
+        self.assertIn("run_config.core_airports differs", check.reasons)
+
+        weight_changed = make_snapshot(
+            scenario=ds,
+            cluster_enabled=False,
+            preference_mode="time_min",
+            available_scenarios=common,
+            run_id="WEIGHT",
+        )
+        check = check_objective_comparable(same_a, weight_changed)
+        self.assertFalse(check.comparable)
+        self.assertIn("run_config.preference_mode differs", check.reasons)
+        self.assertIn("run_config.alpha differs", check.reasons)
 
     def test_comparison_rejects_metrics_from_wrong_run(self):
         r0, r1, r2 = self._roles()

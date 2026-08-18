@@ -32,7 +32,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            self.assertEqual(17, migration_count)
+            self.assertEqual(18, migration_count)
             self.assertEqual(1, airport_count)
             self.assertIn("situations", tables)
             self.assertIn("situation_damage_scenarios", tables)
@@ -146,7 +146,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertEqual(0, canonical_count)
             self.assertEqual(0, scenario_count)
             self.assertEqual("unchanged", sentinel)
-            self.assertEqual(17, migrations)
+            self.assertEqual(18, migrations)
 
     def test_v017_upgrades_v016_stocks_without_reinterpreting_zero_or_losing_children(self) -> None:
         with tempfile.TemporaryDirectory() as td:

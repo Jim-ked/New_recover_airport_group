@@ -98,21 +98,26 @@ class CatalogApi:
             return ApiResponse(self.airports.get_airport_bundle(airport_id), 200)
         return self._handle(action)
 
-    @staticmethod
-    def _airport_bundle(raw: Any, *, updating: bool) -> tuple[AirportBase, Optional[AirportOperationalProfile], Optional[int]]:
+    def _airport_bundle(self, raw: Any, *, updating: bool) -> tuple[AirportBase, Optional[AirportOperationalProfile], Optional[int]]:
         body = require_object(raw)
         allowed = {"airport", "operational_profile", "expected_revision"} if updating else {"airport", "operational_profile"}
         reject_unknown(body, allowed)
         raw_airport = body.get("airport")
         if not isinstance(raw_airport, Mapping):
             raise ApiInputError("airport must be a JSON object", field="airport")
-        airport = AirportBase.from_mapping(raw_airport)
+        airport_payload = dict(raw_airport)
+        if not updating and not str(airport_payload.get("airport_id") or "").strip():
+            airport_payload["airport_id"] = self.airports.allocate_airport_id()
+        airport = AirportBase.from_mapping(airport_payload)
         raw_profile = body.get("operational_profile")
         profile = None
         if raw_profile is not None:
             if not isinstance(raw_profile, Mapping):
                 raise ApiInputError("operational_profile must be object or null", field="operational_profile")
-            profile = AirportOperationalProfile.from_mapping(raw_profile)
+            profile_payload = dict(raw_profile)
+            if not updating and not str(profile_payload.get("airport_id") or "").strip():
+                profile_payload["airport_id"] = airport.airport_id
+            profile = AirportOperationalProfile.from_mapping(profile_payload)
             if profile.airport_id != airport.airport_id:
                 raise ApiInputError("operational_profile.airport_id must match airport.airport_id", field="operational_profile.airport_id")
         revision = CatalogApi._revision(body) if updating else None
