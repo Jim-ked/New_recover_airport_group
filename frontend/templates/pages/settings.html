@@ -38,7 +38,7 @@
     <section id="userWorkspace" class="settings-panel hidden" role="tabpanel" data-settings-panel="users" aria-hidden="true">
       <div class="settings-toolbar user-toolbar">
         <div class="settings-search">
-          <input id="userSearch" class="control" type="search" name="settings-user-search" autocomplete="off" placeholder="搜索账号或显示名">
+          <input id="userSearch" class="control" type="search" name="settings-user-search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="搜索账号或显示名">
           <button id="userSearchButton" class="btn" type="button">搜索</button>
           <button id="userSearchClear" class="btn ghost hidden" type="button">清除</button>
         </div>
@@ -76,7 +76,7 @@
 
     <section id="auditWorkspace" class="settings-panel hidden" role="tabpanel" data-settings-panel="audit" aria-hidden="true">
       <div class="settings-toolbar audit-toolbar">
-        <input id="auditKeyword" class="control" type="search" placeholder="关键词" aria-label="审计关键词">
+        <input id="auditKeyword" class="control" type="search" name="audit-keyword-query" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="关键词" aria-label="审计关键词">
         <select id="auditActorFilter" class="control" aria-label="用户"><option value="">全部用户</option></select>
         <select id="auditOutcomeFilter" class="control" aria-label="结果">
           <option value="">全部结果</option><option value="success">成功</option><option value="denied">拒绝</option><option value="error">错误</option>

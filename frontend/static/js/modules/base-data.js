@@ -1,4 +1,6 @@
 import { apiFetch as requestJson, apiText as requestText, ApiError } from './api-client.js';
+import { formatCoordinate, formatDecimal, formatDistance, formatInteger, formatPercent } from './number-display.js';
+import { regionDisplayName, regionDisplayWithCode } from './region-display.js';
 
 let pageRoot = null;
 let lifecycleController = null;
@@ -81,11 +83,11 @@ function renderFilterPopover(col){
   const all=col==='role'?ROLE_OPTIONS.map(([k])=>k):(state.regionOptions||[]);
   const rows=col==='role'
     ? ROLE_OPTIONS.map(([k,n])=>[k,n])
-    : all.map(v=>[v,v]);
+    : all.map(v=>[v,regionDisplayName(v)]);
   const body=rows.map(([k,n])=>`<label class="filter-option"><input type="checkbox" value="${esc(k)}" ${filterDraft.includes(k)?'checked':''}> <span>${esc(n)}</span></label>`).join('');
   refs.popover.innerHTML=`
     <div class="filter-popover-title">${col==='role'?'机场类型':'所属区域'}</div>
-    ${col==='region'?'<div class="filter-popover-search"><input id="filterRegionSearch" class="control" placeholder="搜索区域……"></div>':''}
+    ${col==='region'?'<div class="filter-popover-search"><input id="filterRegionSearch" class="control" name="base-data-region-query" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="搜索区域……"></div>':''}
     <label class="filter-option filter-select-all"><input id="filterSelectAll" type="checkbox" ${all.length?'':'disabled'}> <span>全选</span></label>
     <div class="filter-option-divider" aria-hidden="true"></div>
     <div class="filter-options">${body}</div>
@@ -200,9 +202,9 @@ function colFilterBtn(col){
 }
 function renderTable(){
   let heads=[], body=[];
-  if(state.tab==='airports'){heads=['编号','名称',`类型 ${colFilterBtn('role')}`,`区域 ${colFilterBtn('region')}`,'容量/窗','支持机型','更新时间']; body=state.items.map(x=>[airportNumber(x.airport_id),x.airport_name,x.role,x.region||'—',x.capacity_per_window??'—',x.supported_aircraft_type_count,x.updated_at||'—']);}
-  else if(state.tab==='missions'){heads=['编号','名称','任务窗','需求机型','更新时间'];body=state.items.map(x=>[x.mission.mission_id,x.mission.name,`T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`,x.mission.aircraft_requirements.length,x.metadata.updated_at||'—']);}
-  else if(state.tab==='aircraft_types'){heads=['编号','名称','速度 km/h','最大航程 km','安全余油','更新时间'];body=state.items.map(x=>[x.aircraft_type.aircraft_type_id,x.aircraft_type.name,x.aircraft_type.speed_kmh??'—',x.aircraft_type.max_range_km??'—',x.aircraft_type.reserve_ratio==null?'—':`${(x.aircraft_type.reserve_ratio*100).toFixed(1)}%`,x.metadata.updated_at||'—']);}
+  if(state.tab==='airports'){heads=['编号','名称',`类型 ${colFilterBtn('role')}`,`区域 ${colFilterBtn('region')}`,'容量/窗','支持机型','更新时间']; body=state.items.map(x=>[airportNumber(x.airport_id),x.airport_name,x.role,regionDisplayName(x.region),formatInteger(x.capacity_per_window),formatInteger(x.supported_aircraft_type_count),x.updated_at||'—']);}
+  else if(state.tab==='missions'){heads=['编号','名称','任务窗','需求机型','更新时间'];body=state.items.map(x=>[x.mission.mission_id,x.mission.name,`T${x.mission.window_start_slot}–T${x.mission.window_end_slot}`,formatInteger(x.mission.aircraft_requirements.length),x.metadata.updated_at||'—']);}
+  else if(state.tab==='aircraft_types'){heads=['编号','名称','速度 km/h','最大航程','安全余油','更新时间'];body=state.items.map(x=>[x.aircraft_type.aircraft_type_id,x.aircraft_type.name,formatDecimal(x.aircraft_type.speed_kmh),formatDistance(x.aircraft_type.max_range_km),formatPercent(x.aircraft_type.reserve_ratio),x.metadata.updated_at||'—']);}
   else {heads=['编号','名称','类别','单位','更新时间'];body=state.items.map(x=>[x.resource_type.resource_type_id,x.resource_type.name,x.resource_type.category,x.resource_type.unit,x.metadata.updated_at||'—']);}
   refs.wrap.innerHTML=`<table class="data-table"><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body.map((cols,i)=>`<tr data-index="${i}" class="${itemId(state.items[i])===state.selected?'selected':''}">${cols.map(v=>`<td title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   refs.wrap.querySelectorAll('tbody tr').forEach(tr=>tr.onclick=()=>selectIndex(Number(tr.dataset.index)));
@@ -211,7 +213,7 @@ function renderTable(){
 function render(){
   const meta=TAB_META[state.tab];
   refs.title.textContent=meta.title;
-  refs.count.textContent=`${state.total} 条 · 当前态`;
+  refs.count.textContent=`${formatInteger(state.total)} 条 · 当前态`;
   refs.search.placeholder=meta.searchPlaceholder;
   renderChips();
   refs.add.textContent=`新增${meta.singular}`;
@@ -251,21 +253,21 @@ function detailAirports(x){
     <h4>资源库存与补给能力</h4>${p.resource_stocks.length?p.resource_stocks.map(r=>`<div class="overview-item"><span>${esc(r.resource_type_id)}</span><span>库存 ${r.initial_quantity} · 补给 ${r.replenishment_capacity_per_window}/窗</span></div>`).join(''):'<div class="field-note">暂无资源库存。</div>'}`
     :`<div class="field-note">尚未建立运行配置。</div><button class="btn primary configure-operations-action" type="button">配置运行保障数据</button>`;
   return paneTabs('basic')
-    + `<section class="detail-section" data-airport-section="basic"><h3>基本信息</h3>${kv([['编号',airportNumber(a.airport_id)],['名称',a.airport_name],['设施类型',a.facility_type],['机场角色',a.role],['ICAO',a.icao_code],['IATA',a.iata_code],['区域',a.region],['城市',a.municipality],['经纬度',`${a.longitude}, ${a.latitude}`],['高程 m',a.elevation_m],['定期服务',a.scheduled_service?'是':'否']])}</section>`
+    + `<section class="detail-section" data-airport-section="basic"><h3>基本信息</h3>${kv([['编号',airportNumber(a.airport_id)],['名称',a.airport_name],['设施类型',a.facility_type],['机场角色',a.role],['ICAO',a.icao_code],['IATA',a.iata_code],['区域',regionDisplayWithCode(a.region)],['城市',a.municipality],['经纬度',`${formatCoordinate(a.longitude)}, ${formatCoordinate(a.latitude)}`],['高程 m',formatDecimal(a.elevation_m)],['定期服务',a.scheduled_service?'是':'否']])}</section>`
     + `<section class="detail-section" data-airport-section="basic"><h3>跑道</h3>${runways}</section>`
     + `<section class="detail-section" data-airport-section="operations"><h3>运行保障配置</h3>${ops}</section>`
     + `<section class="detail-section" data-airport-section="basic"><h3>维护信息</h3>${kv([['revision',m.revision],['更新时间',m.updated_at]])}</section>`;
 }
 function detailMissions(x){
   const m=x.mission;
-  return `<section class="detail-section"><h3>基本信息</h3>${kv([['编号',m.mission_id],['名称',m.name],['经纬度',`${m.longitude}, ${m.latitude}`],['更新时间',x.metadata.updated_at]])}</section>`
+  return `<section class="detail-section"><h3>基本信息</h3>${kv([['编号',m.mission_id],['名称',m.name],['经纬度',`${formatCoordinate(m.longitude)}, ${formatCoordinate(m.latitude)}`],['更新时间',x.metadata.updated_at]])}</section>`
     + `<section class="detail-section"><h3>任务窗</h3>${kv([['开始窗',`T${m.window_start_slot}`],['结束窗（不含）',`T${m.window_end_slot}`]])}</section>`
     + `<section class="detail-section"><h3>机型需求</h3>${m.aircraft_requirements.length?m.aircraft_requirements.map(r=>`<div class="overview-item"><span>${esc(r.aircraft_type_id)}</span><span>${r.required_sorties} 架次 · 作业 ${r.tau_work_windows} 窗</span></div>`).join(''):'<div class="field-note">暂无需求行。</div>'}</section>`;
 }
 function detailAircraftTypes(x){
   const a=x.aircraft_type; const req=state.requirements.filter(r=>r.aircraft_type_id===a.aircraft_type_id);
   return `<section class="detail-section"><h3>基本信息</h3>${kv([['编号',a.aircraft_type_id],['名称',a.name],['更新时间',x.metadata.updated_at]])}</section>`
-    + `<section class="detail-section"><h3>性能参数</h3>${kv([['速度 km/h',a.speed_kmh],['最大航程 km',a.max_range_km],['安全余油',a.reserve_ratio],['离场容量占用',a.departure_capacity_occupancy_factor],['到场容量占用',a.arrival_capacity_occupancy_factor]])}</section>`
+    + `<section class="detail-section"><h3>性能参数</h3>${kv([['速度 km/h',formatDecimal(a.speed_kmh)],['最大航程',formatDistance(a.max_range_km)],['安全余油',formatPercent(a.reserve_ratio)],['离场容量占用',formatDecimal(a.departure_capacity_occupancy_factor)],['到场容量占用',formatDecimal(a.arrival_capacity_occupancy_factor)]])}</section>`
     + `<section class="detail-section"><h3>资源消耗关系</h3>${req.length?req.map(r=>`<div class="overview-item"><span>${esc(r.resource_type_id)} / ${esc(r.basis)}</span><span>${esc(r.quantity)}</span></div>`).join(''):'<div class="field-note">暂无消耗关系。</div>'}</section>`;
 }
 function detailResourceTypes(x){

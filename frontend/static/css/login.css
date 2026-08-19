@@ -32,25 +32,25 @@ body { margin: 0; }
 }
 
 .login-panel-wrap {
-  width: min(390px, 100%);
+  width: min(376px, 100%);
 }
 
 .login-card {
   width: 100%;
   box-sizing: border-box;
-  padding: 28px;
+  padding: 26px 28px 28px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(7, 27, 41, .93);
-  box-shadow: var(--shadow-2);
-  backdrop-filter: blur(5px);
+  border-radius: 7px;
+  background: rgba(7, 27, 41, .95);
+  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  backdrop-filter: blur(4px);
 }
 
 .login-card-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 13px;
+  margin-bottom: 22px;
 }
 
 .login-emblem {
@@ -71,9 +71,11 @@ body { margin: 0; }
   line-height: 1.4;
 }
 
-.login-card .field { margin-bottom: 14px; }
-.login-card .control { height: 38px; }
-.login-card .btn { width: 100%; height: 40px; margin-top: 4px; }
+.login-card .field { width:100%;margin:0 0 15px; }
+.login-card .field label{display:block;margin:0 0 6px;padding:0;font-size:11px}
+.login-card .control { width:100%;height:40px;box-sizing:border-box; }
+.login-card .btn { width:100%;height:40px;margin:3px 0 0;box-sizing:border-box; }
+.login-card .inline-message{width:100%;box-sizing:border-box;margin-bottom:14px}
 
 @media (max-width: 900px) {
   .login-page { grid-template-columns: 1fr; }

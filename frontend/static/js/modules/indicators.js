@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { formatPercent } from './number-display.js';
 
 const DEFAULT_EXPERT_ID = 'default';
 const $ = (id) => document.getElementById(id);
@@ -139,9 +140,9 @@ function weightValue(node) {
   return weighted == null ? null : Number(weighted);
 }
 
-function weightLabel(node, precision = 1) {
+function weightLabel(node, precision = 2) {
   const value = weightValue(node);
-  return value == null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(precision)}%`;
+  return formatPercent(value, { digits: precision });
 }
 
 function setOptions() {

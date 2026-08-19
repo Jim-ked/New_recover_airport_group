@@ -134,8 +134,8 @@ process.stdout.write(JSON.stringify(values));
     def test_non_comparison_states_fill_the_stable_panels_without_data_controls(self):
         render = extract_function(JS, "renderWorkbenchState")
         for text in (
-            "完成算法运行后可进行结果比较",
-            "当前成功运行尚未形成可比较组合",
+            "当前暂无可用比较结果",
+            "请先完成相应的算法运行",
             "选择比较条件后显示时序比较",
             "等待比较结果",
             "等待有效比较条件",
@@ -241,6 +241,68 @@ process.stdout.write(JSON.stringify({{
         self.assertIn("查看单次结果", JS)
         self.assertIn("尚未选择比较条件", JS)
         self.assertIn("选择比较条件", HTML)
+
+    def test_default_workspace_uses_a_real_backend_approved_damage_candidate(self):
+        for token in (
+            "defaultDamageCandidate",
+            "autoApplyDefaultComparison",
+            "await ensureWorkspaceCandidates('damage')",
+            "requestComparison('damage',selection)",
+        ):
+            self.assertIn(token, JS)
+        self.assertNotIn("payload={", extract_function(JS, "autoApplyDefaultComparison").replace(" ", ""))
+
+    def test_multi_and_configuration_workspaces_auto_apply_backend_approved_defaults(self):
+        discover = extract_function(JS, "discoverComparableCandidates")
+        auto = extract_function(JS, "autoApplyDefaultComparison")
+        for token in (
+            "rankedBaseRuns",
+            "loadComparable(run.run_id,mode)",
+            "items.length>=3",
+        ):
+            self.assertIn(token, discover.replace(" ", ""))
+        for token in (
+            "autoApplyWorkspaceDefault('damage')",
+            "autoApplyWorkspaceDefault('multi')",
+            "autoApplyWorkspaceDefault('configuration')",
+        ):
+            self.assertIn(token, auto.replace(" ", ""))
+        self.assertIn("requestComparison('multi',selection)", JS.replace(" ", ""))
+        self.assertIn("requestComparison('configuration',selection)", JS.replace(" ", ""))
+        self.assertIn("damageView.selection?.r1_run_id", JS)
+        self.assertIn("damageView.selection?.r2_run_id", JS)
+        self.assertNotIn("RUN-00fa756e", JS)
+
+    def test_default_base_ranking_follows_the_current_damage_workspace_without_ids(self):
+        helpers = "\n".join(extract_function(JS, name) for name in (
+            "runSituationId", "runCreatedAt", "rankedBaseRuns",
+        ))
+        script = f"""
+const runs = [
+  {{run_id:'HIGH-R2',created_at:'2026-08-19T10:03:00Z',situation:{{situation_id:'ST002'}},run_config:{{damage_scenario_id:'HIGH',cluster_enabled:true}}}},
+  {{run_id:'LOW-R1',created_at:'2026-08-19T10:02:00Z',situation:{{situation_id:'ST002'}},run_config:{{damage_scenario_id:'LOW',cluster_enabled:false}}}},
+  {{run_id:'R0',created_at:'2026-08-19T10:01:00Z',situation:{{situation_id:'ST002'}},run_config:{{damage_scenario_id:null,cluster_enabled:false}}}},
+  {{run_id:'OTHER',created_at:'2026-08-19T10:04:00Z',situation:{{situation_id:'ST003'}},run_config:{{damage_scenario_id:null,cluster_enabled:false}}}},
+];
+const state = {{runs,runById:new Map(runs.map((run)=>[run.run_id,run])),workspaceStates:{{damage:{{selection:{{r0_run_id:'R0',r1_run_id:'LOW-R1',r2_run_id:'HIGH-R2'}}}}}}}};
+{helpers}
+process.stdout.write(JSON.stringify({{
+  multi: rankedBaseRuns('multi').map((run)=>run.run_id),
+  configuration: rankedBaseRuns('configuration').map((run)=>run.run_id),
+}}));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "--eval", script], cwd=ROOT,
+            check=True, capture_output=True, text=True, encoding="utf-8",
+        )
+        ranked = json.loads(completed.stdout)
+        self.assertEqual("R0", ranked["multi"][0])
+        self.assertEqual("LOW-R1", ranked["configuration"][0])
+
+    def test_compact_empty_state_keeps_run_entry_point(self):
+        self.assertIn('当前暂无可用比较结果', JS)
+        self.assertIn('请先完成相应的算法运行', JS)
+        self.assertIn('id="resultsRunLink"', HTML)
 
     def test_workspace_state_and_export_stay_scoped_to_current_comparison(self):
         self.assertIn("const requestWorkspace=state.workspace", JS)

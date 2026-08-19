@@ -1,4 +1,5 @@
 import { apiFetch, apiDownload, saveBlob, ApiError } from './api-client.js';
+import { formatDecimal, formatHhi, formatInteger, formatPercent } from './number-display.js';
 
 const VIEW_STATE = Object.freeze({
   LOADING: 'LOADING',
@@ -132,9 +133,9 @@ function restoreSessionState(){
   }catch(error){console.warn('Results UI state could not be restored',error);}
 }
 function esc(v){return String(v ?? '—').replace(/[&<>'"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function pct(v){return typeof v==='number'&&Number.isFinite(v)?`${(v*100).toFixed(1)}%`:'—';}
-function number(v,d=0){return typeof v==='number'&&Number.isFinite(v)?v.toFixed(d):'—';}
-function signed(v,{percent=false,unit=''}={}){if(typeof v!=='number'||!Number.isFinite(v))return '—';const x=percent?`${Math.abs(v*100).toFixed(1)}%`:`${Math.abs(v).toFixed(Number.isInteger(v)?0:2)}${unit}`;return `${v>0?'+':v<0?'−':''}${x}`;}
+function pct(v){return formatPercent(v,{digits:1});}
+function number(v,d=0){return d===0?formatInteger(v):formatDecimal(v,{minimumFractionDigits:d,maximumFractionDigits:d});}
+function signed(v,{percent=false,unit=''}={}){if(typeof v!=='number'||!Number.isFinite(v))return '—';const absolute=Math.abs(v);const x=percent?formatPercent(absolute,{digits:1}):`${Number.isInteger(absolute)?formatInteger(absolute):formatDecimal(absolute)}${unit}`;return `${v>0?'+':v<0?'−':''}${x}`;}
 function shortRunId(id){const match=/^RUN-([a-f0-9]{8})/i.exec(String(id||''));return match?`R-${match[1].toUpperCase()}`:String(id||'—');}
 function shortAirportName(value){return String(value||'').replace(/\s+(?:International\s+|General\s+)?(?:Airport|Air Base)$/i,'').trim()||String(value||'—');}
 function airportDisplayLabel(id,label){const match=/^AP(\d+)$/i.exec(String(id||''));const number=match?match[1].padStart(3,'0'):'';const fallback=/^[a-z]+:/i.test(String(id||''))?'机场':id;return `${number?`${number} `:''}${shortAirportName(label||fallback)}`;}
@@ -193,8 +194,8 @@ function renderWorkbenchState(viewState){
   const content={
     [VIEW_STATE.LOADING]: {chart:'加载中…',diff:'—',bottom:'—'},
     [VIEW_STATE.ERROR]: {chart:'暂时无法读取结果数据',diff:'—',bottom:'—'},
-    [VIEW_STATE.ZERO_RESULTS]: {chart:'完成算法运行后可进行结果比较',diff:'等待比较结果',bottom:'暂无比较结果'},
-    [VIEW_STATE.NO_COMPARABLE_SET]: {chart:'当前成功运行尚未形成可比较组合',diff:'等待有效比较条件',bottom:'暂无比较结果'},
+    [VIEW_STATE.ZERO_RESULTS]: {chart:'<strong>当前暂无可用比较结果</strong><span>请先完成相应的算法运行</span>',diff:'等待比较结果',bottom:'暂无比较结果'},
+    [VIEW_STATE.NO_COMPARABLE_SET]: {chart:'<strong>当前暂无可用比较结果</strong><span>请先完成相应的算法运行</span>',diff:'等待有效比较条件',bottom:'暂无比较结果'},
     [VIEW_STATE.READY_TO_SELECT]: {chart:'选择比较条件后显示时序比较',diff:'等待比较结果',bottom:'暂无比较结果'},
   }[viewState];
   if(!content)return;
@@ -224,13 +225,51 @@ function renderViewState(){
   renderBottom();
   updateExportState();
 }
+function runSituationId(run){return run?.situation?.situation_id||run?.situation_id||null;}
+function runCreatedAt(run){return Date.parse(run?.created_at||'')||0;}
+function rankedBaseRuns(workspace){
+  const damageView=state.workspaceStates.damage;
+  const preferredRunId=workspace==='multi'
+    ? damageView.selection?.r0_run_id
+    : damageView.selection?.r1_run_id;
+  const preferredSituationId=runSituationId(state.runById.get(preferredRunId));
+  return [...state.runs].sort((a,b)=>{
+    const aCfg=a.run_config||{},bCfg=b.run_config||{};
+    const aRank=[
+      a.run_id===preferredRunId?1:0,
+      preferredSituationId&&runSituationId(a)===preferredSituationId?1:0,
+      workspace==='multi'&&aCfg.damage_scenario_id==null?1:0,
+      !aCfg.cluster_enabled?1:0,
+      runCreatedAt(a),
+    ];
+    const bRank=[
+      b.run_id===preferredRunId?1:0,
+      preferredSituationId&&runSituationId(b)===preferredSituationId?1:0,
+      workspace==='multi'&&bCfg.damage_scenario_id==null?1:0,
+      !bCfg.cluster_enabled?1:0,
+      runCreatedAt(b),
+    ];
+    for(let index=0;index<aRank.length;index+=1){if(aRank[index]!==bRank[index])return bRank[index]-aRank[index];}
+    return String(b.run_id).localeCompare(String(a.run_id));
+  });
+}
 async function discoverComparableCandidates(workspace){
   const mode=workspace==='multi'?'multi_scenario':'configuration';
-  for(const run of state.runs){
+  const damageView=state.workspaceStates.damage;
+  const preferredOtherId=workspace==='configuration'?damageView.selection?.r2_run_id:null;
+  let best=null;
+  for(const run of rankedBaseRuns(workspace)){
     const items=await loadComparable(run.run_id,mode);
-    if(items.length)return [{baseRunId:run.run_id,items}];
+    if(!items.length)continue;
+    const candidate={baseRunId:run.run_id,items};
+    if(workspace==='configuration'){
+      if(run.run_id===damageView.selection?.r1_run_id&&items.some((item)=>item.run_id===preferredOtherId))return [candidate];
+      return [candidate];
+    }
+    if(!best||items.length>best.items.length)best=candidate;
+    if(items.length>=3)return [candidate];
   }
-  return [];
+  return best?[best]:[];
 }
 async function ensureWorkspaceCandidates(workspace,{force=false}={}){
   if(state.runsStatus!=='ready'||state.runs.length===0)return;
@@ -281,6 +320,12 @@ async function setWorkspace(mode){
   airportValueButtons.forEach((b)=>b.classList.toggle('active',b.dataset.airportValue===state.airportValue));
   if(state.payload)renderComparison();else renderViewState();
   await ensureWorkspaceCandidates(mode);
+  if(!state.workspaceStates[mode].selection&&!state.workspaceStates[mode].payload){
+    try{
+      const applied=await autoApplyWorkspaceDefault(mode);
+      if(applied){activateWorkspaceState(mode);renderComparison();}
+    }catch(error){showComparisonError(error);}
+  }
   persistSessionState();
 }
 
@@ -358,6 +403,61 @@ async function restoreSavedComparisons(){
   activateWorkspaceState(state.workspace);
   if(state.payload)renderComparison();else renderViewState();
   persistSessionState();
+}
+
+function defaultDamageCandidate(){
+  const rows=state.damageCandidates.filter((candidate)=>[
+    candidate.r0_run_id,candidate.r1_run_id,candidate.r2_run_id,
+  ].every((id)=>state.runById.has(id)));
+  const rank=(candidate)=>{
+    const runs=[candidate.r0_run_id,candidate.r1_run_id,candidate.r2_run_id].map((id)=>state.runById.get(id));
+    const recent=Math.max(...runs.map((run)=>Date.parse(run?.created_at||'')||0));
+    return [recent];
+  };
+  return rows.sort((a,b)=>{const ar=rank(a),br=rank(b);return br[0]-ar[0];})[0]||null;
+}
+async function autoApplyWorkspaceDefault(workspace){
+  const view=state.workspaceStates[workspace];
+  if(view.selection||view.payload)return false;
+  await ensureWorkspaceCandidates(workspace);
+  let selection=null;
+  if(workspace==='damage'){
+    const candidate=defaultDamageCandidate();if(!candidate)return false;
+    selection={r0_run_id:candidate.r0_run_id,r1_run_id:candidate.r1_run_id,r2_run_id:candidate.r2_run_id};
+    view.payload=await requestComparison('damage',selection);
+    view.draft.damageTriple=state.damageCandidates.indexOf(candidate);
+  }else{
+    const candidate=state.candidates[workspace].items[0];if(!candidate)return false;
+    if(workspace==='multi'){
+      const runIds=[candidate.baseRunId,...candidate.items.map((item)=>item.run_id)];
+      const uniqueRunIds=[...new Set(runIds)];
+      while(uniqueRunIds.length>6)uniqueRunIds.pop();
+      selection={run_ids:uniqueRunIds};
+      if(selection.run_ids.length<2)return false;
+      view.payload=await requestComparison('multi',selection);
+    }else{
+      const damageView=state.workspaceStates.damage;
+      const preferred=damageView.selection?.r2_run_id;
+      const other=candidate.items.find((item)=>item.run_id===preferred)||candidate.items[0];
+      if(!other)return false;
+      selection={run_ids:[candidate.baseRunId,other.run_id],baseline_run_id:candidate.baseRunId};
+      view.payload=await requestComparison('configuration',selection);
+    }
+  }
+  view.selection=selection;
+  hydrateDraftFromSelection(workspace,view);
+  return true;
+}
+async function autoApplyDefaultComparison(){
+  await ensureWorkspaceCandidates('damage');
+  const damageApplied=await autoApplyWorkspaceDefault('damage');
+  const multiApplied=await autoApplyWorkspaceDefault('multi');
+  const configurationApplied=await autoApplyWorkspaceDefault('configuration');
+  const applied=damageApplied||multiApplied||configurationApplied;
+  activateWorkspaceState(state.workspace);
+  if(state.payload)renderComparison();else renderViewState();
+  if(applied)persistSessionState();
+  return applied;
 }
 
 async function applyComparison(){
@@ -586,7 +686,7 @@ function renderBottom(){
     const cats=[['fuel','燃油'],['material','航材'],['munition','航弹']];refs.table.innerHTML=`<table class="results-table"><thead><tr><th>资源类别最低余量率</th>${ids.map((id)=>`<th>${esc(seriesLabel(id))}</th>`).join('')}</tr></thead><tbody>${cats.map(([c,n])=>`<tr><td>${n}</td>${ids.map((id)=>`<td>${resourceCell(c,id)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;return;
   }
   const scheme=state.payload.scheme||{};const rowFor=(id)=>{if(state.workspace==='damage'){const role=Object.entries(state.payload.roles||{}).find(([,rid])=>rid===id)?.[0];return scheme[role]||{};}return scheme[id]||{};};
-  refs.table.innerHTML=`<table class="results-table"><thead><tr><th>方案结构</th>${ids.map((id)=>`<th>${esc(seriesLabel(id))}</th>`).join('')}</tr></thead><tbody><tr><td>组选机场</td>${ids.map((id)=>`<td>${esc((rowFor(id).selected_cluster||[]).map((aid)=>labelFor('airport',aid)).join('、')||'—')}</td>`).join('')}</tr><tr><td>实际参与机场</td>${ids.map((id)=>`<td>${esc((rowFor(id).participating_airports||[]).map((aid)=>labelFor('airport',aid)).join('、')||'—')}</td>`).join('')}</tr><tr><td>出动集中度 HHI</td>${ids.map((id)=>`<td>${number(rowFor(id).departure_hhi,3)}</td>`).join('')}</tr><tr><td>跨场返航比例</td>${ids.map((id)=>`<td>${pct(rowFor(id).cross_return_ratio)}</td>`).join('')}</tr></tbody></table>`;
+  refs.table.innerHTML=`<table class="results-table"><thead><tr><th>方案结构</th>${ids.map((id)=>`<th>${esc(seriesLabel(id))}</th>`).join('')}</tr></thead><tbody><tr><td>组选机场</td>${ids.map((id)=>`<td>${esc((rowFor(id).selected_cluster||[]).map((aid)=>labelFor('airport',aid)).join('、')||'—')}</td>`).join('')}</tr><tr><td>实际参与机场</td>${ids.map((id)=>`<td>${esc((rowFor(id).participating_airports||[]).map((aid)=>labelFor('airport',aid)).join('、')||'—')}</td>`).join('')}</tr><tr><td>出动集中度 HHI</td>${ids.map((id)=>`<td>${formatHhi(rowFor(id).departure_hhi)}</td>`).join('')}</tr><tr><td>跨场返航比例</td>${ids.map((id)=>`<td>${pct(rowFor(id).cross_return_ratio)}</td>`).join('')}</tr></tbody></table>`;
 }
 
 workspaceButtons.forEach((b)=>b.addEventListener('click',()=>setWorkspace(b.dataset.workspace)));
@@ -617,6 +717,7 @@ async function init(){
   workspaceButtons.forEach((button)=>button.classList.toggle('active',button.dataset.workspace===state.workspace));
   await loadInitial();
   await restoreSavedComparisons();
+  try{await autoApplyDefaultComparison();}catch(error){showComparisonError(error);}
 }
 
 init();

@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { formatDecimal, formatHhi, formatInteger, formatPercent, formatSeconds } from './number-display.js';
 
 const PREFERENCE_LABELS = {
   sortie_max: '出动架次优先',
@@ -84,13 +85,13 @@ function missionName(id) {
   return mission?.name || id || '—';
 }
 function percent(ratio, digits = 1) {
-  return typeof ratio === 'number' && Number.isFinite(ratio) ? `${(ratio * 100).toFixed(digits)}%` : '—';
+  return formatPercent(ratio, { digits });
 }
 function number(value, digits = 2) {
-  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—';
+  return formatDecimal(value, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 function integer(value) {
-  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '—';
+  return formatInteger(value);
 }
 function windowLabel(window) {
   return Number.isInteger(window) ? `T${window}` : '—';
@@ -148,7 +149,7 @@ function renderSummary() {
 
   const maxAirport = s.max_airport_departure || {};
   refs.collaborationPrimary.textContent = `参与 ${integer(s.participating_airport_count)}`;
-  refs.collaborationMeta.innerHTML = `最大承接　${airportDisplay(maxAirport.airport_id)}<br>承接占比　${percent(maxAirport.share)}<br>集中度 HHI　${number(c.departure_hhi, 4)}`;
+  refs.collaborationMeta.innerHTML = `最大承接　${airportDisplay(maxAirport.airport_id)}<br>承接占比　${percent(maxAirport.share)}<br>集中度 HHI　${formatHhi(c.departure_hhi)}`;
 
   refs.resourceSummary.replaceChildren();
   const mins = m.resources?.category_min_remaining_ratio || {};
@@ -567,7 +568,7 @@ function renderResourceDetail(category) {
 }
 function renderTechnicalDetail() {
   const t = state.metrics.technical || {}; const root = document.createElement('div'); const grid = document.createElement('div'); grid.className = 'detail-grid';
-  grid.append(detailItem('完整 Run ID', state.runId), detailItem('Metrics Schema', state.metrics.schema_version), detailItem('Snapshot Hash', t.snapshot_hash), detailItem('Solver Status', t.solver_status ?? '—'), detailItem('Objective', t.objective ?? '—'), detailItem('Gap', t.gap ?? '—'), detailItem('Solve Time', t.solve_time_s != null ? `${t.solve_time_s}s` : '—'), detailItem('Algorithm Version', t.algorithm_version ?? '—'), detailItem('时间粒度', `${state.metrics.time_axis.slot_minutes} min/窗`)); root.append(grid);
+  grid.append(detailItem('完整 Run ID', state.runId), detailItem('Metrics Schema', state.metrics.schema_version), detailItem('Snapshot Hash', t.snapshot_hash), detailItem('Solver Status', t.solver_status ?? '—'), detailItem('Objective', formatDecimal(t.objective)), detailItem('Gap', formatPercent(t.gap, { digits: 2 })), detailItem('Solve Time', formatSeconds(t.solve_time_s)), detailItem('Algorithm Version', t.algorithm_version ?? '—'), detailItem('时间粒度', `${state.metrics.time_axis.slot_minutes} min/窗`)); root.append(grid);
   const section = document.createElement('section'); section.className = 'detail-section'; section.append(text('h3', '冻结 RunConfig'));
   const pre = text('pre', JSON.stringify(state.runConfig, null, 2), 'detail-series'); section.append(pre); root.append(section); return root;
 }
@@ -617,9 +618,9 @@ function renderTechnicalSummary() {
     ['Metrics Schema', state.metrics.schema_version],
     ['Snapshot Hash', technical.snapshot_hash],
     ['Solver Status', technical.solver_status],
-    ['Objective', technical.objective],
-    ['Gap', technical.gap],
-    ['Solve Time', technical.solve_time_s != null ? `${technical.solve_time_s}s` : null],
+    ['Objective', formatDecimal(technical.objective)],
+    ['Gap', formatPercent(technical.gap, { digits: 2 })],
+    ['Solve Time', formatSeconds(technical.solve_time_s)],
     ['Algorithm Version', technical.algorithm_version],
     ['时间粒度', Number.isInteger(state.metrics.time_axis.slot_minutes) ? `${state.metrics.time_axis.slot_minutes} min/窗` : null],
   ];

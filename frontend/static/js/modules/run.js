@@ -1,4 +1,5 @@
 import { apiFetch, ApiError, saveBlob } from './api-client.js';
+import { formatInteger, formatPercent, formatSeconds } from './number-display.js';
 
 const STAGE_GROUPS = [
   { key: 'data_preparation', label: '数据准备' },
@@ -72,6 +73,7 @@ const state = {
   permissions: new Set(),
   accountReady: false,
   logAutoScroll: true,
+  workerStatus: { connected: false, reason: 'unknown' },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -264,7 +266,7 @@ function collectAircraftTypes(situation) {
 function renderSituationDetail(situation) {
   const airports = situation?.airports || [];
   const missions = situation?.missions || [];
-  refs.situationMeta.textContent = `${airports.length} 个机场 · ${missions.length} 个任务`;
+  refs.situationMeta.textContent = `${formatInteger(airports.length)} 个机场 · ${formatInteger(missions.length)} 个任务`;
 
   refs.damage.replaceChildren();
   const noDamage = document.createElement('option');
@@ -414,7 +416,7 @@ function onClusterEnabledChanged() {
 function updateAdvancedSummary() {
   const time = refs.mipTimeLimit.value.trim() || '120';
   const weights = [...refs.aircraftWeightOptions.querySelectorAll('input[data-aircraft-weight]')].filter((x) => x.value.trim()).length;
-  refs.advancedSummary.textContent = `${time}秒 · ${weights ? `${weights}个机型权重覆盖` : '机型权重默认1.0'}`;
+  refs.advancedSummary.textContent = `${formatSeconds(Number(time))} · ${weights ? `${formatInteger(weights)}个机型权重覆盖` : '机型权重默认1.0'}`;
 }
 
 function renderValidation(result) {
@@ -660,14 +662,14 @@ function renderStages(run, events) {
     refs.stageFlow.append(item);
   });
   const rawProgress = run?.status === 'succeeded' ? 1 : run?.status === 'queued' ? 0 : latestAlgorithmProgress(events);
-  refs.progressPercent.textContent = `${Math.round(rawProgress * 100)}%`;
+  refs.progressPercent.textContent = formatPercent(rawProgress, { digits: 0 });
   refs.progressStage.textContent = info.phase.position;
   refs.progressLabel.textContent = info.phase.label;
 }
 
 function currentActivity(run, events) {
   if (!run) return '尚未开始运行';
-  if (run.status === 'queued') return '运行任务已进入队列，等待 Worker。';
+  if (run.status === 'queued') return state.workerStatus.connected ? '运行任务已进入队列，等待 Worker 接收。' : 'Worker 未连接/未运行，任务仍在队列中。';
   if (run.status === 'succeeded') return '运行完成，结果已持久化';
   if (run.status === 'failed') return '运行失败';
   if (run.status === 'cancelled') return '运行已取消';
@@ -744,7 +746,7 @@ function runMetaRow(label, value, cls = '', id = '') {
   const row = document.createElement('div');
   row.className = 'meta-row';
   const key = document.createElement('span'); key.textContent = label;
-  const val = document.createElement('strong'); val.textContent = value || '—'; if (cls) val.className = cls; if (id) val.id = id;
+  const val = document.createElement('strong'); val.textContent = value === null || value === undefined || value === '' ? '—' : String(value); if (cls) val.className = cls; if (id) val.id = id;
   row.append(key, val); return row;
 }
 
@@ -936,7 +938,10 @@ function returnToLiveRun() {
 
 async function refreshRuns() {
   try {
-    const payload = await apiFetch('/api/runs?limit=100');
+    const [payload] = await Promise.all([
+      apiFetch('/api/runs?limit=100'),
+      refreshWorkerStatus(),
+    ]);
     state.runs = payload.items || [];
     const previous = state.activeRun;
     const running = state.runs.find((run) => run.status === 'running') || null;
@@ -975,6 +980,15 @@ async function refreshRuns() {
     renderHistory();
     renderCurrentRun();
   } catch (error) { handleError(error); }
+}
+
+async function refreshWorkerStatus() {
+  try {
+    state.workerStatus = await apiFetch('/api/runs/worker-status');
+  } catch (error) {
+    state.workerStatus = { connected: false, reason: 'status_unavailable' };
+    console.warn('Worker status unavailable', error);
+  }
 }
 
 async function refreshActiveEvents({ force = false } = {}) {

@@ -72,7 +72,7 @@ class RunFrontendContractTests(unittest.TestCase):
         self.assertIn("event.stage", RUN_JS)
         self.assertIn("event.event", RUN_JS)
         self.assertIn("event.payload?.algorithm_progress", RUN_JS)
-        self.assertIn("Math.round(rawProgress * 100)", RUN_JS)
+        self.assertIn("formatPercent(rawProgress, { digits: 0 })", RUN_JS)
         self.assertEqual(5, len(re.findall(r"key: '[^']+', label: '[^']+'", RUN_JS.split("const PREFERENCE_LABELS", 1)[0])))
         self.assertIn("candidate_generation", RUN_JS)
         self.assertIn("quick_evaluation", RUN_JS)
@@ -117,7 +117,8 @@ class RunFrontendContractTests(unittest.TestCase):
         self.assertIn("terminalFailureStageIndex(events)", RUN_JS)
         self.assertIn("group.key === event.stage", RUN_JS)
         for label in (
-            "运行任务已进入队列，等待 Worker。",
+            "Worker 未连接/未运行",
+            "运行任务已进入队列，等待 Worker 接收。",
             "运行完成，结果已持久化",
             "运行失败",
             "运行已取消",
@@ -180,6 +181,7 @@ const state = {{
 let listedRuns = [];
 const forcedCalls = [];
 const apiFetch = async () => ({{ items: listedRuns }});
+const refreshWorkerStatus = async () => ({{ connected: false }});
 const setActiveRun = (run) => {{ state.activeRun = run; state.activeRunId = run?.run_id || null; }};
 const refreshActiveEvents = async (options = {{}}) => {{ forcedCalls.push(Boolean(options.force)); }};
 const renderQueue = () => {{}};

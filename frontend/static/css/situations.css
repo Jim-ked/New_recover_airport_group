@@ -222,7 +222,7 @@
   transition: opacity .16s ease, transform .16s ease;
 }
 .situation-inspector[data-kind="airport-candidates"] { width: 360px; max-height: 72vh; }
-.situation-inspector[data-kind="airport-editor"] { width: 340px; max-height: 78vh; }
+.situation-inspector[data-kind="airport-editor"] { width: 380px; max-height: calc(100vh - 28px); }
 .situation-inspector[data-kind="mission-editor"] { width: 350px; max-height: 78vh; }
 .situation-inspector[data-kind="damage-editor"] { width: 360px; max-height: 78vh; }
 .situation-inspector[data-kind="situation-editor"] { width: 350px; max-height: 78vh; }
@@ -259,6 +259,7 @@
 .editor-section h3,
 .inspector-section h3 { margin: 0 0 10px; font-size: 13px; }
 .editor-section > p { margin: -4px 0 10px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.editor-subtitle{margin:12px 0 7px;color:var(--text-muted);font-size:11px;font-weight:600}.editor-action-label{margin:14px 0 -10px;color:var(--text-muted);font-size:11px;font-weight:600}
 
 .compact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .compact-grid .wide { grid-column: 1 / -1; }
@@ -278,6 +279,8 @@
   margin-bottom: 6px;
 }
 .dynamic-row .field { margin: 0; }
+.situation-inspector[data-kind="airport-editor"] .dynamic-row{grid-template-columns:minmax(0,1.25fr) 72px 72px 30px;gap:6px}
+.situation-inspector[data-kind="airport-editor"] .dynamic-row .field label{display:block;min-height:16px;white-space:nowrap}
 .mini-button {
   min-width: 30px;
   height: 34px;

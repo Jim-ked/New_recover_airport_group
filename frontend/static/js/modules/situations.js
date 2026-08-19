@@ -1,4 +1,6 @@
 import { apiFetch as requestJson, ApiError } from './api-client.js';
+import { formatCoordinate } from './number-display.js';
+import { regionDisplayName, regionDisplayWithCode } from './region-display.js';
 import {
   airportItem,
   bindSituationDom,
@@ -97,14 +99,14 @@ async function renderAirportCandidates() {
       .sort((left, right) => String(left).localeCompare(String(right), 'zh-CN'));
     refs.body.innerHTML = `
       <div class="candidate-toolbar">
-        <input id="airportCandidateSearch" class="control" placeholder="名称或编号">
+        <input id="airportCandidateSearch" class="control" name="situation-airport-query" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="名称或编号">
         <select id="airportCandidateRole" class="control">
           <option value="">全部类型</option><option value="military">军用</option>
           <option value="joint">军民合用</option><option value="civil">民用</option>
         </select>
         <select id="airportCandidateRegion" class="control">
           <option value="">全部区域</option>
-          ${regions.map((region) => `<option value="${esc(region)}">${esc(region)}</option>`).join('')}
+          ${regions.map((region) => `<option value="${esc(region)}">${esc(regionDisplayName(region))}</option>`).join('')}
         </select>
       </div>
       <div id="airportCandidateList" class="candidate-list"></div>
@@ -130,7 +132,7 @@ async function renderAirportCandidates() {
         const status = item.configuration_complete === true ? '运行数据已配置' : '运行数据待配置';
         return `<label class="candidate-row${alreadyAdded ? ' disabled' : ''}${checked ? ' selected' : ''}">
           <input type="checkbox" value="${esc(item.airport_id)}" ${checked ? 'checked' : ''} ${alreadyAdded ? 'disabled' : ''}>
-          <span><strong>${esc(item.airport_name)}</strong><small>${esc(airportNumber(item.airport_id))} · ${esc(item.region || '未分区')} · ${status}</small></span>
+          <span><strong>${esc(item.airport_name)}</strong><small>${esc(airportNumber(item.airport_id))} · ${esc(regionDisplayName(item.region || ''))} · ${status}</small></span>
           <span>${alreadyAdded ? '已加入' : '未加入'}</span>
         </label>`;
       }).join('') || '<div class="empty-state">没有匹配机场。</div>';
@@ -177,8 +179,8 @@ function renderAirportEditor(id) {
         <div><dt>编号</dt><dd>${esc(airportNumber(airport.airport_id))}</dd></div>
         <div><dt>技术编号</dt><dd>${esc(airport.airport_id)}</dd></div>
         <div><dt>类型</dt><dd>${esc(airport.facility_type || airport.role || '—')}</dd></div>
-        <div><dt>区域</dt><dd>${esc(airport.region || '—')}</dd></div>
-        <div><dt>坐标</dt><dd>${esc(airport.longitude)}, ${esc(airport.latitude)}</dd></div>
+        <div><dt>区域</dt><dd>${esc(regionDisplayWithCode(airport.region))}</dd></div>
+        <div><dt>坐标</dt><dd>${esc(formatCoordinate(airport.longitude))}, ${esc(formatCoordinate(airport.latitude))}</dd></div>
       </dl>
     </section>
     <section class="editor-section">
@@ -194,13 +196,12 @@ function renderAirportEditor(id) {
       <button id="sitAddSupport" class="btn ghost" type="button">添加机型</button>
     </section>
     <section class="editor-section">
-      <h3>保障资源</h3><div id="sitStockRows">${(profile.resource_stocks || []).map(stockRow).join('')}</div>
+      <h3>资源配置</h3><div id="sitStockRows">${(profile.resource_stocks || []).map(stockRow).join('')}</div>
       <button id="sitAddStock" class="btn ghost" type="button">添加资源</button>
-    </section>
-    <section class="editor-section">
-      <h3>补给计划</h3><div id="sitReplenishRows">${(item.resource_replenishments || []).map(replenishRow).join('')}</div>
+      <h4 class="editor-subtitle">补给计划</h4><div id="sitReplenishRows">${(item.resource_replenishments || []).map(replenishRow).join('')}</div>
       <button id="sitAddReplenish" class="btn ghost" type="button">添加补给</button>
     </section>
+    <div class="editor-action-label">操作</div>
     <div class="inspector-footer">
       <button id="cancelAirportEdit" class="btn ghost" type="button">取消</button>
       <button id="restoreAirportBase" class="btn" type="button">恢复 Base Data 基线</button>
