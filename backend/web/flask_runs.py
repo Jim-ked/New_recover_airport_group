@@ -118,6 +118,15 @@ def create_run_blueprint(
             )
         return invoke(action)
 
+    @bp.get("/runs/worker-status")
+    def worker_status():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            return render(api.worker_status(principal=principal))
+        return invoke(action)
+
     @bp.get("/runs/<run_id>")
     def run_detail(run_id: str):
         def action():

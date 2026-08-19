@@ -12,6 +12,7 @@ $ProjectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $PythonPath = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
 $LocalEnvironment = Join-Path $ProjectRoot '.env.local.ps1'
 $ServePattern = '(?i)(?:^|\s)-m\s+backend\s+serve(?:\s|$)'
+$WorkerPattern = '(?i)(?:^|\s)-m\s+backend\s+worker(?:\s|$)'
 
 if (Test-Path -LiteralPath $LocalEnvironment -PathType Leaf) {
     . $LocalEnvironment
@@ -53,11 +54,29 @@ function Test-ProjectWebProcess {
     )
 }
 
+function Test-ProjectWorkerProcess {
+    param($ProcessRecord)
+    if ($null -eq $ProcessRecord) { return $false }
+    if ($ProcessRecord.Name -notmatch '(?i)^python(?:\.exe)?$') { return $false }
+    $commandLine = [string]$ProcessRecord.CommandLine
+    return ($commandLine -match $WorkerPattern -and $commandLine.IndexOf($PythonPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+}
+
 function Get-ProjectWebProcesses {
     @(
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
             Where-Object { Test-ProjectWebProcess $_ }
     )
+}
+
+function Get-ProjectWorkerProcesses {
+    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { Test-ProjectWorkerProcess $_ })
+}
+
+function Get-ProjectWorkerLeafProcesses {
+    $workers = @(Get-ProjectWorkerProcesses)
+    $parentIds = @($workers | ForEach-Object { [int]$_.ParentProcessId })
+    @($workers | Where-Object { $parentIds -notcontains [int]$_.ProcessId })
 }
 
 function Get-WebListeners {
@@ -101,6 +120,9 @@ function Show-Status {
         $processIds = ($listeners | ForEach-Object { $_.OwningProcess }) -join ', '
         Write-Host "The current project Web service is running. PID=$processIds"
         Write-ListenerDetails -Listeners $listeners
+        $workers = @(Get-ProjectWorkerLeafProcesses)
+        Write-Host "  Worker processes: $($workers.Count)"
+        foreach ($worker in $workers) { Write-Host "  Worker PID=$($worker.ProcessId) CommandLine=$($worker.CommandLine)" }
         return 0
     }
     Write-Host "Port $WebPort is occupied by another process."
@@ -117,15 +139,16 @@ function Stop-ProjectWeb {
     }
 
     $processes = @(Get-ProjectWebProcesses)
-    if ($processes.Count -eq 0) {
+    $workers = @(Get-ProjectWorkerProcesses)
+    if ($processes.Count -eq 0 -and $workers.Count -eq 0) {
         Write-Host "The current project Web service is not running."
         return 0
     }
 
     $listenerIds = @($listeners | ForEach-Object { [int]$_.OwningProcess })
     $ordered = @($processes | Sort-Object @{ Expression = { if ($listenerIds -contains [int]$_.ProcessId) { 0 } else { 1 } } })
-    Write-Host "Stopping the current project Web service: PID=$($listenerIds -join ', ')"
-    foreach ($process in $ordered) {
+    Write-Host "Stopping the current project Web/Worker service: Web PID=$($listenerIds -join ', '); Worker PID=$(@($workers | ForEach-Object { $_.ProcessId }) -join ', ')"
+    foreach ($process in @($ordered + $workers)) {
         if ($null -ne (Get-ProcessRecord -ProcessId ([int]$process.ProcessId))) {
             Stop-Process -Id ([int]$process.ProcessId) -ErrorAction Stop
         }
@@ -134,7 +157,7 @@ function Stop-ProjectWeb {
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     do {
         Start-Sleep -Milliseconds 200
-        $remainingProcesses = @(Get-ProjectWebProcesses)
+        $remainingProcesses = @(Get-ProjectWebProcesses) + @(Get-ProjectWorkerProcesses)
         $remainingListeners = @(Get-WebListeners)
     } while (($remainingProcesses.Count -gt 0 -or $remainingListeners.Count -gt 0) -and [DateTime]::UtcNow -lt $deadline)
 
@@ -168,6 +191,12 @@ switch ($Action) {
             if (Test-OnlyProjectListeners -Listeners $listeners) {
                 $processIds = ($listeners | ForEach-Object { $_.OwningProcess }) -join ', '
                 Write-Host "The current project Web service is already running. PID=$processIds"
+                if (@(Get-ProjectWorkerProcesses).Count -eq 0) {
+                    $workerStdout = Join-Path $ProjectRoot 'runtime\logs\worker_stdout.log'
+                    $workerStderr = Join-Path $ProjectRoot 'runtime\logs\worker_stderr.log'
+                    $worker = Start-Process -FilePath $PythonPath -ArgumentList @('-m', 'backend', 'worker') -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $workerStdout -RedirectStandardError $workerStderr -PassThru
+                    Write-Host "Worker was missing; started it in background. PID=$($worker.Id)"
+                }
                 exit 0
             }
             Write-Host "Port $WebPort is occupied by another process. The Web service was not started."
@@ -180,6 +209,10 @@ switch ($Action) {
         Write-Host "Listen:  http://${WebHost}:$WebPort"
         Write-Host "Mode:    foreground (close with Ctrl+C or deploy\windows\stop.cmd)"
         Set-Location -LiteralPath $ProjectRoot
+        $workerStdout = Join-Path $ProjectRoot 'runtime\logs\worker_stdout.log'
+        $workerStderr = Join-Path $ProjectRoot 'runtime\logs\worker_stderr.log'
+        $worker = Start-Process -FilePath $PythonPath -ArgumentList @('-m', 'backend', 'worker') -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $workerStdout -RedirectStandardError $workerStderr -PassThru
+        Write-Host "Worker started in background. PID=$($worker.Id)"
         & $PythonPath -m backend serve
         exit $LASTEXITCODE
     }

@@ -12,6 +12,7 @@ from backend.services.run_submission_service import (
     SolverProbe,
     default_solver_probe,
 )
+from backend.services.run_worker_status import RunWorkerStatus
 from backend.storage.workspace_airport_repository import WorkspaceAirportRepository
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
@@ -34,6 +35,7 @@ def build_run_api(
     *,
     run_id_factory: RunIdFactory = default_run_id_factory,
     solver_probe: SolverProbe = default_solver_probe,
+    worker_status: RunWorkerStatus | None = None,
 ) -> RunApi:
     airports = WorkspaceAirportRepository(db_path)
     situations = SituationRepository(db_path)
@@ -65,6 +67,7 @@ def build_run_api(
         result_service=result_service,
         runtime_service=runtime_service,
         run_id_factory=run_id_factory,
+        worker_status=worker_status or RunWorkerStatus(db_path),
     )
 
 

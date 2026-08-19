@@ -91,6 +91,12 @@ class RunApiTests(unittest.TestCase):
         self.assertRegex(response.body["validated_input_hash"], r"^[0-9a-f]{64}$")
         self.assertEqual([], self.runs.list_for_owner("U1"))
 
+    def test_worker_status_is_read_only_and_reports_unconfigured_or_stale_worker(self):
+        response = self.api.worker_status(principal=self.u1)
+        self.assertEqual(200, response.status)
+        self.assertFalse(response.body["connected"])
+        self.assertIn(response.body["reason"], {"heartbeat_missing", "heartbeat_stale", "status_unconfigured"})
+
     def test_submit_can_bind_to_exact_validated_input_and_rejects_external_mutation(self):
         validation = self.api.validate(self.body, principal=self.u1)
         validated_hash = validation.body["validated_input_hash"]

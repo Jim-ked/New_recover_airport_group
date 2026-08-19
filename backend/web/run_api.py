@@ -10,6 +10,7 @@ from backend.services.run_result_service import RunResultService
 from backend.services.run_service import RunService
 from backend.services.run_runtime_service import RunRuntimeService
 from backend.services.run_submission_service import RunSubmissionService
+from backend.services.run_worker_status import RunWorkerStatus
 from backend.web.error_mapping import map_expected_error
 from backend.web.http import (
     ApiInputError,
@@ -83,6 +84,7 @@ class RunApi:
         run_service: RunService,
         result_service: RunResultService,
         runtime_service: RunRuntimeService,
+        worker_status: RunWorkerStatus | None = None,
         run_id_factory: RunIdFactory = default_run_id_factory,
     ) -> None:
         self.submissions = submission_service
@@ -90,6 +92,7 @@ class RunApi:
         self.results = result_service
         self.runtime = runtime_service
         self.run_id_factory = run_id_factory
+        self.worker_status_store = worker_status
 
     @staticmethod
     def _handle(call) -> ApiResponse:
@@ -238,6 +241,14 @@ class RunApi:
                 200,
             )
 
+        return self._handle(action)
+
+    def worker_status(self, *, principal: Principal) -> ApiResponse:
+        def action() -> ApiResponse:
+            principal.require_permission("runs.read")
+            if self.worker_status_store is None:
+                return ApiResponse({"connected": False, "reason": "status_unconfigured"}, 200)
+            return ApiResponse(self.worker_status_store.read(), 200)
         return self._handle(action)
 
     def detail(self, run_id: str, *, principal: Principal) -> ApiResponse:

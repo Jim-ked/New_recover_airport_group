@@ -7,12 +7,14 @@ first-user bootstrap, API dependency builders, Flask, logging and runtime proces
 """
 
 import logging
+import threading
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable
 
 from backend.services.run_worker_runtime import build_run_worker_loop
+from backend.services.run_worker_status import RunWorkerStatus
 from backend.settings import AppSettings
 from backend.storage.database import initialize_database
 from backend.storage.airport_repository import AirportRepository
@@ -182,6 +184,14 @@ def run_worker(
     prepare_runtime(settings, require_user=True, bootstrap_if_configured=False)
     configure_logging(settings)
     loop = build_run_worker_loop(settings.db_path, poll_interval_s=poll_interval_s)
+    worker_status = RunWorkerStatus(settings.db_path)
+    stop_heartbeat = threading.Event()
+    def heartbeat_loop() -> None:
+        while not stop_heartbeat.is_set():
+            worker_status.heartbeat()
+            stop_heartbeat.wait(2.0)
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, name="run-worker-heartbeat", daemon=True)
+    heartbeat_thread.start()
     logger = logging.getLogger("airport_group.worker")
     logger.info(
         "starting Run worker db=%s mode=%s poll_interval_s=%.3f",
@@ -189,17 +199,20 @@ def run_worker(
         "once" if once else "continuous",
         float(poll_interval_s),
     )
-    if once:
-        record = loop.execute_next()
-        if record is None:
-            logger.info("Run worker --once found no claimable queued Run")
-        else:
-            logger.info("Run worker --once completed run_id=%s status=%s", record.run_id, record.status)
-        return
     try:
+        if once:
+            record = loop.execute_next()
+            if record is None:
+                logger.info("Run worker --once found no claimable queued Run")
+            else:
+                logger.info("Run worker --once completed run_id=%s status=%s", record.run_id, record.status)
+            return
         loop.run_forever()
     except KeyboardInterrupt:
         logger.info("Run worker stopped by operator")
+    finally:
+        stop_heartbeat.set()
+        worker_status.stopped()
 
 
 __all__ = [
