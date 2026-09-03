@@ -112,21 +112,25 @@ function Test-OnlyProjectListeners {
 
 function Show-Status {
     $listeners = @(Get-WebListeners)
+    $workers = @(Get-ProjectWorkerLeafProcesses)
     if ($listeners.Count -eq 0) {
         Write-Host "Port $WebPort is free. The current project Web service is not listening."
+        Write-Host "The current project Worker processes: $($workers.Count)"
+        foreach ($worker in $workers) { Write-Host "  Worker PID=$($worker.ProcessId) CommandLine=$($worker.CommandLine)" }
         return 1
     }
     if (Test-OnlyProjectListeners -Listeners $listeners) {
         $processIds = ($listeners | ForEach-Object { $_.OwningProcess }) -join ', '
         Write-Host "The current project Web service is running. PID=$processIds"
         Write-ListenerDetails -Listeners $listeners
-        $workers = @(Get-ProjectWorkerLeafProcesses)
         Write-Host "  Worker processes: $($workers.Count)"
         foreach ($worker in $workers) { Write-Host "  Worker PID=$($worker.ProcessId) CommandLine=$($worker.CommandLine)" }
         return 0
     }
     Write-Host "Port $WebPort is occupied by another process."
     Write-ListenerDetails -Listeners $listeners
+    Write-Host "The current project Worker processes: $($workers.Count)"
+    foreach ($worker in $workers) { Write-Host "  Worker PID=$($worker.ProcessId) CommandLine=$($worker.CommandLine)" }
     return 2
 }
 
@@ -211,9 +215,29 @@ switch ($Action) {
         Set-Location -LiteralPath $ProjectRoot
         $workerStdout = Join-Path $ProjectRoot 'runtime\logs\worker_stdout.log'
         $workerStderr = Join-Path $ProjectRoot 'runtime\logs\worker_stderr.log'
-        $worker = Start-Process -FilePath $PythonPath -ArgumentList @('-m', 'backend', 'worker') -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $workerStdout -RedirectStandardError $workerStderr -PassThru
-        Write-Host "Worker started in background. PID=$($worker.Id)"
-        & $PythonPath -m backend serve
-        exit $LASTEXITCODE
+        $existingWorkers = @(Get-ProjectWorkerLeafProcesses)
+        $worker = $null
+        $workerStartedHere = $false
+        if ($existingWorkers.Count -eq 0) {
+            $worker = Start-Process -FilePath $PythonPath -ArgumentList @('-m', 'backend', 'worker') -WorkingDirectory $ProjectRoot -WindowStyle Hidden -RedirectStandardOutput $workerStdout -RedirectStandardError $workerStderr -PassThru
+            $workerStartedHere = $true
+            Write-Host "Worker started in background. PID=$($worker.Id)"
+        } else {
+            Write-Host "Using the existing project Worker. PID=$($existingWorkers[0].ProcessId)"
+        }
+        $webExitCode = 0
+        try {
+            & $PythonPath -m backend serve
+            $webExitCode = $LASTEXITCODE
+        } finally {
+            if ($workerStartedHere -and $null -ne $worker) {
+                $workerProcess = Get-ProcessRecord -ProcessId $worker.Id
+                if (Test-ProjectWorkerProcess $workerProcess) {
+                    Stop-Process -Id $worker.Id -ErrorAction Stop
+                    Write-Host "Worker started by this lifecycle invocation was stopped. PID=$($worker.Id)"
+                }
+            }
+        }
+        exit $webExitCode
     }
 }

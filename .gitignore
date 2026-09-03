@@ -22,6 +22,7 @@ runtime/content/*
 runtime/runs/*
 runtime/logs/*
 runtime/temp/*
+runtime/worker-status.json
 !runtime/db/.gitkeep
 !runtime/content/.gitkeep
 !runtime/runs/.gitkeep
