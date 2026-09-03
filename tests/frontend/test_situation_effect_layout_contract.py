@@ -31,9 +31,10 @@ class SituationEffectLayoutContractTests(unittest.TestCase):
 
     def test_leaflet_panning_has_world_boundary_and_tile_buffer(self):
         js = (ROOT / "frontend/static/js/modules/situation-map.js").read_text(encoding="utf-8")
+        basemap = (ROOT / "frontend/static/js/modules/local-basemap.js").read_text(encoding="utf-8")
         self.assertIn("maxBoundsViscosity: 0.92", js)
-        self.assertIn("keepBuffer: 4", js)
-        self.assertIn("maxNativeZoom: 7", js)
+        self.assertIn("keepBuffer: 4", basemap)
+        self.assertIn("maxNativeZoom: 7", basemap)
 
 
 if __name__ == "__main__":

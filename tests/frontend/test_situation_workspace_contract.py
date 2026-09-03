@@ -29,7 +29,9 @@ class SituationWorkspaceFrontendContractTests(unittest.TestCase):
 
     def test_map_bootstrap_respects_actual_local_tile_zoom_and_moves_zoom_control(self):
         text = (ROOT / "frontend/static/js/modules/situation-map.js").read_text(encoding="utf-8")
-        self.assertIn('maxNativeZoom: 7', text)
+        basemap = (ROOT / "frontend/static/js/modules/local-basemap.js").read_text(encoding="utf-8")
+        self.assertIn('maxNativeZoom: 15', basemap)
+        self.assertIn('maxZoom: 15', text)
         self.assertIn("position: 'bottomleft'", text)
         self.assertIn('zoomControl: false', text)
 

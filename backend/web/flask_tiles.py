@@ -11,6 +11,18 @@ _REGIONAL_SOURCES = (
     "tiles_taiwan",
 )
 _WORLD_SOURCE = "tiles_world"
+_SOURCE_DIRECTORIES = {
+    "world": _WORLD_SOURCE,
+    "eastasia": "tiles_eastasia",
+    "china_east": "tiles_china_east",
+    "japan": "tiles_japan",
+    "korea": "tiles_korea",
+    "taiwan": "tiles_taiwan",
+}
+
+
+def _valid_xyz(*, z: int, x: int, y: int) -> bool:
+    return z >= 0 and 0 <= x < (1 << z) and 0 <= y < (1 << z)
 
 
 def resolve_local_tile(
@@ -47,14 +59,26 @@ def create_tile_blueprint(*, tile_root: str | Path):
         raise RuntimeError("Flask runtime dependency is required to bind local tile route") from exc
 
     configured_root = Path(tile_root).expanduser().resolve()
-    source_names = {*_REGIONAL_SOURCES, _WORLD_SOURCE}
+    source_names = set(_SOURCE_DIRECTORIES.values())
     root = configured_root.parent if configured_root.name in source_names else configured_root
     bp = Blueprint("tiles_v1", __name__, url_prefix="/tiles")
+
+    @bp.get("/<string:source>/<int:z>/<int:x>/<int:y>.<string:ext>")
+    def source_tile(source: str, z: int, x: int, y: int, ext: str):
+        ext = ext.lower()
+        directory = _SOURCE_DIRECTORIES.get(source)
+        if directory is None or ext not in _ALLOWED_EXTENSIONS or not _valid_xyz(z=z, x=x, y=y):
+            abort(404)
+        relative = Path(str(z)) / str(x) / f"{y}.{ext}"
+        candidate = root / directory / relative
+        if not candidate.is_file():
+            abort(404)
+        return send_from_directory(candidate.parent, candidate.name, conditional=True)
 
     @bp.get("/<int:z>/<int:x>/<int:y>.<string:ext>")
     def tile(z: int, x: int, y: int, ext: str):
         ext = ext.lower()
-        if ext not in _ALLOWED_EXTENSIONS or z < 0 or x < 0 or y < 0:
+        if ext not in _ALLOWED_EXTENSIONS or not _valid_xyz(z=z, x=x, y=y):
             abort(404)
         resolved = resolve_local_tile(root, z=z, x=x, y=y, ext=ext)
         if resolved is None:

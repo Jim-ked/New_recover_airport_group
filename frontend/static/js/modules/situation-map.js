@@ -1,4 +1,5 @@
 import { apiFetch } from './api-client.js';
+import { createLocalBasemap, destroyLocalBasemap } from './local-basemap.js';
 import { escapeHtml, page, refs, state } from './situation-state.js';
 
 const WORLD_BOUNDS = [[-85.05112878, -180], [85.05112878, 180]];
@@ -6,6 +7,7 @@ const mapLayers = [];
 const externalLayers = { airports: null, missions: null };
 const externalCache = { airports: null, missions: null };
 let map = null;
+let basemapLayers = [];
 let fallback = false;
 let callbacks = {};
 let requestSignal = null;
@@ -50,22 +52,6 @@ function addFitControl() {
     },
   });
   new FitControl().addTo(map);
-}
-
-function addTileLayer() {
-  const template = page.dataset.tileTemplate;
-  if (!template) return;
-  globalThis.L.tileLayer(template, {
-    minZoom: 2,
-    minNativeZoom: 2,
-    maxNativeZoom: 7,
-    maxZoom: 9,
-    noWrap: true,
-    bounds: WORLD_BOUNDS,
-    keepBuffer: 4,
-    updateWhenIdle: false,
-    updateWhenZooming: true,
-  }).addTo(map);
 }
 
 function airportMarkerClass(airportId) {
@@ -328,6 +314,7 @@ export async function initMap() {
   map = globalThis.L.map(refs.map, {
     attributionControl: false,
     zoomControl: false,
+    maxZoom: 15,
     maxBounds: WORLD_BOUNDS,
     maxBoundsViscosity: 0.92,
     worldCopyJump: false,
@@ -336,7 +323,7 @@ export async function initMap() {
   });
   globalThis.L.control.zoom({ position: 'bottomleft' }).addTo(map);
   addFitControl();
-  addTileLayer();
+  basemapLayers = createLocalBasemap(map, page.dataset.tileTemplate);
   map.setView([34, 108], 4);
   drawMap();
 }
@@ -345,6 +332,8 @@ export function destroyMap() {
   clearMapLayers();
   clearExternalLayer('airports');
   clearExternalLayer('missions');
+  destroyLocalBasemap(basemapLayers);
+  basemapLayers = [];
   if (map) {
     map.off();
     map.remove();

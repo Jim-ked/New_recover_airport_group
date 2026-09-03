@@ -99,12 +99,13 @@ class GisRuntimeFrontendContractTests(unittest.TestCase):
     def test_leaflet_is_local_only_and_missing_kernel_fails_visibly(self):
         self.assertIn('/static/vendor/leaflet/leaflet.js', JS)
         self.assertIn('/static/vendor/leaflet/leaflet.css', JS)
-        self.assertIn('/tiles/{z}/{x}/{y}.jpg', SETTINGS)
+        self.assertIn('/tiles/{source}/{z}/{x}/{y}.jpg', SETTINGS)
         self.assertNotIn('https://', JS)
         self.assertIn('Leaflet 本地地图内核尚未装载', JS)
         self.assertIn('地图加载失败；运行结果数据已正常读取', JS)
         self.assertIn('try { await initMap(); } catch (error) { showMapError(error); }', JS)
-        self.assertIn("tiles.on('tileerror'", JS)
+        self.assertIn('./local-basemap.js', JS)
+        self.assertNotIn("tileerror", JS)
 
     def test_leaflet_zoom_control_is_disabled_at_map_creation_but_map_navigation_remains(self):
         self.assertIn("L.map(refs.map, { zoomControl: false", JS)

@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { createLocalBasemap } from './local-basemap.js';
 import { formatDecimal, formatInteger, formatPercent } from './number-display.js';
 
 const page = document.getElementById('runtimePage');
@@ -230,13 +231,8 @@ async function initMap() {
     refs.kernel.textContent = 'Leaflet 本地地图内核尚未装载。运行态势数据、时间窗与详情已就绪；前端构建阶段接入 /static/vendor/leaflet 与离线瓦片后即可显示正式地图。';
     refs.kernel.classList.remove('hidden'); return;
   }
-  const L = globalThis.L; state.map = L.map(refs.map, { zoomControl: false, attributionControl: false, preferCanvas: false });
-  const tileTemplate = page.dataset.tileTemplate;
-  if (tileTemplate) {
-    const tiles = L.tileLayer(tileTemplate, { maxZoom: 12, minZoom: 2, noWrap: true });
-    tiles.on('tileerror', () => showMapError(new Error('local tile unavailable')));
-    tiles.addTo(state.map);
-  }
+  const L = globalThis.L; state.map = L.map(refs.map, { zoomControl: false, attributionControl: false, preferCanvas: false, maxZoom: 15 });
+  createLocalBasemap(state.map, page.dataset.tileTemplate);
   drawMap(); fitMap('run');
 }
 
