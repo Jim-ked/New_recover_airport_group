@@ -1,14 +1,19 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { airportMapLabel, airportMapTooltip, airportRoleClass, airportRoleLabel, shortAirportName as compactAirportName } from './airport-display.js';
 import { createLocalBasemap } from './local-basemap.js';
+import { createMapLabelLayout } from './map-label-layout.js';
+import { createMapReference } from './map-reference.js';
 import { formatDecimal, formatInteger, formatPercent } from './number-display.js';
+import { collectRuntimeActivity } from './runtime-map-activity.js';
 
 const page = document.getElementById('runtimePage');
 const state = {
   runId: page?.dataset.runId || '', runtime: null, metrics: null, run: null,
   frameIndex: 0, playing: false, timer: null, map: null, playbackMs: 900, trailWindows: 1,
   markers: new Map(), outboundLayers: [], returnLayers: [], routeById: new Map(),
-  selected: { type: null, id: null }, detailTab: 'airport', mapErrorShown: false,
+  selected: { type: null, id: null }, detailTab: 'airport', mapErrorShown: false, labelLayout: null, mapReference: null,
 };
+const LABEL_PRIORITY = { selected: 100, core: 90, selectedCluster: 80, participating: 70, mission: 60 };
 const $ = (id) => document.getElementById(id);
 const refs = {
   map: $('runtimeMap'), kernel: $('runtimeKernelMessage'), badges: $('runtimeBadges'),
@@ -61,7 +66,7 @@ function mission(id) { return state.runtime.missions.find((x) => x.mission_id ==
 function airportName(id) { return airport(id)?.airport_name || id; }
 function shortRunId(id) { const match=/^RUN-([a-f0-9]{8})/i.exec(String(id||''));return match?`R-${match[1].toUpperCase()}`:String(id||'—'); }
 function airportNumber(id) { const match=/^AP(\d+)$/i.exec(String(id||''));return match?match[1].padStart(3,'0'):''; }
-function shortAirportName(id) { const name=airportName(id);return name.replace(/\s+(?:International\s+|General\s+)?(?:Airport|Air Base)$/i,'').trim()||name; }
+function shortAirportName(id) { return compactAirportName(airportName(id)); }
 function airportDisplay(id) { const number=airportNumber(id);return `${number?`${number} `:''}${shortAirportName(id)}`; }
 function missionName(id) { const m = mission(id); return m?.name || id; }
 
@@ -87,14 +92,40 @@ async function ensureLeaflet() {
 
 function mapIcon(kind, item, damaged = false, maintenance = 0) {
   const L = globalThis.L;
-  if (kind === 'mission') return L.divIcon({ className: 'runtime-mission-marker', html: '<span></span>', iconSize: [14,14], iconAnchor: [7,7] });
-  const classes = ['runtime-airport-marker'];
-  if (item.is_selected_cluster && layerEnabled('selected')) classes.push('selected');
+  const selectedObject = state.selected.type === kind && state.selected.id === item[`${kind}_id`];
+  if (kind === 'mission') return L.divIcon({
+    className: `runtime-mission-marker${selectedObject ? ' selected-object' : ''}`,
+    html: '<span></span>', iconSize: [18,18], iconAnchor: [9,9],
+  });
+  const classes = ['runtime-airport-marker', airportRoleClass(item.role)];
+  const important = item.is_participating || item.is_selected_cluster || item.is_core;
+  if (!important) classes.push('ordinary');
   if (item.is_participating && layerEnabled('participating')) classes.push('participating');
+  if (item.is_selected_cluster && layerEnabled('selected')) classes.push('selected-cluster');
   if (item.is_core && layerEnabled('core')) classes.push('core');
+  if (selectedObject) classes.push('selected-object');
   if (damaged) classes.push('damage');
-  const badge = maintenance > 0 && layerEnabled('maintenance') ? `<b>${formatInteger(maintenance)}</b>` : '';
+  const badge = important && maintenance > 0 && layerEnabled('maintenance') ? `<b>${formatInteger(maintenance)}</b>` : '';
   return L.divIcon({ className: classes.join(' '), html: `<span></span>${badge}`, iconSize: [18,18], iconAnchor: [9,9] });
+}
+
+function bindMapLabel(marker, text, priority, forceVisible, labels) {
+  marker.bindTooltip(escapeHtml(text), {
+    permanent: true,
+    direction: 'right',
+    offset: [7, 0],
+    className: 'runtime-map-label',
+  });
+  const element = marker.getTooltip()?.getElement();
+  if (element) labels.push({ element, priority, forceVisible });
+}
+
+function airportLabelPriority(item) {
+  if (state.selected.type === 'airport' && state.selected.id === item.airport_id) return LABEL_PRIORITY.selected;
+  if (item.is_core) return LABEL_PRIORITY.core;
+  if (item.is_selected_cluster) return LABEL_PRIORITY.selectedCluster;
+  if (item.is_participating) return LABEL_PRIORITY.participating;
+  return null;
 }
 function layerEnabled(name) { return refs.controls.querySelector(`[data-layer="${name}"]`)?.checked !== false; }
 function shouldShowAirport(_item) { return layerEnabled('airports'); }
@@ -129,23 +160,33 @@ function quadraticLeg(start, end, pathId, direction = 1) {
   }
   return points;
 }
-function activitySets() {
-  const end = state.frameIndex;
-  const start = state.trailWindows === Infinity ? 0 : Math.max(0, end - state.trailWindows + 1);
-  const departures = new Set(), returns = new Set();
-  for (let i = start; i <= end; i += 1) {
-    const item = state.runtime?.frames?.[i];
-    for (const row of item?.departures || []) departures.add(row.path_id);
-    for (const row of item?.returns || []) returns.add(row.path_id);
-  }
-  return { departures, returns };
+function quadraticPointAt(points, t) {
+  return points[Math.round((points.length - 1) * t)];
 }
 function routeOptions({ color, active, kind }) {
   return {
-    color, weight: active ? 3.4 : 1.25, opacity: active ? .92 : .28,
+    color, weight: active ? 2.3 : 1, opacity: active ? .9 : .3,
     dashArray: active ? '9 7' : '2 5',
-    className: `runtime-route runtime-route-${kind}${active ? ' active-route' : ''}`,
+    className: `task-execution-link task-execution-link-${kind}${active ? ' current-activity' : ''}`,
   };
+}
+function connectionCountMarker(points, direction, sorties, current, labels) {
+  const L = globalThis.L;
+  const text = direction === 'outbound' ? `出动 ${sorties}` : `返航 ${sorties}`;
+  const marker = L.marker(quadraticPointAt(points, 0.5), {
+    icon: L.divIcon({
+      className: `task-connection-count task-connection-count-${direction}${current ? '' : ' historical'}`,
+      html: `<span>${escapeHtml(text)}</span>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    }),
+    interactive: false,
+    keyboard: false,
+  });
+  marker.addTo(state.map);
+  const element = marker.getElement()?.querySelector('span');
+  if (element) labels.push({ element, priority: current ? 68 : 45, forceVisible: false });
+  return marker;
 }
 
 function routeState(window, airportId = null, aircraftType = null) {
@@ -189,32 +230,52 @@ function drawMap() {
   clearMapLayers();
   const L = globalThis.L; const f = frame();
   const damagedAirports = new Set((f?.damage_events || []).map((x) => x.airport_id));
+  const labels = [];
   for (const item of state.runtime.airports) {
     if (!shouldShowAirport(item)) continue;
     if (!Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)) continue;
     const maintenance = aircraftStateForAirport(item.airport_id).maintenance;
-    const marker = L.marker([item.latitude, item.longitude], { icon: mapIcon('airport', item, layerEnabled('damage') && damagedAirports.has(item.airport_id), maintenance) });
+    const marker = L.marker([item.latitude, item.longitude], {
+      icon: mapIcon('airport', item, layerEnabled('damage') && damagedAirports.has(item.airport_id), maintenance),
+    });
     marker.on('click', () => selectObject('airport', item.airport_id)); marker.addTo(state.map); state.markers.set(`airport:${item.airport_id}`, marker);
+    const priority = airportLabelPriority(item);
+    if (priority !== null) bindMapLabel(marker, airportMapLabel(item), priority, priority === LABEL_PRIORITY.selected, labels);
+    else marker.bindTooltip(escapeHtml(airportMapTooltip(item)), { direction: 'top', className: 'map-object-tooltip' });
   }
   if (layerEnabled('missions')) for (const item of state.runtime.missions) {
     if (!Number.isFinite(item.latitude) || !Number.isFinite(item.longitude)) continue;
+    const selected = state.selected.type === 'mission' && state.selected.id === item.mission_id;
     const marker = L.marker([item.latitude, item.longitude], { icon: mapIcon('mission', item) });
     marker.on('click', () => selectObject('mission', item.mission_id)); marker.addTo(state.map); state.markers.set(`mission:${item.mission_id}`, marker);
+    bindMapLabel(marker, item.name, selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.mission, selected, labels);
   }
-  if (!layerEnabled('routes')) return;
-  const { departures: departing, returns: returning } = activitySets();
+  if (!layerEnabled('routes')) {
+    state.labelLayout?.setItems(labels);
+    return;
+  }
+  const activity = collectRuntimeActivity(state.runtime.frames, state.frameIndex, state.trailWindows);
   for (const route of state.runtime.routes) {
     const a = airport(route.origin_airport_id), m = mission(route.mission_id), r = airport(route.return_airport_id);
     if (!a || !m || !r) continue;
-    if (layerEnabled('outbound')) {
-      const line = L.polyline(quadraticLeg([a.latitude,a.longitude],[m.latitude,m.longitude],route.path_id,1), routeOptions({ color:'#42a6f4', active:departing.has(route.path_id), kind:'outbound' }));
+    if (layerEnabled('outbound') && activity.departures.has(route.path_id)) {
+      const points = quadraticLeg([a.latitude,a.longitude],[m.latitude,m.longitude],route.path_id,1);
+      const current = activity.currentDepartures.has(route.path_id);
+      const line = L.polyline(points, routeOptions({ color:'#42a6f4', active:current, kind:'outbound' }));
       line.on('click', () => selectObject('route', route.path_id)); line.addTo(state.map); state.outboundLayers.push(line);
+      const sorties = activity.departureSorties.get(route.path_id);
+      state.outboundLayers.push(connectionCountMarker(points, 'outbound', sorties, current, labels));
     }
-    if (layerEnabled('return')) {
-      const line = L.polyline(quadraticLeg([m.latitude,m.longitude],[r.latitude,r.longitude],route.path_id,1), routeOptions({ color:'#65c987', active:returning.has(route.path_id), kind:'return' }));
+    if (layerEnabled('return') && activity.returns.has(route.path_id)) {
+      const points = quadraticLeg([m.latitude,m.longitude],[r.latitude,r.longitude],route.path_id,1);
+      const current = activity.currentReturns.has(route.path_id);
+      const line = L.polyline(points, routeOptions({ color:'#65c987', active:current, kind:'return' }));
       line.on('click', () => selectObject('route', route.path_id)); line.addTo(state.map); state.returnLayers.push(line);
+      const sorties = activity.returnSorties.get(route.path_id);
+      state.returnLayers.push(connectionCountMarker(points, 'return', sorties, current, labels));
     }
   }
+  state.labelLayout?.setItems(labels);
 }
 function fitMap(scope = 'run') {
   if (!state.map || !globalThis.L) return;
@@ -233,16 +294,18 @@ async function initMap() {
   }
   const L = globalThis.L; state.map = L.map(refs.map, { zoomControl: false, attributionControl: false, preferCanvas: false, maxZoom: 15 });
   createLocalBasemap(state.map, page.dataset.tileTemplate);
+  state.mapReference = createMapReference(state.map);
+  state.labelLayout = createMapLabelLayout(state.map);
   drawMap(); fitMap('run');
 }
 
 function renderBadges() {
   const damage = state.runtime.damage_scenario;
-  refs.badges.innerHTML = [
-    `<span>${escapeHtml(shortRunId(state.runId))}</span>`, `<span>${escapeHtml(state.run?.situation?.name || state.run?.situation?.situation_id)}</span>`,
-    `<span>${damage ? `损毁 ${escapeHtml(damage.name || damage.damage_scenario_id)}` : '无损毁'}</span>`,
-    `<span>${state.runtime.time_axis.slot_minutes} min/窗</span>`,
-  ].join('');
+  refs.badges.textContent = [
+    shortRunId(state.runId), state.run?.situation?.name || state.run?.situation?.situation_id,
+    damage ? `损毁 ${damage.name || damage.damage_scenario_id}` : '无损毁',
+    `${state.runtime.time_axis.slot_minutes} min/窗`,
+  ].join(' · ');
 }
 function currentRoute(pathId) { return state.routeById.get(pathId); }
 function renderFrame() {
@@ -269,21 +332,21 @@ function renderInspector() {
   if (!state.selected.type) {
     const current = globalAircraftState();
     refs.inspectorTitle.textContent = '当前状态';
-    refs.inspector.innerHTML = `<div class="runtime-current-state"><strong>执行中 <b>${current.executing}</b></strong><span>出动 ${f.departures_total}</span><span>返航 ${f.returns_total}</span><span>整备中 ${current.maintenance}</span></div><p class="inspector-hint">选择机场、任务或航线查看详情</p>`;
+    refs.inspector.innerHTML = `<div class="runtime-current-state"><strong>执行中 <b>${current.executing}</b></strong><span>出动 ${f.departures_total}</span><span>返航 ${f.returns_total}</span><span>整备中 ${current.maintenance}</span></div><p class="inspector-hint">选择机场、任务或任务执行连接查看详情</p>`;
     return;
   }
   refs.inspectorTitle.textContent = '对象详情';
   if (state.selected.type === 'airport') {
     const id = state.selected.id, a = airport(id), row = f.airports[id] || {};
     const current = aircraftStateForAirport(id);
-    refs.inspector.innerHTML = inspectorRows([['机场',airportDisplay(id)],['角色',[a.is_core?'核心':null,a.is_selected_cluster?'组群':null,a.is_participating?'参与':null].filter(Boolean).join(' / ')||'未参与'],['可用航空器',current.available],['执行中',current.executing],['整备中',current.maintenance],['本窗出动',row.capacity_used_departure],['本窗返航',row.capacity_used_arrival],['容量利用率',percent(row.capacity_utilization)],['损毁事件',(row.damage_event_ids||[]).join(', ')||'无']]);
+    refs.inspector.innerHTML = inspectorRows([['机场',airportDisplay(id)],['机场性质',airportRoleLabel(a.role)],['角色',[a.is_core?'核心':null,a.is_selected_cluster?'组群':null,a.is_participating?'参与':null].filter(Boolean).join(' / ')||'未参与'],['可用航空器',current.available],['执行中',current.executing],['整备中',current.maintenance],['本窗出动',row.capacity_used_departure],['本窗返航',row.capacity_used_arrival],['容量利用率',percent(row.capacity_utilization)],['损毁事件',(row.damage_event_ids||[]).join(', ')||'无']]);
   } else if (state.selected.type === 'mission') {
     const m = mission(state.selected.id); refs.inspector.innerHTML = inspectorRows([['任务',missionName(m.mission_id)],['任务时段',`${windowLabel(m.window_start_slot)}–${windowLabel(m.window_end_slot)}`],['当前时段',windowLabel(f.window)]]);
   } else {
-    const r = currentRoute(state.selected.id); refs.inspector.innerHTML = inspectorRows([['航线',`${airportDisplay(r.origin_airport_id)} → ${missionName(r.mission_id)} → ${airportDisplay(r.return_airport_id)}`],['机型',r.aircraft_type],['出动时段',windowLabel(r.depart_window)],['返航时段',windowLabel(r.return_window)],['再次可用',windowLabel(r.ready_window)],['架次',r.sorties]]);
+    const r = currentRoute(state.selected.id); refs.inspector.innerHTML = inspectorRows([['任务执行连接',`${airportDisplay(r.origin_airport_id)} → ${missionName(r.mission_id)} → ${airportDisplay(r.return_airport_id)}`],['机型',r.aircraft_type],['出动时段',windowLabel(r.depart_window)],['返航时段',windowLabel(r.return_window)],['再次可用',windowLabel(r.ready_window)],['架次',r.sorties]]);
   }
 }
-function selectObject(type, id) { state.selected = { type, id }; renderInspector(); if (type === 'airport') openDock('airport'); else if (type === 'mission') openDock('mission'); else openDock('technical'); }
+function selectObject(type, id) { state.selected = { type, id }; drawMap(); renderInspector(); if (type === 'airport') openDock('airport'); else if (type === 'mission') openDock('mission'); else openDock('technical'); }
 
 function detailItems(items) { return `<div class="runtime-detail-grid">${items.map(([k,v]) => `<div class="runtime-detail-item"><small>${escapeHtml(k)}</small><strong>${escapeHtml(v)}</strong></div>`).join('')}</div>`; }
 function pillRows(items) { return `<div class="runtime-pills">${items.map((x) => `<span class="runtime-pill">${escapeHtml(x)}</span>`).join('')}</div>`; }
@@ -320,6 +383,7 @@ function closeDetail() {
   refs.dock.setAttribute('aria-hidden', 'true');
   page.classList.remove('detail-open');
   state.selected = { type: null, id: null };
+  drawMap();
   renderInspector();
 }
 

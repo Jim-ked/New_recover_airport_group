@@ -10,12 +10,12 @@
   <div id="runtimeKernelMessage" class="runtime-kernel-message hidden"></div>
 
   <header class="runtime-head runtime-overlay">
-    <a href="{{ url_for('ui_v1.single_run_page', run_id=run_id) }}" class="runtime-back">‹ 返回单次运行</a>
-    <div>
+    <div class="runtime-head-main">
+      <a href="{{ url_for('ui_v1.single_run_page', run_id=run_id) }}" class="runtime-back">‹ 返回</a>
       <h1>运行态势</h1>
-      <div id="runtimeBadges" class="runtime-badges"><span>读取 Run…</span></div>
+      <span class="readonly-badge">只读</span>
     </div>
-    <span class="readonly-badge">只读</span>
+    <div id="runtimeBadges" class="runtime-badges">读取 Run…</div>
   </header>
 
   <button id="runtimeLayersToggle" class="runtime-panel-toggle runtime-layers-toggle runtime-overlay" type="button" aria-controls="runtimeLayerPanel" aria-expanded="false">图层</button>
@@ -23,13 +23,13 @@
     <div class="overlay-title"><strong>图层</strong><span class="overlay-actions"><button id="fitRuntimeButton" type="button">运行区域</button><button id="fitAllRuntimeButton" type="button">全部机场</button></span></div>
     <label><input type="checkbox" data-layer="airports" checked> 机场</label>
     <label><input type="checkbox" data-layer="missions" checked> 任务</label>
-    <label><input type="checkbox" data-layer="routes" checked> 航线</label>
+    <label><input type="checkbox" data-layer="routes" checked> 任务态势</label>
     <label><input type="checkbox" data-layer="maintenance" checked> 整备量</label>
     <div class="control-subrow"><label><input type="checkbox" data-layer="outbound" checked> 出动</label><label><input type="checkbox" data-layer="return" checked> 返航</label></div>
     <div class="control-divider"></div>
     <div class="control-group-title">视图</div>
     <div class="runtime-select-row"><label for="runtimeSpeed">播放速度</label><select id="runtimeSpeed" class="runtime-select"><option value="1400">慢速</option><option value="900" selected>标准</option><option value="500">快速</option></select></div>
-    <div class="runtime-select-row"><label for="runtimeTrail">航线范围</label><select id="runtimeTrail" class="runtime-select"><option value="1" selected>当前时段</option><option value="3">最近 3 时段</option><option value="6">最近 6 时段</option><option value="all">截至当前</option></select></div>
+    <div class="runtime-select-row"><label for="runtimeTrail">态势范围</label><select id="runtimeTrail" class="runtime-select"><option value="1" selected>当前时段</option><option value="3">最近 3 时段</option><option value="6">最近 6 时段</option><option value="all">截至当前</option></select></div>
     <div class="control-divider"></div>
     <div class="control-group-title">标识</div>
     <label><input type="checkbox" data-layer="selected" checked> 组群机场</label>
@@ -41,18 +41,14 @@
   <button id="runtimeLegendToggle" class="runtime-panel-toggle runtime-legend-toggle runtime-overlay" type="button" aria-controls="runtimeLegendPanel" aria-expanded="false">图例</button>
   <section id="runtimeLegendPanel" class="runtime-legend runtime-overlay" aria-label="图例" hidden>
     <strong>图例</strong>
-    <span><i class="legend-dot airport-dot"></i>机场</span>
-    <span><i class="legend-dot cluster-dot"></i>组群</span>
-    <span><i class="legend-dot core-dot"></i>核心</span>
-    <span><i class="legend-square mission-dot"></i>任务</span>
-    <span><i class="legend-ring damage-dot"></i>损毁</span>
-    <span><i class="legend-line outbound-line"></i>出动</span>
-    <span><i class="legend-line return-line"></i>返航</span>
+    <div class="legend-group"><b>机场性质</b><span><i class="legend-airport airport-role-civil"></i>民用</span><span><i class="legend-airport airport-role-military"></i>军用</span><span><i class="legend-airport airport-role-joint"></i>军民两用</span></div>
+    <div class="legend-group"><b>运行状态</b><span><i class="legend-status core-dot"></i>核心</span><span><i class="legend-status cluster-dot"></i>组群</span><span><i class="legend-status participating-dot"></i>参与</span><span><i class="legend-ring damage-dot"></i>损毁</span></div>
+    <div class="legend-group"><b>任务态势</b><span><i class="legend-square mission-dot"></i>任务</span><span><i class="legend-line outbound-line"></i>出动</span><span><i class="legend-line return-line"></i>返航</span></div>
   </section>
 
   <aside class="runtime-inspector runtime-overlay" aria-label="对象信息">
     <div class="overlay-title"><strong id="inspectorTitle">当前状态</strong><span id="inspectorWindow">—</span></div>
-    <div id="runtimeInspectorBody" class="inspector-body">选择机场、任务或航线查看详情</div>
+    <div id="runtimeInspectorBody" class="inspector-body">选择机场、任务或任务执行连接查看详情</div>
   </aside>
 
   <section class="runtime-timeline runtime-overlay" aria-label="运行时间轴">

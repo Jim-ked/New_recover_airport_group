@@ -487,21 +487,48 @@
 .situation-fallback-map { background: radial-gradient(circle at 45% 46%, #0b2a3f, #05131e 62%); }
 .fallback-grid { position: absolute; inset: 0; opacity: .34; background-image: linear-gradient(rgba(67, 115, 143, .19) 1px, transparent 1px), linear-gradient(90deg, rgba(67, 115, 143, .19) 1px, transparent 1px); background-size: 56px 56px; }
 .situation-fallback-map > span { position: absolute; left: 82px; top: 148px; color: #66879b; font-size: 11px; }
-.fallback-object { position: absolute; transform: translate(-50%, -50%); border: 0; background: transparent; color: #fff; }
-.fallback-object.airport { width: 14px; height: 14px; border: 2px solid #5cb1ef; border-radius: 50%; }
-.fallback-object.candidate { width: 12px; height: 12px; border: 1px solid #55778b; border-radius: 50%; background: #102a3a; }
-.fallback-object.candidate.selected { border-color: #73c8ff; background: #155888; box-shadow: 0 0 0 5px rgba(62, 159, 226, .17); }
-.fallback-object.mission { width: 12px; height: 12px; background: #d3a95a; transform: translate(-50%, -50%) rotate(45deg); }
-.fallback-object.damage::after { content: ""; position: absolute; inset: -6px; border: 1px solid #dd6666; border-radius: 50%; }
-.fallback-label { position: absolute; left: 12px; top: -3px; white-space: nowrap; color: #b9d3e2; font-size: 11px; text-shadow: 0 1px 2px #000; }
+.fallback-object { position: absolute; width: 16px; height: 16px; transform: translate(-50%, -50%); border: 0; background: transparent; color: #fff; }
+.fallback-shape { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%); border: 1px solid #71bce9; background: #0d405d; }
+.fallback-object.candidate .fallback-shape { width: 7px; height: 7px; border-color: #55778b; background: #102a3a; opacity: .68; }
+.fallback-object.airport-role-civil .fallback-shape { border-radius: 50%; }
+.fallback-object.airport-role-military .fallback-shape { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.fallback-object.airport-role-joint .fallback-shape { clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.fallback-object.airport-role-unknown .fallback-shape { border-radius: 1px; background: transparent; }
+.fallback-object.candidate.selected .fallback-shape { border-color: #b9e5ff; background: #2580b5; opacity: 1; outline: 1px solid rgba(185, 229, 255, .82); outline-offset: 3px; }
+.fallback-object.mission .fallback-shape { width: 8px; height: 8px; border: 0; background: #d3a95a; transform: translate(-50%, -50%) rotate(45deg); }
+.fallback-object.damage::after { content: ""; position: absolute; inset: 1px; border: 1px solid #dd6666; border-radius: 50%; }
+.fallback-label { position: absolute; left: 15px; top: 0; white-space: nowrap; color: #b9d3e2; font-size: 11px; text-shadow: 0 1px 2px #000; }
 
-.situation-airport-marker span { display: block; width: 15px; height: 15px; border: 2px solid #56aef0; border-radius: 50%; background: #0a2b42; }
-.situation-airport-marker.selected span { border-color: #9bd8ff; box-shadow: 0 0 0 5px rgba(63, 160, 225, .2); }
-.situation-candidate-marker span { display: block; width: 12px; height: 12px; border: 1px solid #55778b; border-radius: 50%; background: #102a3a; opacity: .72; }
-.situation-candidate-marker.selected span { border-color: #73c8ff; background: #155888; opacity: 1; box-shadow: 0 0 0 5px rgba(62, 159, 226, .17); }
-.situation-mission-marker span { display: block; width: 12px; height: 12px; background: #d6aa58; transform: rotate(45deg); }
-.situation-mission-marker.selected span { box-shadow: 0 0 0 5px rgba(214, 170, 88, .2); }
-.situation-mission-marker.draft span { border: 2px solid #d6aa58; background: #fff; box-shadow: 0 0 0 5px rgba(214, 170, 88, .18); }
+.situation-airport-marker,
+.situation-candidate-marker,
+.catalog-airport-marker,
+.catalog-mission-marker,
+.situation-mission-marker { display: flex; align-items: center; justify-content: center; }
+.situation-airport-marker span { display: block; width: 9px; height: 9px; border: 1px solid #82c8f1; background: #12618b; }
+.situation-candidate-marker span { display: block; width: 7px; height: 7px; border: 1px solid #55778b; background: #102a3a; opacity: .68; }
+.catalog-airport-marker span,
+.catalog-mission-marker span { display: block; width: 5px; height: 5px; border: 1px solid #7095aa; background: #52788d; opacity: .48; }
+.catalog-airport-marker span { width: 6px; height: 6px; border: 1px solid rgba(132, 182, 210, .9); background: rgba(82, 120, 141, .6); opacity: 1; }
+.airport-role-civil span { border-radius: 50%; }
+.airport-role-military span { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.airport-role-joint span { border-radius: 0; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.airport-role-unknown span { border-radius: 1px; background: transparent; }
+.situation-airport-marker.selected::before,
+.situation-mission-marker.selected::before,
+.situation-candidate-marker.selected::before { content: ""; position: absolute; inset: 1px; border: 1px solid rgba(185, 229, 255, .9); border-radius: 50%; }
+.situation-airport-marker.damage::after { content: ""; position: absolute; inset: 0; border: 1px solid #e46b72; border-radius: 50%; }
+.situation-candidate-marker.selected span { border-color: #b9e5ff; background: #2580b5; opacity: 1; }
+.situation-mission-marker span { display: block; width: 8px; height: 8px; background: #d6aa58; transform: rotate(45deg); }
+.situation-mission-marker.draft span { border: 1px solid #d6aa58; background: #fff; }
+.catalog-mission-marker span { border-radius: 0; background: #a48758; transform: rotate(45deg); }
+.leaflet-tooltip.map-object-tooltip,
+.leaflet-tooltip.situation-map-label { border: 1px solid rgba(91, 139, 168, .65); border-radius: 3px; background: rgba(5, 20, 31, .9); box-shadow: none; color: #eaf4fa; font-size: 10px; font-weight: 500; line-height: 1; padding: 2px 5px; white-space: nowrap; }
+.leaflet-tooltip.situation-map-label::before { display: none; }
+.leaflet-tooltip-top.map-object-tooltip::before { border-top-color: rgba(5, 20, 31, .9); }
+.leaflet-tooltip-bottom.map-object-tooltip::before { border-bottom-color: rgba(5, 20, 31, .9); }
+.leaflet-tooltip-left.map-object-tooltip::before { border-left-color: rgba(5, 20, 31, .9); }
+.leaflet-tooltip-right.map-object-tooltip::before { border-right-color: rgba(5, 20, 31, .9); }
+.map-label-hidden { visibility: hidden; }
 
 .situation-page .leaflet-bottom.leaflet-left { left: 8px; bottom: calc(var(--overview-bottom) + var(--overview-head-height) + 12px); }
 .situation-page .leaflet-control-zoom,

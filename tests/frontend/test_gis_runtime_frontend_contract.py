@@ -44,9 +44,10 @@ class GisRuntimeFrontendContractTests(unittest.TestCase):
         self.assertIn('height:64px', CSS)
 
     def test_runtime_labels_use_end_user_wording_not_dev_language(self):
-        for token in ('图层', '任务', '航线', '出动', '返航', '视图', '航线范围', '标识', '组群机场', '参与机场', '核心机场', '损毁机场', '只读', '当前时段', '当前状态'):
+        for token in ('图层', '任务', '任务态势', '出动', '返航', '视图', '态势范围', '标识', '组群机场', '参与机场', '核心机场', '损毁机场', '只读', '当前时段', '当前状态'):
             self.assertIn(token, HTML)
         self.assertIn('对象详情', JS)
+        self.assertNotIn('航线', HTML + JS)
         for dev in ('冻结', '对象可见性', '显示控制', '任务点', '航链', '出动腿', '返航腿', '当前窗', 'READ ONLY', '对象速览', '组选', '冻结事实'):
             self.assertNotIn(dev, HTML)
             self.assertNotIn(dev, JS)

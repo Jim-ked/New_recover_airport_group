@@ -48,6 +48,11 @@ class RunRuntimeServiceTests(unittest.TestCase):
         self.assertEqual(runtime["time_axis"]["windows"], [x["window"] for x in runtime["frames"]])
         self.assertEqual({"A1", "A2"}, {x["airport_id"] for x in runtime["airports"]})
         self.assertEqual(len(snapshot.to_dict()["situation"]["airports"]), len(runtime["airports"]))
+        frozen_roles = {
+            item["airport"]["airport_id"]: item["airport"]["role"]
+            for item in snapshot.to_dict()["situation"]["airports"]
+        }
+        self.assertEqual(frozen_roles, {item["airport_id"]: item["role"] for item in runtime["airports"]})
         self.assertEqual({"M1"}, {x["mission_id"] for x in runtime["missions"]})
         route_ids = [x["path_id"] for x in runtime["routes"]]
         self.assertEqual(len(route_ids), len(set(route_ids)))

@@ -94,6 +94,7 @@ class RunRuntimeService:
             airports.append({
                 "airport_id": a.airport_id,
                 "airport_name": a.airport_name,
+                "role": a.role,
                 "longitude": a.longitude,
                 "latitude": a.latitude,
                 "is_selected_cluster": a.airport_id in selected_cluster,

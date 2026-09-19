@@ -508,8 +508,12 @@
   font-weight: 500;
 }
 .history-block .run-table { min-width: 1080px; }
+.history-status-col { width: 84px }
+.history-actions-col { width: 136px }
+.queue-status-col { width: 84px }
+.queue-actions-col { width: 108px }
 .table-empty { height: 38px !important; color: var(--text-muted); text-align: center !important; }
-.table-actions { display: flex; align-items: center; gap: 5px; overflow: visible !important; }
+.table-actions { display: flex; align-items: center; gap: 10px; overflow: visible !important; white-space: nowrap; }
 .table-actions .link-button { white-space: nowrap; }
 
 @media (max-width: 1180px) {

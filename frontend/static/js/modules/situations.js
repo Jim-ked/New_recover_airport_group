@@ -1,5 +1,6 @@
 import { apiFetch as requestJson, ApiError } from './api-client.js';
 import { formatCoordinate } from './number-display.js';
+import { airportRoleLabel } from './airport-display.js';
 import { regionDisplayName, regionDisplayWithCode } from './region-display.js';
 import {
   airportItem,
@@ -102,7 +103,7 @@ async function renderAirportCandidates() {
         <input id="airportCandidateSearch" class="control" name="situation-airport-query" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="名称或编号">
         <select id="airportCandidateRole" class="control">
           <option value="">全部类型</option><option value="military">军用</option>
-          <option value="joint">军民合用</option><option value="civil">民用</option>
+          <option value="joint">军民两用</option><option value="civil">民用</option>
         </select>
         <select id="airportCandidateRegion" class="control">
           <option value="">全部区域</option>
@@ -178,7 +179,8 @@ function renderAirportEditor(id) {
       <dl class="airport-facts">
         <div><dt>编号</dt><dd>${esc(airportNumber(airport.airport_id))}</dd></div>
         <div><dt>技术编号</dt><dd>${esc(airport.airport_id)}</dd></div>
-        <div><dt>类型</dt><dd>${esc(airport.facility_type || airport.role || '—')}</dd></div>
+        <div><dt>设施类型</dt><dd>${esc(airport.facility_type || '—')}</dd></div>
+        <div><dt>机场性质</dt><dd>${esc(airportRoleLabel(airport.role))}</dd></div>
         <div><dt>区域</dt><dd>${esc(regionDisplayWithCode(airport.region))}</dd></div>
         <div><dt>坐标</dt><dd>${esc(formatCoordinate(airport.longitude))}, ${esc(formatCoordinate(airport.latitude))}</dd></div>
       </dl>

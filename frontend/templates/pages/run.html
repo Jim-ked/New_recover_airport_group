@@ -150,7 +150,10 @@
     <section class="runtime-block queue-block">
       <div class="block-head"><span>排队任务</span><span id="queueCount" class="count-badge">0</span></div>
       <div class="table-wrap">
-        <table class="run-table">
+        <table class="run-table queue-table">
+          <colgroup>
+            <col><col><col><col><col><col><col class="queue-status-col"><col class="queue-actions-col">
+          </colgroup>
           <thead><tr><th>Run ID</th><th>情境</th><th>损毁场景</th><th>优化偏好</th><th>组群规模</th><th>加入时间</th><th>状态</th><th>操作</th></tr></thead>
           <tbody id="queueBody"><tr><td colspan="8" class="table-empty">暂无排队任务</td></tr></tbody>
         </table>
@@ -160,7 +163,10 @@
     <section class="runtime-block history-block">
       <div class="block-head"><span>历史运行</span><span id="historyCount" class="count-badge">0</span></div>
       <div class="table-wrap">
-        <table class="run-table">
+        <table class="run-table history-table">
+          <colgroup>
+            <col><col><col><col><col><col><col><col class="history-status-col"><col class="history-actions-col">
+          </colgroup>
           <thead><tr><th>Run ID</th><th>情境</th><th>损毁场景</th><th>优化偏好</th><th>规模</th><th>开始时间</th><th>完成时间</th><th>状态</th><th>操作</th></tr></thead>
           <tbody id="historyBody"><tr><td colspan="9" class="table-empty">暂无历史运行</td></tr></tbody>
         </table>

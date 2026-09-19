@@ -1,5 +1,8 @@
 import { apiFetch } from './api-client.js';
+import { airportMapLabel, airportMapTooltip, airportRoleClass } from './airport-display.js';
 import { createLocalBasemap, destroyLocalBasemap } from './local-basemap.js';
+import { createMapLabelLayout } from './map-label-layout.js';
+import { createMapReference, destroyMapReference } from './map-reference.js';
 import { escapeHtml, page, refs, state } from './situation-state.js';
 
 const WORLD_BOUNDS = [[-85.05112878, -180], [85.05112878, 180]];
@@ -11,6 +14,10 @@ let basemapLayers = [];
 let fallback = false;
 let callbacks = {};
 let requestSignal = null;
+let labelLayout = null;
+let mapReference = null;
+
+const LABEL_PRIORITY = { selected: 100, airport: 80, mission: 75 };
 
 export function configureMap(nextCallbacks) {
   callbacks = { ...callbacks, ...nextCallbacks };
@@ -54,9 +61,22 @@ function addFitControl() {
   new FitControl().addTo(map);
 }
 
-function airportMarkerClass(airportId) {
+function airportMarkerClass(airport, damaged) {
+  const airportId = airport.airport_id;
   const selected = state.selected?.type === 'airport' && state.selected.id === airportId;
-  return `situation-airport-marker${selected ? ' selected' : ''}`;
+  return ['situation-airport-marker', airportRoleClass(airport.role), selected ? 'selected' : '', damaged ? 'damage' : '']
+    .filter(Boolean).join(' ');
+}
+
+function bindPermanentLabel(marker, text, priority, forceVisible, labels) {
+  marker.bindTooltip(escapeHtml(text), {
+    permanent: true,
+    direction: 'right',
+    offset: [7, 0],
+    className: 'situation-map-label',
+  });
+  const element = marker.getTooltip()?.getElement();
+  if (element) labels.push({ element, priority, forceVisible });
 }
 
 function drawLeaflet() {
@@ -64,33 +84,27 @@ function drawLeaflet() {
   if (!map || !state.working) return;
   const L = globalThis.L;
   const damaged = damagedAirportIds();
+  const labels = [];
 
   for (const item of state.working.airports) {
     const airport = item.airport;
     const latitude = Number(airport.latitude);
     const longitude = Number(airport.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    const selected = state.selected?.type === 'airport' && state.selected.id === airport.airport_id;
+    const isDamaged = damaged.has(airport.airport_id);
     const icon = L.divIcon({
-      className: airportMarkerClass(airport.airport_id),
+      className: airportMarkerClass(airport, isDamaged),
       html: '<span></span>',
       iconSize: [16, 16],
       iconAnchor: [8, 8],
     });
-    const marker = L.marker([latitude, longitude], { icon, title: airport.airport_name });
+    const marker = L.marker([latitude, longitude], { icon });
     marker.on('click', () => callbacks.selectObject?.('airport', airport.airport_id));
     marker.addTo(map);
     mapLayers.push(marker);
-    if (damaged.has(airport.airport_id)) {
-      const ring = L.circleMarker([latitude, longitude], {
-        radius: 12,
-        color: '#dd7777',
-        weight: 1.5,
-        fillOpacity: 0,
-        interactive: false,
-      });
-      ring.addTo(map);
-      mapLayers.push(ring);
-    }
+    bindPermanentLabel(marker, airportMapLabel(airport),
+      selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.airport, selected, labels);
   }
 
   if (state.mode === 'airport') {
@@ -100,12 +114,16 @@ function drawLeaflet() {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
       const chosen = state.tempAirportIds.has(airport.airport_id);
       const icon = L.divIcon({
-        className: `situation-candidate-marker${chosen ? ' selected' : ''}`,
+        className: `situation-candidate-marker ${airportRoleClass(airport.role)}${chosen ? ' selected' : ''}`,
         html: '<span></span>',
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
       });
-      const marker = L.marker([latitude, longitude], { icon, title: airport.airport_name });
+      const marker = L.marker([latitude, longitude], { icon });
+      marker.bindTooltip(escapeHtml(airportMapTooltip(airport)), {
+        direction: 'top',
+        className: 'map-object-tooltip',
+      });
       marker.on('click', () => callbacks.toggleCandidate?.(airport.airport_id));
       marker.addTo(map);
       mapLayers.push(marker);
@@ -123,10 +141,12 @@ function drawLeaflet() {
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     });
-    const marker = L.marker([latitude, longitude], { icon, title: mission.name });
+    const marker = L.marker([latitude, longitude], { icon });
     marker.on('click', () => callbacks.selectObject?.('mission', mission.mission_id));
     marker.addTo(map);
     mapLayers.push(marker);
+    bindPermanentLabel(marker, mission.name,
+      selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.mission, selected, labels);
   }
 
   if (state.draftMissionCoord) {
@@ -143,6 +163,7 @@ function drawLeaflet() {
       mapLayers.push(marker);
     }
   }
+  labelLayout?.setItems(labels);
 }
 
 function fallbackPoints() {
@@ -152,6 +173,7 @@ function fallbackPoints() {
       type: 'airport',
       id: item.airport.airport_id,
       name: item.airport.airport_name,
+      role: item.airport.role,
       lat: Number(item.airport.latitude),
       lon: Number(item.airport.longitude),
     })),
@@ -159,6 +181,7 @@ function fallbackPoints() {
       type: 'candidate',
       id: airport.airport_id,
       name: airport.airport_name,
+      role: airport.role,
       lat: Number(airport.latitude),
       lon: Number(airport.longitude),
       chosen: state.tempAirportIds.has(airport.airport_id),
@@ -196,7 +219,8 @@ function drawFallback() {
     const left = 10 + 80 * (point.lon - minLon) / (maxLon - minLon);
     const top = 12 + 76 * (maxLat - point.lat) / (maxLat - minLat);
     const damage = point.type === 'airport' && damaged.has(point.id);
-    return `<button class="fallback-object ${point.type}${damage ? ' damage' : ''}${point.chosen ? ' selected' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(point.name)}"><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
+    const roleClass = point.type === 'airport' || point.type === 'candidate' ? ` ${airportRoleClass(point.role)}` : '';
+    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' damage' : ''}${point.chosen ? ' selected' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(point.name)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
   }).join('');
   refs.fallbackObjects.querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', () => {
@@ -282,18 +306,19 @@ export async function setCatalogLayer(kind, enabled) {
     const latitude = Number(item.latitude);
     const longitude = Number(item.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-    const marker = globalThis.L.circleMarker([latitude, longitude], {
-      radius: kind === 'airports' ? 3 : 3.5,
-      weight: 1,
-      color: kind === 'airports' ? '#68a5c9' : '#b2c1cd',
-      fillColor: kind === 'airports' ? '#68a5c9' : '#b2c1cd',
-      fillOpacity: 0.26,
-      opacity: 0.72,
-      className: `catalog-${kind === 'airports' ? 'airport' : 'mission'}-marker`,
+    const markerClass = kind === 'airports'
+      ? `catalog-airport-marker ${airportRoleClass(item.role)}`
+      : 'catalog-mission-marker';
+    const marker = globalThis.L.marker([latitude, longitude], {
+      icon: globalThis.L.divIcon({
+        className: markerClass,
+        html: '<span></span>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      }),
     });
-    const name = kind === 'airports' ? item.airport_name : item.name;
-    const id = kind === 'airports' ? item.airport_id : item.mission_id;
-    marker.bindTooltip(`${escapeHtml(name || id)}<br>${escapeHtml(id)}`, { direction: 'top' });
+    const tooltip = kind === 'airports' ? airportMapTooltip(item) : item.name;
+    marker.bindTooltip(escapeHtml(tooltip), { direction: 'top', className: 'map-object-tooltip' });
     group.addLayer(marker);
     count += 1;
   }
@@ -324,6 +349,8 @@ export async function initMap() {
   globalThis.L.control.zoom({ position: 'bottomleft' }).addTo(map);
   addFitControl();
   basemapLayers = createLocalBasemap(map, page.dataset.tileTemplate);
+  mapReference = createMapReference(map);
+  labelLayout = createMapLabelLayout(map);
   map.setView([34, 108], 4);
   drawMap();
 }
@@ -334,6 +361,10 @@ export function destroyMap() {
   clearExternalLayer('missions');
   destroyLocalBasemap(basemapLayers);
   basemapLayers = [];
+  destroyMapReference(mapReference);
+  mapReference = null;
+  labelLayout?.destroy();
+  labelLayout = null;
   if (map) {
     map.off();
     map.remove();
