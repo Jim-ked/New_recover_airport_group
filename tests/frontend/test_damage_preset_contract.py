@@ -31,13 +31,13 @@ class DamagePresetFrontendContractTests(unittest.TestCase):
 
     def test_existing_events_are_not_silently_overwritten(self):
         self.assertIn("confirmAction", self.js)
-        self.assertIn("预设将替换当前草稿中的事件", self.js)
+        self.assertIn("当前事件列表（包括尚未应用的手工修改）将被全部替换", self.js)
 
     def test_unsaved_working_copy_is_not_resolved_against_stale_saved_capacity(self):
         start = self.js.index("async function applyDamagePresetDraft()")
         end = self.js.index("\nfunction renderDamageEditor", start)
         function_body = self.js[start:end]
-        self.assertIn("airportItem(airportId).operational_profile.capacity_per_window", function_body)
+        self.assertIn("item.operational_profile.capacity_per_window", function_body)
         self.assertNotIn("apiFetch(", function_body)
 
 

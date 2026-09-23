@@ -366,6 +366,11 @@
 .damage-event-head strong { font-size: 12px; }
 .damage-effect-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .damage-preset { padding: 11px; border: 1px solid rgba(80, 119, 145, .62); border-radius: 6px; background: rgba(10, 36, 54, .55); }
+.damage-preset > summary { cursor: pointer; font-weight: 600; }
+.damage-preset[open] > summary { margin-bottom: 12px; }
+.damage-preview-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.damage-preview-row { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; overflow-wrap: anywhere; }
+.damage-preset .field-note { margin: 8px 0; }
 .damage-preset-kinds { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 9px; }
 .preset-kind { height: 30px; padding: 0 4px; border: 1px solid var(--line-soft); border-radius: 4px; background: #071b29; color: var(--text-muted); font-size: 11px; }
 .preset-kind:hover { color: var(--text); border-color: #356a8b; }

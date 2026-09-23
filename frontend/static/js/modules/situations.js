@@ -68,8 +68,18 @@ function savedTimeLabel(value){if(!value)return'';const parsed=new Date(value);i
 function renderHeader(){if(!state.working){refs.meta.textContent='';refs.saveState.textContent='未打开';refs.saveState.className='situation-save-state';refs.save.disabled=true;refs.del.disabled=true;return}const savedTime=savedTimeLabel(state.meta?.updated_at);refs.meta.textContent=savedTime?`最近保存 ${savedTime}`:'';refs.saveState.textContent=state.persisted?(state.dirty?'未保存':'已保存'):'新建未保存';refs.saveState.className=`situation-save-state ${state.dirty||!state.persisted?'warning':'success'}`;refs.save.disabled=!writable()||(!state.dirty&&state.persisted);refs.del.disabled=!writable()||!state.persisted}
 async function loadSituationList(selectId=null){const d=await apiFetch('/api/situations?limit=500&offset=0');state.list=d.items||[];refs.select.innerHTML='<option value="">选择情境…</option>'+state.list.map(x=>`<option value="${esc(x.situation_id)}">${esc(x.name)}（${esc(x.situation_id)}）</option>`).join('');if(selectId)refs.select.value=selectId}
 async function canDiscardSituation(){if(!state.dirty&&!state.panelDraftDirty)return true;return confirmAction('当前情境有未保存修改。继续会丢弃这些修改。','放弃修改')}
-function setPanelDraftDirty(dirty=true){state.panelDraftDirty=dirty;refs.panelDraftStatus?.classList.toggle('hidden',!dirty);if(!dirty){pendingPanelTransition=null;refs.body?.querySelector('#panelDraftWarning')?.remove()}}
-function bindPanelDraft(){refs.body.querySelectorAll('input,select,textarea').forEach(el=>{const mark=()=>setPanelDraftDirty(true);el.addEventListener('input',mark);el.addEventListener('change',mark)})}
+function setPanelDraftDirty(dirty=true){if(dirty)invalidateDamagePreview();state.panelDraftDirty=dirty;refs.panelDraftStatus?.classList.toggle('hidden',!dirty);if(!dirty){pendingPanelTransition=null;refs.body?.querySelector('#panelDraftWarning')?.remove()}}
+const draftListenerRoots = new WeakSet();
+function bindPanelDraft() {
+  if (draftListenerRoots.has(refs.body)) return;
+  draftListenerRoots.add(refs.body);
+  const mark = (event) => {
+    if (!writable() || event.target.closest('#damagePresetPanel')) return;
+    if (event.target.matches('input,select,textarea')) setPanelDraftDirty(true);
+  };
+  refs.body.addEventListener('input', mark);
+  refs.body.addEventListener('change', mark);
+}
 function showPanelDraftWarning(){let warning=$('panelDraftWarning');if(!warning){refs.body.insertAdjacentHTML('afterbegin',`<div id="panelDraftWarning" class="inline-message warning panel-draft-warning"><strong>当前修改尚未应用</strong><span>先继续当前编辑，或明确放弃后再切换。</span><div class="panel-draft-actions"><button id="continuePanelEditing" class="btn ghost" type="button">继续编辑</button><button id="discardPanelAndSwitch" class="btn danger" type="button">放弃并切换</button></div></div>`);warning=$('panelDraftWarning')}$('continuePanelEditing').onclick=()=>{pendingPanelTransition=null;warning.remove()};$('discardPanelAndSwitch').onclick=()=>{const transition=pendingPanelTransition;clearPanelDraft();Promise.resolve(transition?.()).catch(error=>showMessage(errText(error),'error'))}}
 function requestPanelTransition(transition){if(!state.panelDraftDirty){clearPanelDraft();return transition()}pendingPanelTransition=transition;showPanelDraftWarning();return false}
 function clearPanelDraft(){setPanelDraftDirty(false);state.draftMissionCoord=null}
@@ -256,89 +266,166 @@ const DAMAGE_PRESETS = {
   },
 };
 
+let damagePreview = null;
+let damageFillPending = false;
+
 function damagePresetMarkup() {
-  const airportOptions = state.working.airports.map((item) => {
-    const capacity = Number(item.operational_profile.capacity_per_window);
-    const available = Number.isInteger(capacity) && capacity > 0;
-    const airport = item.airport;
-    return `<option value="${esc(airport.airport_id)}" ${available ? '' : 'disabled'}>${esc(airport.airport_name)} · ${available ? `${capacity}/窗` : '该机场尚未配置容量'}</option>`;
-  }).join('');
-  return `<section class="editor-section damage-preset">
-    <h3>快速预设</h3>
-    <div class="damage-preset-kinds" role="group" aria-label="损毁快速预设">
-      ${Object.entries(DAMAGE_PRESETS).map(([kind, preset], index) => `<button class="preset-kind${index === 0 ? ' active' : ''}" type="button" data-preset-kind="${kind}" aria-pressed="${index === 0 ? 'true' : 'false'}">${preset.label}</button>`).join('')}
+  const tasks = state.working.missions || [];
+  const start = tasks.length ? Math.min(...tasks.map(task => task.window_start_slot)) : '';
+  return `<details id="damagePresetPanel" class="editor-section damage-preset">
+    <summary>快速填写损毁事件</summary>
+    <div class="damage-preset-kinds" role="group" aria-label="损毁快捷填写">
+      ${Object.entries(DAMAGE_PRESETS).map(([kind, preset], index) => `<button class="preset-kind${index === 0 ? ' active' : ''}" type="button" data-preset-kind="${kind}" aria-pressed="${index === 0}">${preset.label}</button>`).join('')}
     </div>
-    <div class="field"><label>作用机场</label><select id="damagePresetAirports" class="control" multiple size="4">
-      ${airportOptions}
+    <div class="field"><label for="damagePresetAirports">作用机场</label><select id="damagePresetAirports" class="control" multiple size="4">
+      ${state.working.airports.map(item => `<option value="${esc(item.airport.airport_id)}">${esc(item.airport.airport_name)}</option>`).join('')}
     </select></div>
-    <div class="damage-preset-footer">
-      <div class="field"><label>开始窗</label><input id="damagePresetStart" class="control" type="number" min="0" step="1" value="0"></div>
-      <button id="applyDamagePreset" class="btn" type="button">生成预设事件</button>
+    <div class="field"><label for="damagePresetStart">开始窗</label><input id="damagePresetStart" class="control" type="number" min="0" step="1" value="${start}"></div>
+    <button id="generateDamagePreview" class="btn" type="button">生成预览</button>
+    <div id="damagePresetStatus" class="field-note" role="status">生成预览后可追加或替换事件。</div>
+    <div id="damagePreviewContent"></div>
+    <div class="damage-preview-actions">
+      <button id="appendDamagePreview" class="btn primary" type="button" disabled>填入事件列表</button>
+      <button id="replaceDamagePreview" class="btn danger" type="button" disabled>全部替换…</button>
     </div>
-    <div id="damagePresetStatus" class="field-note">生成后可逐项修改。</div>
-  </section>`;
+  </details>`;
+}
+
+function invalidateDamagePreview(message = '预览已失效，请重新生成。') {
+  const hadPreview = damagePreview !== null;
+  damagePreview = null;
+  if (!$('damagePresetPanel')) return;
+  $('appendDamagePreview').disabled = true;
+  $('replaceDamagePreview').disabled = true;
+  $('damagePreviewContent').replaceChildren();
+  if (hadPreview) $('damagePresetStatus').textContent = message;
+}
+
+// Preserve raw, potentially invalid inputs. No business serialization is done here.
+function damageDraftFingerprint() {
+  const inputs = [...refs.body.querySelectorAll('input,select,textarea')]
+    .filter(input => !input.closest('#damagePresetPanel'))
+    .map(input => [input.className, input.value, input.checked]);
+  return JSON.stringify([state.working.situation_id, inputs,
+    [...state.working.airports].sort((a, b) => a.airport.airport_id < b.airport.airport_id ? -1 : 1)]);
 }
 
 function bindDamagePreset() {
-  const buttons = [...refs.body.querySelectorAll('[data-preset-kind]')];
-  buttons.forEach((button) => button.addEventListener('click', () => {
-    buttons.forEach((item) => {
-      const active = item === button;
-      item.classList.toggle('active', active);
-      item.setAttribute('aria-pressed', String(active));
-    });
-    setPanelDraftDirty(true);
-  }));
-  const available = [...$('damagePresetAirports').options].some((option) => !option.disabled);
-  $('applyDamagePreset').disabled = !available;
-  if (!available && state.working.airports.length) $('damagePresetStatus').textContent = '该机场尚未配置容量';
+  const panel = $('damagePresetPanel');
+  if (!panel) return;
+  for (const button of panel.querySelectorAll('[data-preset-kind]')) {
+    button.onclick = () => {
+      if (!writable()) return;
+      for (const item of panel.querySelectorAll('[data-preset-kind]')) {
+        item.classList.toggle('active', item === button);
+        item.setAttribute('aria-pressed', String(item === button));
+      }
+      invalidateDamagePreview();
+    };
+  }
+  panel.addEventListener('input', () => invalidateDamagePreview());
+  panel.addEventListener('change', () => invalidateDamagePreview());
+  $('generateDamagePreview').onclick = applyDamagePresetDraft;
+  $('appendDamagePreview').onclick = () => fillDamagePreview(false);
+  $('replaceDamagePreview').onclick = () => fillDamagePreview(true);
+}
+
+function previewOverlapWarnings(events) {
+  const warnings = new Set();
+  for (const card of $('damageEventRows').querySelectorAll('.damage-event')) {
+    const airport = card.querySelector('.ev-airport').value;
+    const start = Number(card.querySelector('.ev-start').value);
+    let end = Number(card.querySelector('.ev-end').value);
+    if (card.querySelector('.ev-recovery').value === 'average') end += Number(card.querySelector('.ev-duration').value) || 0;
+    if (events.some(event => event.target.airport_id === airport && event.start_slot < end && start < event.end_slot)) {
+      warnings.add(`${airport}：实际运行容量还可能受到已有事件及其恢复过程影响。`);
+    }
+  }
+  return [...warnings];
+}
+
+function showDamagePreview(result) {
+  const warnings = [...(result.ineligible || []).map(item => `${item.airportId}：${item.reason}`), ...previewOverlapWarnings(result.events)];
+  $('damagePresetStatus').textContent = `预览 ${result.events.length} 个事件。剩余容量为新事件自身的上限，不是叠加后的实际运行容量。`;
+  $('damagePreviewContent').innerHTML = warnings.map(text => `<div class="inline-message warning">${esc(text)}</div>`).join('')
+    + result.events.map(event => {
+      const item = airportItem(event.target.airport_id);
+      const base = item.operational_profile.capacity_per_window;
+      const remaining = event.effect.remaining_capacity_per_window;
+      return `<div class="damage-preview-row"><strong>${esc(item.airport.airport_name)} · ${esc(event.target.airport_id)}</strong><span>[${event.start_slot}, ${event.end_slot})</span><span>原始 ${base} → 剩余 ${remaining} /窗（${Number((100 * remaining / base).toFixed(2))}%）</span></div>`;
+    }).join('');
+  $('appendDamagePreview').disabled = !result.events.length;
+  $('replaceDamagePreview').disabled = !result.events.length;
 }
 
 async function applyDamagePresetDraft() {
-  const presetKind = refs.body.querySelector('[data-preset-kind].active')?.dataset.presetKind;
-  const preset = DAMAGE_PRESETS[presetKind];
-  if (!preset) return;
-  const airportIds = [...$('damagePresetAirports').selectedOptions]
-    .filter((option) => !option.disabled)
-    .map((option) => option.value);
-  if (!airportIds.length) {
-    $('damagePresetStatus').textContent = '请至少选择一个机场。';
-    return;
-  }
-  const start = Number($('damagePresetStart').value);
-  if (!Number.isInteger(start) || start < 0) {
-    $('damagePresetStatus').textContent = '请检查开始窗。';
-    return;
-  }
-  if ($('damageEventRows').children.length && !(await confirmAction('预设将替换当前草稿中的事件，是否继续？', '替换事件'))) return;
-  const events = [];
-  for (const segment of preset.segments) {
+  if (!writable() || !$('damagePresetPanel')) return;
+  invalidateDamagePreview();
+  try {
+    const kind = refs.body.querySelector('[data-preset-kind].active').dataset.presetKind;
+    const airportIds = [...$('damagePresetAirports').selectedOptions].map(option => option.value);
+    const start = Number($('damagePresetStart').value);
+    if (!airportIds.length) throw Error('请至少选择一个机场。');
+    if (!$('damagePresetStart').value || !Number.isSafeInteger(start) || start < 0) throw Error('请明确填写合法开始窗。');
+    const events = [];
     for (const airportId of airportIds) {
-      const capacity = Number(airportItem(airportId).operational_profile.capacity_per_window);
-      const closed = segment.closed === true;
-      const remaining = closed ? 0 : Math.max(1, Math.floor(capacity * segment.ratio));
-      const sequence = events.length;
-      events.push({
-        event_id: `P${sequence + 1}`,
-        sequence,
-        target: { airport_id: airportId, target_type: 'airport', target_id: null },
-        damage_type: 'capacity_damage',
-        start_slot: start + segment.offset,
-        end_slot: start + segment.offset + segment.duration,
-        effect: { closed, remaining_capacity_per_window: remaining },
-        recovery_mode: 'instant',
-        recovery_duration_slots: null,
-      });
+      const item = airportItem(airportId);
+      const capacity = item.operational_profile.capacity_per_window;
+      if (!item.operational_profile.configuration_complete || !Number.isSafeInteger(capacity) || capacity <= 0) throw Error(`${airportId}：请先完成运行容量配置。`);
+      for (const segment of DAMAGE_PRESETS[kind].segments) {
+        const remaining = segment.closed ? 0 : Math.max(1, Math.floor(capacity * segment.ratio));
+        events.push({target:{airport_id:airportId,target_type:'airport',target_id:null},damage_type:'capacity_damage',start_slot:start+segment.offset,end_slot:start+segment.offset+segment.duration,effect:{closed:!!segment.closed,remaining_capacity_per_window:remaining},recovery_mode:'instant',recovery_duration_slots:null});
+      }
     }
+    damagePreview = {events, fingerprint: damageDraftFingerprint()};
+    showDamagePreview(damagePreview);
+  } catch (error) {
+    $('damagePresetStatus').textContent = error.message;
   }
-  $('damageEventRows').innerHTML = events.map(damageEventRow).join('');
-  setPanelDraftDirty(true);
-  bindDamageEvents();
-  bindPanelDraft();
-  $('damagePresetStatus').textContent = '生成后可逐项修改。';
+}
+
+function numberDamageEvents(events, existing) {
+  const ids = new Set(existing.map(event => event.event_id.trim()));
+  const sequences = existing.map(event => Number.parseInt(event.sequence, 10)).filter(Number.isSafeInteger);
+  let sequence = Math.max(-1, ...sequences) + 1;
+  let suffix = 1;
+  return events.map(event => {
+    while (ids.has(`P${suffix}`)) suffix += 1;
+    if (!Number.isSafeInteger(sequence)) throw Error('事件顺序超出安全整数范围。');
+    const event_id = `P${suffix++}`;
+    ids.add(event_id);
+    return {...event, event_id, sequence: sequence++};
+  });
+}
+
+async function fillDamagePreview(replace = false) {
+  if (!writable() || !$('damagePresetPanel') || !damagePreview || damageFillPending) return;
+  const preview = damagePreview;
+  const current = () => writable() && damagePreview === preview && preview.fingerprint === damageDraftFingerprint();
+  if (!current()) { invalidateDamagePreview(); return; }
+  damageFillPending = true;
+  try {
+    if (replace && !(await confirmAction('当前事件列表（包括尚未应用的手工修改）将被全部替换，是否继续？', '全部替换事件'))) return;
+    if (!current()) { invalidateDamagePreview(); return; }
+    const rows = $('damageEventRows');
+    const existing = replace ? [] : [...rows.querySelectorAll('.damage-event')].map(card => ({event_id:card.querySelector('.ev-id').value,sequence:card.querySelector('.ev-seq').value}));
+    const events = numberDamageEvents(preview.events, existing);
+    const markup = events.map((event, index) => damageEventRow(event, existing.length + index)).join('');
+    if (replace) rows.innerHTML = markup;
+    else rows.insertAdjacentHTML('beforeend', markup);
+    invalidateDamagePreview();
+    setPanelDraftDirty(true);
+    bindDamageEvents();
+    $('damagePresetStatus').textContent = '已填入事件列表。请检查后应用到情境，再保存情境。';
+  } catch (error) {
+    $('damagePresetStatus').textContent = error.message;
+  } finally {
+    damageFillPending = false;
+  }
 }
 
 function renderDamageEditor(id) {
+  damagePreview = null;
   refs.inspector.dataset.kind = 'damage-editor';
   collapseOverview();
   const scenario = id ? deep(damageScenario(id)) : { damage_scenario_id: '', name: '', category: 'custom', events: [] };
@@ -350,7 +437,7 @@ function renderDamageEditor(id) {
       <div class="field"><label>名称</label><input id="damageScenarioName" class="control" value="${esc(scenario.name)}"></div>
 
     </div>
-    ${id ? '' : damagePresetMarkup()}
+    ${writable() ? damagePresetMarkup() : ''}
     <section class="editor-section">
       <div class="mode-actions"><h3>损毁事件</h3><button id="addDamageEvent" class="btn ghost" type="button">添加事件</button></div>
       <div id="damageEventRows">${scenario.events.map(damageEventRow).join('')}</div>
@@ -362,10 +449,7 @@ function renderDamageEditor(id) {
     </div>`;
   bindDamageEvents();
   bindPanelDraft();
-  if (!id) {
-    bindDamagePreset();
-    $('applyDamagePreset').addEventListener('click', applyDamagePresetDraft);
-  }
+  bindDamagePreset();
   $('cancelDamageEdit').onclick = () => { clearPanelDraft(); renderDamageMode(); };
   $('addDamageEvent').onclick = () => {
     setPanelDraftDirty(true);
@@ -385,7 +469,7 @@ function renderDamageEditor(id) {
 }
 function bindDamageEvents(){refs.body.querySelectorAll('.remove-event').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.closest('.damage-event').remove()});refs.body.querySelectorAll('.ev-type').forEach(s=>s.onchange=()=>{const card=s.closest('.damage-event');const ev={event_id:card.querySelector('.ev-id').value,sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:s.value,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect:{},recovery_mode:s.value==='aircraft_damage'?'none':'instant',recovery_duration_slots:null};card.outerHTML=damageEventRow(ev,Number(card.dataset.eventIndex));bindDamageEvents();bindPanelDraft()});refs.body.querySelectorAll('.ev-recovery').forEach(s=>s.onchange=()=>{const input=s.closest('.damage-event').querySelector('.ev-duration');input.disabled=s.value!=='average';if(input.disabled)input.value=''});refs.body.querySelectorAll('.add-loss-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-aircraft">${opt(state.aircraft,'',x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select><input class="control loss-qty" type="number" min="1" value="1"></div>`)});refs.body.querySelectorAll('.add-resource-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-resource">${opt(state.resources,'',x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select><input class="control loss-qty" type="number" min="0" step="any" value="0"></div>`)});}
 function eventFromCard(card){const type=card.querySelector('.ev-type').value;let effect;if(type==='capacity_damage'){const closed=card.querySelector('.ev-closed').value==='true';effect={closed,remaining_capacity_per_window:closed?0:int(card.querySelector('.ev-cap').value)}}else if(type==='navigation_delay'){effect={departure_delay_slots:int(card.querySelector('.ev-dep-delay').value)||0,return_delay_slots:int(card.querySelector('.ev-ret-delay').value)||0}}else if(type==='aircraft_damage'){const loss={};card.querySelectorAll('.effect-row').forEach(r=>{const id=r.querySelector('.loss-aircraft').value;if(id)loss[id]=int(r.querySelector('.loss-qty').value)});effect={aircraft_loss:loss}}else{const rem={};card.querySelectorAll('.effect-row').forEach(r=>{const id=r.querySelector('.loss-resource').value;if(id)rem[id]=Number(r.querySelector('.loss-qty').value)});effect={remaining_quantity:rem}}const recovery=type==='aircraft_damage'?'none':card.querySelector('.ev-recovery').value;return {event_id:card.querySelector('.ev-id').value.trim(),sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:type,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect,recovery_mode:recovery,recovery_duration_slots:recovery==='average'?int(card.querySelector('.ev-duration').value):null}}
-async function applyDamageScenario(oldId){const id=$('damageScenarioId').value.trim(),name=$('damageScenarioName').value.trim();if(!id||!name){showMessage('损毁场景编号和名称不能为空。','error');return}if(!oldId&&state.working.damage_scenarios.some(x=>x.damage_scenario_id===id)){showMessage('当前情境已存在同编号损毁场景。','error');return}try{const candidate=deep(state.working);const scenario={damage_scenario_id:id,name,category:'custom',events:[...refs.body.querySelectorAll('.damage-event')].map(eventFromCard)};if(oldId)candidate.damage_scenarios=candidate.damage_scenarios.map(x=>x.damage_scenario_id===oldId?scenario:x);else candidate.damage_scenarios.push(scenario);state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();showMessage('损毁场景已应用到当前情境。','success');renderDamageEditor(id)}catch(e){showMessage(errText(e),'error')}}
+async function applyDamageScenario(oldId){if(!writable())return;const id=$('damageScenarioId').value.trim(),name=$('damageScenarioName').value.trim();if(!id||!name){showMessage('损毁场景编号和名称不能为空。','error');return}if(!oldId&&state.working.damage_scenarios.some(x=>x.damage_scenario_id===id)){showMessage('当前情境已存在同编号损毁场景。','error');return}try{const candidate=deep(state.working);const scenario={damage_scenario_id:id,name,category:'custom',events:[...refs.body.querySelectorAll('.damage-event')].map(eventFromCard)};if(oldId)candidate.damage_scenarios=candidate.damage_scenarios.map(x=>x.damage_scenario_id===oldId?scenario:x);else candidate.damage_scenarios.push(scenario);state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();showMessage('损毁场景已应用到当前情境。','success');renderDamageEditor(id)}catch(e){showMessage(errText(e),'error')}}
 function visibleCandidateAirports(){if(state.mode!=='airport')return[];const existing=new Set((state.working?.airports||[]).map(x=>x.airport.airport_id));return state.airportCatalog.filter(x=>!existing.has(x.airport_id)&&(!state.candidateQuery||`${x.airport_id} ${x.airport_name}`.toLowerCase().includes(state.candidateQuery))&&(!state.candidateRole||x.role===state.candidateRole)&&(!state.candidateRegion||String(x.region||'')===state.candidateRegion))}
 function toggleCandidate(id){const row=state.airportCatalog.find(x=>x.airport_id===id);if(!row)return;if(state.tempAirportIds.has(id))state.tempAirportIds.delete(id);else state.tempAirportIds.add(id);const input=refs.body.querySelector(`#airportCandidateList input[value="${CSS.escape(id)}"]`);if(input){input.checked=state.tempAirportIds.has(id);input.closest('.candidate-row')?.classList.toggle('selected',input.checked)}const add=$('addAirportsToSituation');if(add)add.textContent=`加入当前情境（${state.tempAirportIds.size}）`;drawMap()}
 async function selectObject(type,id,{locate=false}={}){return requestPanelTransition(()=>{collapseOverview();state.mode='select';refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));state.selected={type,id};renderInspector();drawMap();if(locate)focusObject(type,id)})}
