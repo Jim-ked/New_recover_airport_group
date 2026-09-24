@@ -48,7 +48,7 @@ class SoftDemandContractTests(unittest.TestCase):
         self.assertEqual("maximize", sense)
         self.assertLess(objective.terms[unmet.name], 0.0)
         self.assertEqual(
-            -mb.DEFAULT_UNMET_DEMAND_PENALTY,
+            -b.runtime["unmet_demand_penalty"],
             objective.terms[unmet.name],
         )
 

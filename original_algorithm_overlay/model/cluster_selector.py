@@ -65,6 +65,29 @@ def _seed_core_weight_map(runtime: Optional[Mapping[str, Any]], airports: List[s
     return {aid: (2.0 if aid in core else 1.0) for aid in airports}
 
 
+def _core_selection_reward(
+    runtime: Optional[Mapping[str, Any]], selected: List[str], airports: List[str]
+) -> Tuple[int, float]:
+    """Return the outer-only reward count and configured lambda_C."""
+    rt = runtime or {}
+    raw_core = rt.get("core_airports") or []
+    if not isinstance(raw_core, (list, tuple)):
+        raise ModelFactError("core_airports must be canonical ID list")
+    unknown = sorted(set(raw_core) - set(airports))
+    if unknown:
+        raise ModelFactError(f"unknown core airports: {unknown}")
+    raw_weight = rt.get("core_airport_reward_weight")
+    if raw_weight is None:
+        raise ModelFactError("core_airport_reward_weight is required")
+    try:
+        weight = float(raw_weight)
+    except (TypeError, ValueError) as exc:
+        raise ModelFactError("core_airport_reward_weight must be numeric") from exc
+    if not math.isfinite(weight) or weight < 0:
+        raise ModelFactError("core_airport_reward_weight must be nonnegative")
+    return len(set(raw_core) & set(selected)), weight
+
+
 def _estimate_var_scale(base_maps, ds: Dict[str, Any]) -> int:
     """Estimate actual path-model size, without double-counting x_out/x_ret views."""
     maps_all = build_path_map_from_base(base_maps, None)
@@ -219,7 +242,8 @@ def _eval_cluster_lp(
         res = {
             "S": list(S), "F1": 0.0, "F2": 0.0, "F3": 0.0,
             "Unmet": None,
-            "Z": -1e18, "status": "infeasible_precheck", "detail": str(exc),
+            "Z": -1e18, "J": -1e18, "CoreReward": 0,
+            "status": "infeasible_precheck", "detail": str(exc),
         }
         cache[key] = res
         return res
@@ -238,7 +262,8 @@ def _eval_cluster_lp(
         res = {
             "S": list(S), "F1": 0.0, "F2": 0.0, "F3": 0.0,
             "Unmet": None,
-            "Z": -1e18, "status": "error", "detail": str(exc),
+            "Z": -1e18, "J": -1e18, "CoreReward": 0,
+            "status": "error", "detail": str(exc),
         }
         cache[key] = res
         return res
@@ -249,7 +274,7 @@ def _eval_cluster_lp(
         res = {
             "S": list(S), "F1": 0.0, "F2": 0.0, "F3": 0.0,
             "Unmet": None,
-            "Z": -1e18, "status": "no_solution",
+            "Z": -1e18, "J": -1e18, "CoreReward": 0, "status": "no_solution",
         }
         cache[key] = res
         return res
@@ -263,7 +288,7 @@ def _eval_cluster_lp(
     z_facts = (
         weights.sortie * f1
         - weights.resource * f2
-        + weights.time * f3
+        - weights.time * f3
         - unmet_penalty * unmet_total
     )
     if abs(z_model - z_facts) > _OBJECTIVE_EQ_TOL * (1.0 + abs(z_model)):
@@ -271,10 +296,15 @@ def _eval_cluster_lp(
             f"cluster LP objective drift: model={z_model}, shared_facts={z_facts}"
         )
 
+    # This outer preference is intentionally evaluated only after a successful LP solve.
+    core_reward, core_reward_weight = _core_selection_reward(
+        rt, S, _airport_ids(ds)
+    )
+    selection_score = z_model + core_reward_weight * core_reward
     res = {
         "S": list(S), "F1": f1, "F2": f2, "F3": f3,
         "Unmet": unmet_total,
-        "Z": z_model, "status": "ok",
+        "Z": z_model, "CoreReward": core_reward, "J": selection_score, "status": "ok",
     }
     cache[key] = res
     return res
@@ -487,12 +517,15 @@ def _search_sa(
     try:
         for si, S0 in enumerate(seeds):
             cur = _eval_cluster_lp(base_maps, ds, run_params, runtime, K, S0, cache, trace_level)
-            trajectory.append({"step": step, "seed": si, "S": list(cur["S"]), "Z": cur["Z"]})
+            trajectory.append({
+                "step": step, "seed": si, "S": list(cur["S"]),
+                "Z": cur["Z"], "J": cur["J"],
+            })
             step += 1
-            if best_eval is None or cur["Z"] > best_eval["Z"]:
+            if best_eval is None or cur["J"] > best_eval["J"]:
                 best_eval = cur
             if trace_level >= 1:
-                print(f"[seed {si}] S={cur['S']} Z={cur['Z']:.4f}")
+                print(f"[seed {si}] S={cur['S']} Z={cur['Z']:.4f} J={cur['J']:.4f}")
 
             temperature = T0
             no_improve = 0
@@ -512,19 +545,25 @@ def _search_sa(
                 if not evals:
                     continue
                 for ev in evals:
-                    trajectory.append({"step": step, "seed": si, "S": list(ev["S"]), "Z": ev["Z"]})
+                    trajectory.append({
+                        "step": step, "seed": si, "S": list(ev["S"]),
+                        "Z": ev["Z"], "J": ev["J"],
+                    })
                     step += 1
-                cand = max(evals, key=lambda e: e["Z"])
-                dz = cand["Z"] - cur["Z"]
+                cand = max(evals, key=lambda e: e["J"])
+                dz = cand["J"] - cur["J"]
                 accept = dz >= 0 or rng.random() < math.exp(dz / max(temperature, T_min))
                 improved = False
                 if accept:
                     cur = cand
-                    if best_eval is None or cand["Z"] > best_eval["Z"]:
+                    if best_eval is None or cand["J"] > best_eval["J"]:
                         best_eval = cand
                         improved = True
                     if trace_level >= 2:
-                        print(f"  [SA] it={it} accept dZ={dz:.4f} Z={cand['Z']:.4f} S={cand['S']}")
+                        print(
+                            f"  [SA] it={it} accept dJ={dz:.4f} "
+                            f"Z={cand['Z']:.4f} J={cand['J']:.4f} S={cand['S']}"
+                        )
                 if improved:
                     no_improve = 0
                 else:
@@ -540,7 +579,7 @@ def _search_sa(
 
     if best_eval is None:
         raise ClusterEvalError("cluster search produced no evaluated candidate")
-    leaderboard = sorted(cache.values(), key=lambda e: e["Z"], reverse=True)
+    leaderboard = sorted(cache.values(), key=lambda e: e["J"], reverse=True)
     return best_eval, leaderboard, trajectory
 
 
@@ -624,15 +663,15 @@ def select_cluster(
                 base_maps, ds, run_params, runtime, K, A, seeds, rng, search_plan, trace_level
             )
         else:
-            best = max((wr["best_eval"] for wr in worker_results), key=lambda e: e["Z"])
+            best = max((wr["best_eval"] for wr in worker_results), key=lambda e: e["J"])
             lb_map: Dict[Tuple[str, ...], Dict[str, Any]] = {}
             for wr in worker_results:
                 for row in wr.get("leaderboard") or []:
                     k = tuple(sorted(row.get("S", []) or []))
                     old = lb_map.get(k)
-                    if old is None or row.get("Z", -1e18) > old.get("Z", -1e18):
+                    if old is None or row.get("J", -1e18) > old.get("J", -1e18):
                         lb_map[k] = row
-            leaderboard = sorted(lb_map.values(), key=lambda e: e["Z"], reverse=True)
+            leaderboard = sorted(lb_map.values(), key=lambda e: e["J"], reverse=True)
             trajectory = []
             gstep = 0
             for wr in sorted(worker_results, key=lambda x: x["seed_index"]):

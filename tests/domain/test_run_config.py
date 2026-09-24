@@ -105,6 +105,43 @@ class RunConfigTests(unittest.TestCase):
                 "algorithm_seed": -1,
             })
 
+    def test_objective_calibration_is_frozen_without_production_defaults(self):
+        cfg = RunConfig.from_mapping({
+            "damage_scenario_id": None,
+            "preference_mode": "sortie_max",
+            "cluster_enabled": False,
+            "cluster_size": None,
+            "core_airports": [],
+            "aircraft_type_weight": {},
+            "mip_time_limit_s": 120,
+            "f2_resource_reference_quantities": {"fuel": 12.0},
+            "f2_resource_weights": {"fuel": 0.7},
+            "f3_time_reference_slots": 24.0,
+            "f3_tardiness_coefficient": 1.25,
+            "unmet_demand_penalty": 40.0,
+            "core_airport_reward_weight": 0.3,
+        })
+        frozen = cfg.to_dict()
+        self.assertEqual({"fuel": 12.0}, frozen["f2_resource_reference_quantities"])
+        self.assertEqual(24.0, frozen["f3_time_reference_slots"])
+        self.assertEqual(40.0, frozen["unmet_demand_penalty"])
+        self.assertEqual(0.3, frozen["core_airport_reward_weight"])
+
+    def test_f2_references_and_weights_must_be_supplied_together(self):
+        with self.assertRaisesRegex(
+            RunConfigValidationError, "references and weights must be provided together"
+        ):
+            RunConfig.from_mapping({
+                "damage_scenario_id": None,
+                "preference_mode": "sortie_max",
+                "cluster_enabled": False,
+                "cluster_size": None,
+                "core_airports": [],
+                "aircraft_type_weight": {},
+                "mip_time_limit_s": 120,
+                "f2_resource_reference_quantities": {"fuel": 12.0},
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

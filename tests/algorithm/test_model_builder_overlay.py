@@ -128,6 +128,58 @@ class ModelBuilderOverlayTests(unittest.TestCase):
         same = [x for x in maps.path_records if (x.origin_airport_id, x.mission_id, x.aircraft_type_id, x.depart_slot) == key]
         self.assertEqual(len(same), len([v for v in expr.terms.values() if v != 0]))
 
+    def test_different_core_airports_do_not_change_final_mip_objective(self):
+        b = build_algorithm_input(make_snapshot())
+        maps = dv.build_path_map(b.ds, b.run_params, {"enabled": True, "S": ["A1", "A2"]})
+        runtime_a1 = dict(b.runtime, core_airports=["A1"], core_airport_reward_weight=0.25)
+        runtime_a2 = dict(b.runtime, core_airports=["A2"], core_airport_reward_weight=9.0)
+        model_a1, _ = mb.build_model(
+            b.ds, b.run_params, maps, integer_vars=True,
+            runtime=runtime_a1, model_factory=FakeModel,
+        )
+        model_a2, _ = mb.build_model(
+            b.ds, b.run_params, maps, integer_vars=True,
+            runtime=runtime_a2, model_factory=FakeModel,
+        )
+        self.assertEqual(model_a1.objective[0].terms, model_a2.objective[0].terms)
+        self.assertEqual(model_a1.objective[0].const, model_a2.objective[0].const)
+
+    def test_lp_and_mip_share_objective_coefficients_and_physical_constraints(self):
+        b = build_algorithm_input(make_snapshot())
+        maps = dv.build_path_map(b.ds, b.run_params, {"enabled": True, "S": ["A1", "A2"]})
+        mip, _ = mb.build_model(
+            b.ds, b.run_params, maps, integer_vars=True,
+            runtime=b.runtime, model_factory=FakeModel,
+        )
+        lp, _ = mb.build_model(
+            b.ds, b.run_params, maps, integer_vars=False,
+            runtime=b.runtime, model_factory=FakeModel,
+        )
+        self.assertEqual(mip.objective[0].terms, lp.objective[0].terms)
+        self.assertEqual(set(mip.cons), set(lp.cons))
+        for name in mip.cons:
+            with self.subTest(constraint=name):
+                mip_cons, lp_cons = mip.cons[name], lp.cons[name]
+                if isinstance(mip_cons, bool) or isinstance(lp_cons, bool):
+                    self.assertEqual(mip_cons, lp_cons)
+                    continue
+                self.assertEqual(mip_cons.op, lp_cons.op)
+                self.assertEqual(mip_cons.left.terms, lp_cons.left.terms)
+                self.assertEqual(mip_cons.left.const, lp_cons.left.const)
+                self.assertEqual(mip_cons.right.terms, lp_cons.right.terms)
+                self.assertEqual(mip_cons.right.const, lp_cons.right.const)
+
+    def test_missing_unmet_penalty_is_an_explicit_error(self):
+        b = build_algorithm_input(make_snapshot())
+        maps = dv.build_path_map(b.ds, b.run_params, {"enabled": True, "S": ["A1", "A2"]})
+        runtime = dict(b.runtime)
+        runtime.pop("unmet_demand_penalty")
+        with self.assertRaisesRegex(mb.ModelFactError, "unmet_demand_penalty is required"):
+            mb.build_model(
+                b.ds, b.run_params, maps, integer_vars=True,
+                runtime=runtime, model_factory=FakeModel,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

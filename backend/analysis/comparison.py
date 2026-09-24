@@ -11,7 +11,11 @@ OBJECTIVE_DEFINITION_FIELDS = (
     "preference_mode",
     "alpha",
     "aircraft_type_weight",
-    "core_airports",
+    "f2_resource_reference_quantities",
+    "f2_resource_weights",
+    "f3_time_reference_slots",
+    "f3_tardiness_coefficient",
+    "unmet_demand_penalty",
 )
 
 
@@ -104,8 +108,9 @@ def check_objective_comparable(*snapshots: RunSnapshot) -> ComparabilityCheck:
     """Whether raw solver objectives share the same coefficient definition.
 
     Clustering changes the feasible path set, but it does not by itself change an
-    objective coefficient. Core-airport identities and the resolved objective weights
-    do, so they are compared explicitly.
+    objective coefficient. Core-airport identities and their outer-search reward do not
+    enter the final MIP objective; path coefficient calibration and resolved preference
+    weights do, so those fields are compared explicitly.
     """
 
     configs = [_config(_payload(snapshot)) for snapshot in snapshots]

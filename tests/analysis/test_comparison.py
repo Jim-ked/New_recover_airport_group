@@ -176,8 +176,8 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn("by_airport", out["timeline"])
         self.assertIn("A1", out["timeline"]["by_airport"])
         self.assertIn("scheme", out)
-        self.assertFalse(out["objective_comparable"])
-        self.assertIn("run_config.core_airports differs", out["objective_comparability_reasons"])
+        self.assertTrue(out["objective_comparable"])
+        self.assertEqual([], out["objective_comparability_reasons"])
 
     def test_all_comparison_modes_share_canonical_run_summaries_tasks_and_frozen_labels(self):
         r0, r1, r2 = self._roles()
@@ -336,11 +336,15 @@ class ComparisonTests(unittest.TestCase):
         self.assertTrue(check_objective_comparable(same_a, same_b).comparable)
 
         core_changed = make_snapshot(
-            scenario=ds, cluster_enabled=True, available_scenarios=common, run_id="CORE"
+            scenario=ds,
+            cluster_enabled=True,
+            available_scenarios=common,
+            core_airport_reward_weight=9.0,
+            run_id="CORE",
         )
         check = check_objective_comparable(same_a, core_changed)
-        self.assertFalse(check.comparable)
-        self.assertIn("run_config.core_airports differs", check.reasons)
+        self.assertTrue(check.comparable)
+        self.assertEqual((), check.reasons)
 
         weight_changed = make_snapshot(
             scenario=ds,

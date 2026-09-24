@@ -29,9 +29,6 @@ from .model_facts import (
 )
 
 
-DEFAULT_UNMET_DEMAND_PENALTY = 1000.0
-
-
 def _sets(ds: Mapping[str, Any]):
     static = ds["static"]
     tv = ds["timeview"]
@@ -161,7 +158,9 @@ def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T, s
 
 
 def _resolve_unmet_penalty(runtime: Mapping[str, Any]) -> float:
-    raw = runtime.get("unmet_demand_penalty", DEFAULT_UNMET_DEMAND_PENALTY)
+    raw = runtime.get("unmet_demand_penalty")
+    if raw is None:
+        raise ModelFactError("unmet_demand_penalty is required")
     try:
         value = float(raw)
     except (TypeError, ValueError) as exc:
@@ -176,7 +175,7 @@ def _set_objective(model, ds, maps: PathMaps, run_params, runtime, x_path, unmet
     coeffs = objective_coefficients(ds, maps, run_params, runtime)
     terms = []
     for pid, row in coeffs.items():
-        coef = weights.sortie * row.f1 - weights.resource * row.f2 + weights.time * row.f3
+        coef = weights.sortie * row.f1 - weights.resource * row.f2 - weights.time * row.f3
         if coef != 0.0:
             terms.append(coef * x_path[pid])
 
@@ -269,4 +268,4 @@ def build_model(
     return model, pack
 
 
-__all__ = ["DEFAULT_UNMET_DEMAND_PENALTY", "build_model"]
+__all__ = ["build_model"]

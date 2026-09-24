@@ -74,16 +74,85 @@ class ModelFactsOverlayTests(unittest.TestCase):
         self.assertIn(p.key, departures[(p.origin_airport_id, p.aircraft_type_id, p.depart_slot)])
         self.assertIn(p.key, ready[(p.return_airport_id, p.aircraft_type_id, p.ready_slot)])
 
-    def test_objective_preserves_original_three_part_structure(self):
+    def test_f1_uses_aircraft_type_weight_and_ignores_core_airports(self):
         b, maps = self._fixture()
-        rows = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)
         p = next(x for x in maps.path_records if x.origin_airport_id == "A1")
-        c = rows[p.key]
-        self.assertAlmostEqual(2.4, c.f1)
-        self.assertGreaterEqual(c.f2, 0.0)
-        self.assertLessEqual(c.f3, 1.0)
-        weights = mf.resolved_alpha(b.runtime)
-        self.assertEqual((0.8, 0.1, 0.1), (weights.sortie, weights.resource, weights.time))
+        with_core = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)[p.key]
+        without_core_runtime = dict(b.runtime, core_airports=[])
+        without_core = mf.objective_coefficients(
+            b.ds, maps, b.run_params, without_core_runtime
+        )[p.key]
+        self.assertAlmostEqual(1.2, with_core.f1)
+        self.assertEqual(with_core.f1, without_core.f1)
+
+    def test_f2_uses_fixed_per_resource_references_and_weights(self):
+        b, maps = self._fixture()
+        p = next(
+            x for x in maps.path_records
+            if x.origin_airport_id == "A1" and x.return_airport_id == "A1"
+        )
+        uses = {row.resource_type_id: row.amount for row in mf.path_resource_use(p, b.run_params)}
+        expected = 0.6 * uses["FUEL-A"] / 10.0 + 0.4 * uses["MAT-1"] / 2.0
+        actual = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)[p.key].f2
+        self.assertAlmostEqual(expected, actual)
+
+    def test_same_complete_path_has_same_f2_in_different_candidate_clusters(self):
+        b, _ = self._fixture()
+        base = dv.build_base_path_map(b.ds, b.run_params)
+        small = dv.build_path_map_from_base(base, {"enabled": True, "S": ["A1"]})
+        large = dv.build_path_map_from_base(base, {"enabled": True, "S": ["A1", "A2"]})
+        common = next(p for p in small.path_records if p.return_airport_id == "A1")
+        c_small = mf.objective_coefficients(b.ds, small, b.run_params, b.runtime)[common.key]
+        c_large = mf.objective_coefficients(b.ds, large, b.run_params, b.runtime)[common.key]
+        self.assertEqual(c_small.f2, c_large.f2)
+
+    def test_missing_f2_reference_is_an_error_not_candidate_mean_fallback(self):
+        b, maps = self._fixture()
+        runtime = dict(b.runtime)
+        runtime["f2_resource_reference_quantities"] = {"FUEL-A": 10.0}
+        with self.assertRaisesRegex(mf.ModelFactError, "MAT-1"):
+            mf.objective_coefficients(b.ds, maps, b.run_params, runtime)
+
+    def test_missing_f3_calibration_is_an_explicit_error(self):
+        b, maps = self._fixture()
+        runtime = dict(b.runtime)
+        runtime.pop("f3_time_reference_slots")
+        with self.assertRaisesRegex(mf.ModelFactError, "f3_time_reference_slots is required"):
+            mf.objective_coefficients(b.ds, maps, b.run_params, runtime)
+
+    def test_f3_is_completion_time_cost_and_is_monotone_for_later_completion(self):
+        b, maps = self._fixture()
+        paths = sorted(
+            (
+                p for p in maps.path_records
+                if p.origin_airport_id == "A1" and p.return_airport_id == "A1"
+            ),
+            key=lambda p: p.mission_arrival_slot,
+        )
+        early, late = paths[0], paths[-1]
+        rows = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)
+        self.assertGreaterEqual(rows[late.key].f3, rows[early.key].f3)
+        completion_abs = b.ds["range"][0] + early.mission_arrival_slot + early.tau_work_windows
+        window_end_abs = b.ds["range"][0] + b.ds["static"]["missions"][0]["_duty_window"][1]
+        expected = (
+            completion_abs
+            + 1.5 * max(0, completion_abs - window_end_abs)
+        ) / 20.0
+        self.assertAlmostEqual(expected, rows[early.key].f3)
+
+    def test_all_preset_weights_remain_fixed(self):
+        cases = {
+            "sortie_max": (0.8, 0.1, 0.1),
+            "resource_min": (0.1, 0.8, 0.1),
+            "time_min": (0.1, 0.1, 0.8),
+        }
+        for mode, expected in cases.items():
+            with self.subTest(mode=mode):
+                weights = mf.resolved_alpha({"preference_mode": mode})
+                self.assertEqual(
+                    expected,
+                    (weights.sortie, weights.resource, weights.time),
+                )
 
     def test_independent_schedule_validator_checks_physical_invariants_not_soft_demand(self):
         b, maps = self._fixture()

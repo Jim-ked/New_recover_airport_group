@@ -9,17 +9,12 @@ both stages consume the same path/resource/capacity semantics.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
+from math import isfinite
+from typing import Any, Dict, Mapping, Sequence, Tuple
 
 from .decision_vars import PathKey, PathMaps, SortiePath
 
 DELTA_HOURS = 0.25
-CORE_AIRPORT_MULTIPLIER = 2.0
-BETA_ONT = 1.0
-BETA_TAU = 1.0
-EPS = 1e-9
-
-
 class ModelFactError(ValueError):
     pass
 
@@ -90,16 +85,6 @@ def resolved_alpha(runtime: Mapping[str, Any]) -> ObjectiveWeights:
     return ObjectiveWeights(*a)
 
 
-def _core_weights(runtime: Mapping[str, Any], airports: Sequence[str]) -> Dict[str, float]:
-    core = runtime.get("core_airports") or []
-    if not isinstance(core, (list, tuple)):
-        raise ModelFactError("core_airports must be canonical ID list")
-    unknown = sorted(set(core) - set(airports))
-    if unknown:
-        raise ModelFactError(f"unknown core airports: {unknown}")
-    return {aid: (CORE_AIRPORT_MULTIPLIER if aid in core else 1.0) for aid in airports}
-
-
 def _type_weights(runtime: Mapping[str, Any], aircraft_types: Sequence[str]) -> Dict[str, float]:
     raw = runtime.get("aircraft_type_weight") or {}
     if not isinstance(raw, dict):
@@ -113,6 +98,39 @@ def _type_weights(runtime: Mapping[str, Any], aircraft_types: Sequence[str]) -> 
             raise ModelFactError(f"aircraft_type_weight must be positive: {f}")
         out[f] = v
     return out
+
+
+def _configured_positive_mapping(runtime: Mapping[str, Any], field: str) -> Dict[str, float]:
+    raw = runtime.get(field)
+    if not isinstance(raw, dict):
+        raise ModelFactError(f"{field} is required and must be an object")
+    out: Dict[str, float] = {}
+    for key, value in raw.items():
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ModelFactError(f"{field}.{key} must be numeric") from exc
+        if not isfinite(number) or number <= 0:
+            raise ModelFactError(f"{field}.{key} must be positive")
+        out[str(key)] = number
+    return out
+
+
+def _configured_number(
+    runtime: Mapping[str, Any], field: str, *, positive: bool
+) -> float:
+    raw = runtime.get(field)
+    if raw is None:
+        raise ModelFactError(f"{field} is required")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ModelFactError(f"{field} must be numeric") from exc
+    invalid = value <= 0 if positive else value < 0
+    if not isfinite(value) or invalid:
+        qualifier = "positive" if positive else "nonnegative"
+        raise ModelFactError(f"{field} must be {qualifier}")
+    return value
 
 
 def path_resource_use(path: SortiePath, run_params: Mapping[str, Any]) -> Tuple[ResourceUse, ...]:
@@ -202,42 +220,55 @@ def objective_coefficients(
     run_params: Mapping[str, Any],
     runtime: Mapping[str, Any],
 ) -> Dict[PathKey, PathObjectiveCoefficient]:
-    """Preserve the original F1/F2/F3 design using one full-path variable.
+    """Return fixed path coefficients shared verbatim by cluster LP and final MIP.
 
-    F2 keeps the existing relative resource-scarcity idea but computes it from the
-    generic resource arrays.  The same coefficients can be used by cluster LP and final
-    MIP, removing the previous duplicate implementation.
+    F1 is the actual sortie's aircraft-type weight. F2 is a per-resource weighted cost
+    against experiment-fixed reference quantities. F3 is normalized absolute mission
+    completion time plus an optional tardiness surcharge. No coefficient depends on the
+    candidate cluster's path population or on damage-adjusted resource availability.
     """
-    airports = [a["airport_id"] for a in ds["static"]["airports"]]
     types = sorted({p.aircraft_type_id for p in maps.path_records})
-    core_w = _core_weights(runtime, airports)
     type_w = _type_weights(runtime, types)
-    T = int(ds["timeview"]["T"])
-    T_norm = float(max(T, 1))
+    references = _configured_positive_mapping(runtime, "f2_resource_reference_quantities")
+    resource_weights = _configured_positive_mapping(runtime, "f2_resource_weights")
+    if set(references) != set(resource_weights):
+        missing_references = sorted(set(resource_weights) - set(references))
+        missing_weights = sorted(set(references) - set(resource_weights))
+        raise ModelFactError(
+            "F2 reference/weight resource IDs differ; "
+            f"missing_references={missing_references}, missing_weights={missing_weights}"
+        )
+    time_reference = _configured_number(runtime, "f3_time_reference_slots", positive=True)
+    tardiness_coefficient = _configured_number(
+        runtime, "f3_tardiness_coefficient", positive=False
+    )
 
-    # Existing intent: an airport with lower aggregate available resource is more costly.
-    resources = ds["timeview"].get("resources") or {}
-    r_tot: Dict[str, float] = {
-        aid: sum(sum(float(v) for v in seq) for seq in (resources.get(aid, {}) or {}).values())
-        for aid in airports
-    }
-    positive_totals = [v for v in r_tot.values() if v > EPS]
-    r_avg = sum(positive_totals) / len(positive_totals) if positive_totals else 1.0
-    scarcity = {aid: r_avg / max(r_tot.get(aid, 0.0), EPS) for aid in airports}
+    range_start = int((ds.get("range") or (0,))[0])
+    mission_end: Dict[str, int] = {}
+    for mission in ds["static"]["missions"]:
+        duty = mission.get("_duty_window")
+        if not isinstance(duty, (tuple, list)) or len(duty) != 2:
+            raise ModelFactError(f"mission duty window missing/invalid: {mission.get('mission_id')}")
+        mission_end[str(mission["mission_id"])] = range_start + int(duty[1])
 
     base_use = resource_use_by_path(maps, run_params)
-    raw_f2: Dict[PathKey, float] = {}
-    for p in maps.path_records:
-        intensity = sum(row.amount for row in base_use[p.key])
-        raw_f2[p.key] = intensity * scarcity[p.origin_airport_id]
-    positive_f2 = [v for v in raw_f2.values() if v > EPS]
-    ref_f2 = sum(positive_f2) / len(positive_f2) if positive_f2 else 1.0
+    used_resource_ids = {row.resource_type_id for rows in base_use.values() for row in rows}
+    missing = sorted(used_resource_ids - set(references))
+    if missing:
+        raise ModelFactError(f"F2 reference/weight missing for resource: {missing[0]}")
 
     out: Dict[PathKey, PathObjectiveCoefficient] = {}
     for p in maps.path_records:
-        f1 = core_w[p.origin_airport_id] * type_w[p.aircraft_type_id]
-        f2 = raw_f2[p.key] / max(ref_f2, EPS) if raw_f2[p.key] > 0 else 0.0
-        f3 = BETA_ONT * p.ontime_score - BETA_TAU * (p.tau_cycle / T_norm)
+        f1 = type_w[p.aircraft_type_id]
+        f2 = sum(
+            resource_weights[row.resource_type_id]
+            * row.amount
+            / references[row.resource_type_id]
+            for row in base_use[p.key]
+        )
+        completion = range_start + p.mission_arrival_slot + p.tau_work_windows
+        tardiness = max(0, completion - mission_end[p.mission_id])
+        f3 = (completion + tardiness_coefficient * tardiness) / time_reference
         out[p.key] = PathObjectiveCoefficient(p.key, f1, f2, f3)
     return out
 

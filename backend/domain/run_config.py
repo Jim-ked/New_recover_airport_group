@@ -48,6 +48,32 @@ def _positive_number(value: Any, field: str) -> float:
     return out
 
 
+def _optional_number(value: Any, field: str, *, positive: bool) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        qualifier = "positive" if positive else "nonnegative"
+        _fail(field, f"{field} must be a {qualifier} finite number")
+    out = float(value)
+    if not math.isfinite(out) or (out <= 0 if positive else out < 0):
+        qualifier = "positive" if positive else "nonnegative"
+        _fail(field, f"{field} must be a {qualifier} finite number")
+    return out
+
+
+def _optional_positive_mapping(value: Any, field: str) -> Tuple[Tuple[str, float], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Mapping):
+        _fail(field, f"{field} must be an object")
+    rows = [
+        (_id(key, f"{field}.{key}"), _positive_number(raw, f"{field}.{key}"))
+        for key, raw in value.items()
+    ]
+    rows.sort(key=lambda row: row[0])
+    return tuple(rows)
+
+
 def _nonnegative_int(value: Any, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         _fail(field, f"{field} must be a nonnegative integer")
@@ -80,9 +106,9 @@ class RunConfig:
     """Canonical, already-resolved user run configuration.
 
     Preset modes freeze their resolved objective weights. Custom mode applies the
-    existing non-zero-floor rule and then normalizes to sum to one. `core_airports`
-    contains only identities; the algorithm's core-airport benefit multiplier is not a
-    user data field.
+    existing non-zero-floor rule and then normalizes to sum to one. Objective calibration
+    fields are optional only for loading legacy snapshots; model construction rejects
+    missing values instead of restoring historical coefficient defaults.
     """
 
     damage_scenario_id: Optional[str]
@@ -94,6 +120,12 @@ class RunConfig:
     aircraft_type_weights: Tuple[Tuple[str, float], ...]
     mip_time_limit_s: float
     algorithm_seed: int
+    f2_resource_reference_rows: Tuple[Tuple[str, float], ...]
+    f2_resource_weight_rows: Tuple[Tuple[str, float], ...]
+    f3_time_reference_slots: Optional[float]
+    f3_tardiness_coefficient: Optional[float]
+    unmet_demand_penalty: Optional[float]
+    core_airport_reward_weight: Optional[float]
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "RunConfig":
@@ -102,6 +134,9 @@ class RunConfig:
         allowed = {
             "damage_scenario_id", "preference_mode", "alpha", "cluster_enabled",
             "cluster_size", "core_airports", "aircraft_type_weight", "mip_time_limit_s", "algorithm_seed",
+            "f2_resource_reference_quantities", "f2_resource_weights",
+            "f3_time_reference_slots", "f3_tardiness_coefficient",
+            "unmet_demand_penalty", "core_airport_reward_weight",
         }
         unknown = set(raw) - allowed
         if unknown:
@@ -156,6 +191,25 @@ class RunConfig:
             weight_rows.append((aircraft_id, _positive_number(value, f"aircraft_type_weight.{key}")))
         weight_rows.sort(key=lambda x: x[0])
 
+        f2_references = _optional_positive_mapping(
+            raw.get("f2_resource_reference_quantities"),
+            "f2_resource_reference_quantities",
+        )
+        f2_weights = _optional_positive_mapping(
+            raw.get("f2_resource_weights"),
+            "f2_resource_weights",
+        )
+        if bool(f2_references) != bool(f2_weights):
+            _fail(
+                "f2_resource_reference_quantities",
+                "F2 resource references and weights must be provided together",
+            )
+        if f2_references and {k for k, _ in f2_references} != {k for k, _ in f2_weights}:
+            _fail(
+                "f2_resource_weights",
+                "F2 resource references and weights must have identical resource IDs",
+            )
+
         return cls(
             damage_scenario_id=_optional_id(raw.get("damage_scenario_id"), "damage_scenario_id"),
             preference_mode=str(mode),
@@ -166,6 +220,24 @@ class RunConfig:
             aircraft_type_weights=tuple(weight_rows),
             mip_time_limit_s=_positive_number(raw.get("mip_time_limit_s"), "mip_time_limit_s"),
             algorithm_seed=_nonnegative_int(raw.get("algorithm_seed", 42), "algorithm_seed"),
+            f2_resource_reference_rows=f2_references,
+            f2_resource_weight_rows=f2_weights,
+            f3_time_reference_slots=_optional_number(
+                raw.get("f3_time_reference_slots"), "f3_time_reference_slots", positive=True
+            ),
+            f3_tardiness_coefficient=_optional_number(
+                raw.get("f3_tardiness_coefficient"),
+                "f3_tardiness_coefficient",
+                positive=False,
+            ),
+            unmet_demand_penalty=_optional_number(
+                raw.get("unmet_demand_penalty"), "unmet_demand_penalty", positive=True
+            ),
+            core_airport_reward_weight=_optional_number(
+                raw.get("core_airport_reward_weight"),
+                "core_airport_reward_weight",
+                positive=False,
+            ),
         )
 
     def validate_against(
@@ -206,4 +278,10 @@ class RunConfig:
             "aircraft_type_weight": {k: v for k, v in self.aircraft_type_weights},
             "mip_time_limit_s": self.mip_time_limit_s,
             "algorithm_seed": self.algorithm_seed,
+            "f2_resource_reference_quantities": dict(self.f2_resource_reference_rows),
+            "f2_resource_weights": dict(self.f2_resource_weight_rows),
+            "f3_time_reference_slots": self.f3_time_reference_slots,
+            "f3_tardiness_coefficient": self.f3_tardiness_coefficient,
+            "unmet_demand_penalty": self.unmet_demand_penalty,
+            "core_airport_reward_weight": self.core_airport_reward_weight,
         }

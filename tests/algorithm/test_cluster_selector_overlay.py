@@ -61,8 +61,35 @@ class ClusterSelectorOverlayTests(unittest.TestCase):
         self.assertGreaterEqual(row["F2"], 0.0)
 
         weights = mf.resolved_alpha(b.runtime)
-        expected = weights.sortie * row["F1"] - weights.resource * row["F2"] + weights.time * row["F3"]
+        expected = weights.sortie * row["F1"] - weights.resource * row["F2"] - weights.time * row["F3"]
         self.assertAlmostEqual(expected, row["Z"])
+        self.assertEqual(1, row["CoreReward"])
+        self.assertAlmostEqual(row["Z"] + 0.25, row["J"])
+
+    def test_core_reward_changes_outer_score_not_lp_objective(self):
+        b, base = self._fixture()
+        runtime_a1 = dict(b.runtime, core_airports=["A1"])
+        runtime_a2 = dict(b.runtime, core_airports=["A2"])
+        row_a1 = cs._eval_cluster_lp(
+            base, b.ds, b.run_params, runtime_a1, 1, ["A1"], {},
+            model_factory=SolvingFakeModel,
+        )
+        row_a2 = cs._eval_cluster_lp(
+            base, b.ds, b.run_params, runtime_a2, 1, ["A1"], {},
+            model_factory=SolvingFakeModel,
+        )
+        self.assertEqual(row_a1["Z"], row_a2["Z"])
+        self.assertNotEqual(row_a1["J"], row_a2["J"])
+
+    def test_missing_core_reward_weight_is_an_explicit_error(self):
+        b, base = self._fixture()
+        runtime = dict(b.runtime)
+        runtime.pop("core_airport_reward_weight")
+        with self.assertRaisesRegex(mf.ModelFactError, "core_airport_reward_weight is required"):
+            cs._eval_cluster_lp(
+                base, b.ds, b.run_params, runtime, 1, ["A1"], {},
+                model_factory=SolvingFakeModel,
+            )
 
     def test_objective_drift_between_lp_report_and_model_is_a_hard_error(self):
         b, base = self._fixture()

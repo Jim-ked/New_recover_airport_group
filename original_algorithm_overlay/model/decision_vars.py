@@ -7,10 +7,9 @@ Kept deliberately stable:
 - public builders: ``build_base_path_map``, ``build_path_map_from_base``,
   ``build_path_map``, ``build_var_index``, ``export_maps``;
 - 15 minute slots;
-- mission service window affects the time score, not hard feasibility;
+- arrival before the mission window is infeasible; no waiting path is synthesized;
 - cluster semantics: S airports may cross-return within S; airports outside S return home;
-- ``tau_cycle`` remains outbound + departure delay + mission work (no return leg),
-  because the original F3 objective is defined on that quantity.
+- legacy ``tau_cycle`` export remains outbound + departure delay + mission work;
 
 Targeted corrections:
 - return airport must support the aircraft type;
@@ -293,6 +292,10 @@ def build_base_path_map(ds: Dict[str, Any], run_params: Dict[str, Any]) -> BaseM
                     for t_dep in range(T):
                         r_out = _delay_at((tv.get("radar_out_delay") or {}).get(j), t_dep)
                         t_arr = t_dep + of + r_out
+                        if duty[h] is not None and t_arr < duty[h][0]:
+                            # Waiting at the mission is not modelled. An earlier departure
+                            # is valid only when its actual arrival reaches the window.
+                            continue
                         after_return_flight = t_arr + tw + rf
                         if after_return_flight >= T:
                             continue

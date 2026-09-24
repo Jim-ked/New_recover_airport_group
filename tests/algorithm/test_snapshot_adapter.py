@@ -81,6 +81,7 @@ def make_snapshot(
     available_scenarios: tuple[DamageScenario, ...] = (),
     situation_id: str = "S1",
     airport_ids: tuple[str, str] = ("A1", "A2"),
+    core_airport_reward_weight: float = 0.25,
 ) -> RunSnapshot:
     first_airport_id, second_airport_id = airport_ids
     mission = Mission(
@@ -115,6 +116,13 @@ def make_snapshot(
         "aircraft_type_weight": {"fighter": 1.2},
         "mip_time_limit_s": mip_time_limit_s,
         "algorithm_seed": algorithm_seed,
+        # Synthetic test-only calibration. Production has no fallback constants.
+        "f2_resource_reference_quantities": {"FUEL-A": 10.0, "MAT-1": 2.0},
+        "f2_resource_weights": {"FUEL-A": 0.6, "MAT-1": 0.4},
+        "f3_time_reference_slots": 20.0,
+        "f3_tardiness_coefficient": 1.5,
+        "unmet_demand_penalty": 25.0,
+        "core_airport_reward_weight": core_airport_reward_weight,
     })
     return RunSnapshot.build(
         run_id=run_id, situation=situation,

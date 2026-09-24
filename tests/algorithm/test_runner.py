@@ -33,13 +33,12 @@ class RunnerFakeModel(FakeModel):
                 and parts[1] == parts[3]
                 and parts[2] == "M1"
                 and parts[4] == "fighter"
-                and parts[5] == "0"
             ):
                 value = 2.0
                 chosen = True
             self.values[var.name] = value
         if not chosen:
-            raise AssertionError("expected a complete same-airport M1 fighter path at depart slot 0")
+            raise AssertionError("expected a legal complete same-airport M1 fighter path")
 
     def getVal(self, var):
         return float(self.values.get(var.name, 0.0))

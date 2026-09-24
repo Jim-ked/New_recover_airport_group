@@ -560,8 +560,8 @@ def build_algorithm_input(snapshot: RunSnapshot) -> AlgorithmInputBundle:
         "run_id": snapshot.run_id,
     }
     runtime = runtime_obj.to_dict()
-    # Existing cluster_selector interprets list-valued core_airports as a fixed 2.0
-    # internal benefit multiplier, matching the original UI intent.
+    # Core identities remain explicit. Their configurable reward is consumed only by
+    # cluster_selector after each LP solve and never enters the LP/MIP objective.
     runtime["core_airports"] = list(runtime_obj.core_airports)
     run_params = _build_run_params(aircraft_types, resource_types, requirements)
     return AlgorithmInputBundle(ds=ds, run_params=run_params, runtime=runtime)
