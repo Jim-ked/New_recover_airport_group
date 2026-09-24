@@ -16,6 +16,7 @@ let callbacks = {};
 let requestSignal = null;
 let labelLayout = null;
 let mapReference = null;
+let missionPickHandler = null;
 
 const LABEL_PRIORITY = { selected: 100, airport: 80, mission: 75 };
 
@@ -165,7 +166,11 @@ function drawLeaflet() {
       iconAnchor: [7, 7],
     });
     const marker = L.marker([latitude, longitude], { icon });
-    marker.on('click', () => callbacks.selectObject?.('mission', mission.mission_id));
+    bindMarkerActivation(
+      marker,
+      () => callbacks.selectObject?.('mission', mission.mission_id, { locate: true }),
+      () => callbacks.selectObject?.('mission', mission.mission_id, { locate: true }),
+    );
     marker.addTo(map);
     if (marker.getElement()) marker.getElement().dataset.missionId = mission.mission_id;
     mapLayers.push(marker);
@@ -279,7 +284,8 @@ function drawFallback() {
     button.addEventListener('click', () => {
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => {
-        if (!['draft', 'mission-preview'].includes(button.dataset.type)) callbacks.highlightObject?.(button.dataset.type, button.dataset.id);
+        if (button.dataset.type === 'mission') callbacks.selectObject?.('mission', button.dataset.id, { locate: true });
+        else if (!['draft', 'mission-preview'].includes(button.dataset.type)) callbacks.highlightObject?.(button.dataset.type, button.dataset.id);
       }, 220);
     });
     button.addEventListener('dblclick', () => {
@@ -326,17 +332,28 @@ export function beginMissionLocationPick() {
     callbacks.message?.('地图当前不可用，请直接输入经纬度。', 'error');
     return;
   }
+  cancelMissionLocationPick();
   button.textContent = '请在地图点击位置…';
-  map.once('click', (event) => {
+  missionPickHandler = (event) => {
     const longitude = document.getElementById('sitMissionLon');
     const latitude = document.getElementById('sitMissionLat');
+    if (!longitude || !latitude) return;
     longitude.value = event.latlng.lng.toFixed(6);
     latitude.value = event.latlng.lat.toFixed(6);
     state.draftMissionCoord = { lon: event.latlng.lng, lat: event.latlng.lat };
     callbacks.markPanelDraft?.();
     button.textContent = '从地图取点';
+    missionPickHandler = null;
     drawMap();
-  });
+  };
+  map.once('click', missionPickHandler);
+}
+
+export function cancelMissionLocationPick() {
+  if (map && missionPickHandler) map.off('click', missionPickHandler);
+  missionPickHandler = null;
+  const button = document.getElementById('pickMissionLocation');
+  if (button) button.textContent = '从地图取点';
 }
 
 async function fetchPaged(path) {
@@ -420,6 +437,7 @@ export async function initMap() {
 }
 
 export function destroyMap() {
+  cancelMissionLocationPick();
   clearMapLayers();
   clearExternalLayer('airports');
   clearExternalLayer('missions');
