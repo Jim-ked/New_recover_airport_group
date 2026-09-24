@@ -70,14 +70,13 @@ def long_airport():
             {"aircraft_type_id": "support", "initial_quantity": 4, "tau_reset_windows": 2},
         ],
         "resource_stocks": [
-            {"resource_type_id": resource_id, "initial_quantity": 100 + index * 10,
-             "replenishment_capacity_per_window": 6 + index}
+            {"resource_type_id": resource_id, "initial_quantity": 100 + index * 10}
             for index, resource_id in enumerate(("MAT-1", "MAT-2", "MAT-3", "MUN-1", "MUN-2", "fuel"))
         ],
     })
     bundle["resource_replenishments"] = [
-        {"resource_type_id": "MUN-2", "slot": 30, "quantity": 8},
-        {"resource_type_id": "fuel", "slot": 36, "quantity": 10},
+        {"resource_type_id": "MUN-2", "start_slot": 30, "end_slot": 34, "quantity": 8},
+        {"resource_type_id": "fuel", "start_slot": 36, "end_slot": 42, "quantity": 10},
     ]
     return bundle
 
@@ -150,7 +149,11 @@ def actual_situation_page(browser, actual_situation_server):
     bundle = long_airport()
     situation = {
         "situation_id": "ST-LAYOUT", "name": "长运行保障表单验证情境", "description": None,
-        "airports": [bundle], "missions": [], "damage_scenarios": [],
+        "airports": [bundle], "missions": [{
+            "mission_id": "M-LAYOUT", "name": "布局验证任务", "longitude": 117.2,
+            "latitude": 33.4, "window_start_slot": 12, "window_end_slot": 48,
+            "aircraft_requirements": [],
+        }], "damage_scenarios": [],
     }
     page.route("**/api/**", lambda route: serve_layout_api(route, situation))
     page.goto(f"{actual_situation_server}/situations")
@@ -251,6 +254,7 @@ def test_added_airport_double_click_opens_situation_editor_and_footer_stays_visi
     assert page.locator("#sitEmergencyResponseLevel").input_value() == "level_3"
     assert page.locator("#cancelAirportEdit").is_visible()
     assert page.locator("#applyAirport").is_visible()
+    assert page.locator("#restoreAirportBase").count() == 0
     footer_box = page.locator("#applyAirport").bounding_box()
     layout = page.evaluate("""()=>{const x=document.getElementById('situationInspector'),b=document.getElementById('inspectorBody');return {tag:x.tagName,classes:x.className,kind:x.dataset.kind,inspector:x.getBoundingClientRect().toJSON(),body:b.getBoundingClientRect().toJSON(),position:getComputedStyle(x).position,height:getComputedStyle(x).height,bodyDisplay:getComputedStyle(b).display}}""")
     assert footer_box and footer_box["y"] + footer_box["height"] <= 520, layout
@@ -266,7 +270,7 @@ def test_read_only_airport_editor_disables_mutations(page):
 
 
 VIEWPORTS = ((1792, 915), (1366, 768), (1280, 520))
-FOOTER_BUTTONS = ("cancelAirportEdit", "restoreAirportBase", "removeAirport", "applyAirport")
+FOOTER_BUTTONS = ("cancelAirportEdit", "applyAirport")
 
 
 def open_actual_airport_editor(page):
@@ -293,14 +297,22 @@ def test_actual_situation_page_keeps_airport_footer_fixed_and_clickable(
     open_actual_airport_editor(page)
 
     inspector = rect(page, "#situationInspector")
+    overview = rect(page, "#situationOverview")
+    assert overview["right"] <= inspector["x"] - 7
+    assert page.locator("#sitConfigComplete").count() == 0
+    assert page.locator("#sitSupportLevel").count() == 0
+    assert page.locator("#restoreAirportBase").count() == 0
+    assert page.locator(".inspector-footer #removeAirport").count() == 0
     initial_values = page.evaluate("""()=>({
       support:[...document.querySelectorAll('.support-row')].map(row=>[row.querySelector('.row-aircraft').value,row.querySelector('.row-initial').value,row.querySelector('.row-reset').value]),
-      stocks:[...document.querySelectorAll('.stock-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-stock').value,row.querySelector('.row-cap').value]),
-      replenish:[...document.querySelectorAll('.replenish-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-slot').value,row.querySelector('.row-qty').value])
+      stocks:[...document.querySelectorAll('.stock-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-stock').value]),
+      replenish:[...document.querySelectorAll('.replenish-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-start').value,row.querySelector('.row-end').value,row.querySelector('.row-qty').value])
     })""")
     assert len(initial_values["support"]) == 3
     assert len(initial_values["stocks"]) == 6
-    assert len(initial_values["replenish"]) == 2
+    assert len(initial_values["replenish"]) == 6
+    assert ["MUN-2", "30", "34", "8"] in initial_values["replenish"]
+    assert ["MAT-1", "12", "48", "0"] in initial_values["replenish"]
 
     for button_id in FOOTER_BUTTONS:
         button = page.locator(f"#{button_id}")
@@ -335,8 +347,8 @@ def test_actual_situation_page_keeps_airport_footer_fixed_and_clickable(
     page.locator('[data-airport-pane="operations"]').click()
     retained_values = page.evaluate("""()=>({
       support:[...document.querySelectorAll('.support-row')].map(row=>[row.querySelector('.row-aircraft').value,row.querySelector('.row-initial').value,row.querySelector('.row-reset').value]),
-      stocks:[...document.querySelectorAll('.stock-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-stock').value,row.querySelector('.row-cap').value]),
-      replenish:[...document.querySelectorAll('.replenish-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-slot').value,row.querySelector('.row-qty').value])
+      stocks:[...document.querySelectorAll('.stock-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-stock').value]),
+      replenish:[...document.querySelectorAll('.replenish-row')].map(row=>[row.querySelector('.row-resource').value,row.querySelector('.row-start').value,row.querySelector('.row-end').value,row.querySelector('.row-qty').value])
     })""")
     assert retained_values == initial_values
 
@@ -345,20 +357,23 @@ def test_actual_situation_page_keeps_airport_footer_fixed_and_clickable(
     assert page.locator("#saveSituationButton").is_enabled()
 
 
-def test_actual_situation_page_preserves_restore_and_editor_cancel_paths(actual_situation_page):
+def test_actual_situation_page_preserves_editor_cancel_and_restores_full_overview_width(actual_situation_page):
     page = actual_situation_page
     page.set_viewport_size({"width": 1366, "height": 768})
     open_actual_airport_editor(page)
 
-    page.locator("#restoreAirportBase").click()
-    assert page.locator("#situationConfirmModal").get_attribute("aria-hidden") == "false"
-    assert "替换" in page.locator("#situationConfirmBody").inner_text()
-    page.locator("#situationConfirmCancel").click()
-    page.wait_for_function("document.getElementById('situationConfirmModal')?.getAttribute('aria-hidden')==='true'")
-    assert page.locator("#sitSupportRows .support-row").count() == 3
+    page.locator(".replenish-row").first.locator(".row-qty").fill("17")
+    page.locator('[data-airport-pane="basic"]').click()
+    page.locator('[data-airport-pane="operations"]').click()
+    assert page.locator(".replenish-row").first.locator(".row-qty").input_value() == "17"
 
     page.locator("#cancelAirportEdit").click()
     assert page.locator("#situationInspector").get_attribute("aria-hidden") == "true"
+    overview = rect(page, "#situationOverview")
+    assert overview["right"] >= 1366 - 15
+
+    open_actual_airport_editor(page)
+    assert page.locator(".replenish-row").first.locator(".row-qty").input_value() == "8"
 
 
 def test_actual_situation_page_preserves_remove_confirmation_path(actual_situation_page):
@@ -366,6 +381,7 @@ def test_actual_situation_page_preserves_remove_confirmation_path(actual_situati
     page.set_viewport_size({"width": 1366, "height": 768})
     open_actual_airport_editor(page)
 
+    page.locator('[data-airport-pane="basic"]').click()
     page.locator("#removeAirport").click()
     page.wait_for_function("document.getElementById('situationConfirmBody')?.innerText.includes('190')")
     remove_confirmation = page.evaluate("""()=>({

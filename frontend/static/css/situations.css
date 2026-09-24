@@ -1,6 +1,9 @@
 .situation-page {
   --overview-bottom: 10px;
   --overview-head-height: 42px;
+  --airport-inspector-width: 380px;
+  --workspace-inline-edge: 12px;
+  --workspace-panel-gap: 8px;
   overflow: hidden;
   isolation: isolate;
   background: #06131e;
@@ -222,7 +225,7 @@
   transition: opacity .16s ease, transform .16s ease;
 }
 .situation-inspector[data-kind="airport-candidates"] { width: 360px; max-height: 72vh; }
-.situation-inspector[data-kind="airport-editor"] { top: 14px; bottom: 14px; width: 380px; height: auto; max-height: none; }
+.situation-inspector[data-kind="airport-editor"] { top: 14px; bottom: 14px; width: var(--airport-inspector-width); height: auto; max-height: none; }
 .situation-inspector[data-kind="mission-editor"] { width: 350px; max-height: 78vh; }
 .situation-inspector[data-kind="damage-editor"] { width: 360px; max-height: 78vh; }
 .situation-inspector[data-kind="situation-editor"] { width: 350px; max-height: 78vh; }
@@ -290,8 +293,14 @@
   margin-bottom: 6px;
 }
 .dynamic-row .field { margin: 0; }
-.situation-inspector[data-kind="airport-editor"] .dynamic-row{grid-template-columns:minmax(0,1.25fr) 72px 72px 30px;gap:6px}
+.situation-inspector[data-kind="airport-editor"] .support-row{grid-template-columns:minmax(0,1.25fr) 72px 72px 30px;gap:6px}
+.situation-inspector[data-kind="airport-editor"] .stock-row{grid-template-columns:minmax(0,1fr) 100px 30px;gap:6px}
+.situation-inspector[data-kind="airport-editor"] .replenish-row{grid-template-columns:repeat(3,minmax(0,1fr)) 30px;gap:6px}
+.situation-inspector[data-kind="airport-editor"] .replenish-row .replenish-resource{grid-column:1/4;grid-row:1}
+.situation-inspector[data-kind="airport-editor"] .replenish-row>.mini-button{grid-column:4;grid-row:1}
+.situation-inspector[data-kind="airport-editor"] .replenish-row>.field:not(.replenish-resource){grid-row:2}
 .situation-inspector[data-kind="airport-editor"] .dynamic-row .field label{display:block;min-height:16px;white-space:nowrap}
+.airport-detail-actions{display:flex;justify-content:flex-end}
 .mini-button {
   min-width: 30px;
   height: 34px;
@@ -408,7 +417,7 @@
   overflow: hidden;
   z-index: 33;
 }
-.situation-page:not(.inspector-collapsed) .situation-overview { right: 374px; }
+.situation-page:not(.inspector-collapsed):has(.situation-inspector[data-kind="airport-editor"]) .situation-overview { right: calc(var(--workspace-inline-edge) + var(--airport-inspector-width) + var(--workspace-panel-gap)); }
 .overview-head {
   height: var(--overview-head-height);
   min-height: var(--overview-head-height);
@@ -580,9 +589,9 @@
 .situation-page .leaflet-control-fit { margin-top: 5px; }
 
 @media (max-width: 1180px) {
+  .situation-page { --airport-inspector-width: 320px; }
   .situation-inspector,
   .situation-inspector[data-kind] { width: 320px; }
-  .situation-page:not(.inspector-collapsed) .situation-overview { right: 334px; }
   .overview-situation-select { width: min(240px, 25vw); flex-basis: 240px; }
   .overview-meta { max-width: 120px; }
   .situation-search { width: 270px; }

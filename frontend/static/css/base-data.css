@@ -88,7 +88,7 @@
 .form-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .form-section-head strong{font-size:11px}
 .dynamic-row{display:grid;grid-template-columns:minmax(0,1.2fr) .8fr .8fr auto;gap:6px;align-items:end;margin-bottom:6px}
-.dynamic-row.resource{grid-template-columns:minmax(0,1.2fr) .8fr .8fr auto}
+.dynamic-row.resource{grid-template-columns:minmax(0,1.2fr) .8fr auto}
 .dynamic-row.requirement{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) .7fr auto}
 .dynamic-row .field{margin:0}
 .mini-button{height:32px;min-width:32px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#0a2335;color:var(--text-muted)}
