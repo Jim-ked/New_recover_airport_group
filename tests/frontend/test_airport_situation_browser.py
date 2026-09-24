@@ -376,6 +376,52 @@ def test_actual_situation_page_preserves_editor_cancel_and_restores_full_overvie
     assert page.locator(".replenish-row").first.locator(".row-qty").input_value() == "8"
 
 
+def test_actual_situation_page_edits_multiple_interval_replenishments(actual_situation_page):
+    page = actual_situation_page
+    page.set_viewport_size({"width": 1366, "height": 768})
+    posted = []
+    page.on(
+        "request",
+        lambda request: posted.append(json.loads(request.post_data or "{}"))
+        if "/api/situations/working-copy/canonicalize" in request.url
+        else None,
+    )
+    open_actual_airport_editor(page)
+
+    page.locator(".stock-row").first.locator(".row-stock").fill("222")
+    page.evaluate("""()=>{
+      const row=[...document.querySelectorAll('.replenish-row')]
+        .find(item=>item.querySelector('.row-resource').value==='MAT-1');
+      row.querySelector('.remove-row').click();
+    }""")
+    page.locator("#sitAddReplenish").click()
+    added = page.locator(".replenish-row").last
+    added.locator(".row-resource").select_option("fuel")
+    added.locator(".row-start").fill("42")
+    added.locator(".row-end").fill("45")
+    added.locator(".row-qty").fill("3")
+
+    page.locator('[data-airport-pane="basic"]').click()
+    page.locator('[data-airport-pane="operations"]').click()
+    added = page.locator(".replenish-row").last
+    assert added.locator(".row-resource").input_value() == "fuel"
+    assert added.locator(".row-start").input_value() == "42"
+    assert added.locator(".row-end").input_value() == "45"
+    assert added.locator(".row-qty").input_value() == "3"
+
+    page.locator("#applyAirport").click()
+    page.wait_for_selector("#applyAirport")
+
+    airport = posted[-1]["situation"]["airports"][0]
+    self_stock = airport["operational_profile"]["resource_stocks"][0]
+    assert self_stock == {"resource_type_id": "MAT-1", "initial_quantity": 222}
+    assert airport["resource_replenishments"] == [
+        {"resource_type_id": "MUN-2", "start_slot": 30, "end_slot": 34, "quantity": 8},
+        {"resource_type_id": "fuel", "start_slot": 36, "end_slot": 42, "quantity": 10},
+        {"resource_type_id": "fuel", "start_slot": 42, "end_slot": 45, "quantity": 3},
+    ]
+
+
 def test_actual_situation_page_preserves_remove_confirmation_path(actual_situation_page):
     page = actual_situation_page
     page.set_viewport_size({"width": 1366, "height": 768})
