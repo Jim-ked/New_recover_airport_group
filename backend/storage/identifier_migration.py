@@ -108,7 +108,9 @@ def _replace_situation_ids(situation: Situation, *, airport_map: Mapping[str, st
         for event in scenario["events"]:
             old_id = event["target"]["airport_id"]
             event["target"]["airport_id"] = airport_map.get(old_id, old_id)
-    return Situation.from_mapping(raw)
+    # Identifier migration changes IDs only. Preserve historical internal completeness
+    # state so the rehashed object matches the rows updated in place below.
+    return Situation.from_mapping(raw, derive_configuration=False)
 
 
 def _active_airport_ids(conn: sqlite3.Connection) -> set[str]:

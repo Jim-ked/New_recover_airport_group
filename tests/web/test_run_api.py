@@ -49,7 +49,7 @@ class RunApiTests(unittest.TestCase):
         profile = AirportOperationalProfile(
             airport_id="A1", configuration_complete=True, capacity_per_window=8,
             support_level="L1", aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50, 0),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 50),),
         )
         self.situations.save_situation(Situation(
             situation_id="S1", name="S1",

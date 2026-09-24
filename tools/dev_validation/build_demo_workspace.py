@@ -25,6 +25,7 @@ from backend.domain.damage import (
     ResourceDamageEffect,
 )
 from backend.domain.mission import Mission
+from backend.domain.situation import ResourceReplenishment
 from backend.auth.principal import Principal
 from backend.runtime import build_application
 from backend.services.run_result_service import RunResultService
@@ -120,35 +121,35 @@ AIRCRAFT_RESOURCE_REQUIREMENTS = {
 PROFILE_SPECS = {
     "nanjing": {
         "capacity": 12, "support": {"fighter": (18, 1), "bomber": (8, 2), "transport": (6, 3)},
-        "stocks": {"fuel": (360, 30), "MAT-1": (180, 12), "MAT-2": (160, 10), "MAT-3": (130, 8), "MUN-1": (220, 15), "MUN-2": (140, 10)},
+        "stocks": {"fuel": 360, "MAT-1": 180, "MAT-2": 160, "MAT-3": 130, "MUN-1": 220, "MUN-2": 140},
     },
     "nantong": {
         "capacity": 10, "support": {"fighter": (15, 1), "bomber": (6, 2), "transport": (4, 3)},
-        "stocks": {"fuel": (300, 22), "MAT-1": (150, 10), "MAT-2": (135, 8), "MAT-3": (120, 7), "MUN-1": (190, 12), "MUN-2": (110, 8)},
+        "stocks": {"fuel": 300, "MAT-1": 150, "MAT-2": 135, "MAT-3": 120, "MUN-1": 190, "MUN-2": 110},
     },
     "sunan": {
         "capacity": 9, "support": {"fighter": (14, 1), "bomber": (5, 2), "transport": (4, 4)},
-        "stocks": {"fuel": (280, 20), "MAT-1": (160, 10), "MAT-2": (145, 8), "MAT-3": (115, 6), "MUN-1": (175, 10), "MUN-2": (105, 7)},
+        "stocks": {"fuel": 280, "MAT-1": 160, "MAT-2": 145, "MAT-3": 115, "MUN-1": 175, "MUN-2": 105},
     },
     "yancheng": {
         "capacity": 8, "support": {"fighter": (12, 2), "bomber": (4, 3), "transport": (5, 3)},
-        "stocks": {"fuel": (310, 18), "MAT-1": (145, 8), "MAT-2": (130, 7), "MAT-3": (120, 6), "MUN-1": (155, 10), "MUN-2": (100, 8)},
+        "stocks": {"fuel": 310, "MAT-1": 145, "MAT-2": 130, "MAT-3": 120, "MUN-1": 155, "MUN-2": 100},
     },
     "xuzhou": {
         "capacity": 7, "support": {"fighter": (11, 2), "bomber": (3, 3), "transport": (3, 4)},
-        "stocks": {"fuel": (260, 16), "MAT-1": (140, 8), "MAT-2": (125, 7), "MAT-3": (105, 5), "MUN-1": (145, 9), "MUN-2": (90, 6)},
+        "stocks": {"fuel": 260, "MAT-1": 140, "MAT-2": 125, "MAT-3": 105, "MUN-1": 145, "MUN-2": 90},
     },
     "suzhou": {
         "capacity": 5, "support": {"fighter": (8, 2), "transport": (2, 5)},
-        "stocks": {"fuel": (200, 12), "MAT-1": (110, 6), "MAT-2": (100, 5), "MAT-3": (90, 4), "MUN-1": (110, 6), "MUN-2": (65, 4)},
+        "stocks": {"fuel": 200, "MAT-1": 110, "MAT-2": 100, "MAT-3": 90, "MUN-1": 110, "MUN-2": 65},
     },
 }
 
 REPLENISHMENTS = {
-    "nanjing": (("fuel", 22, 24), ("MUN-1", 24, 12)),
-    "nantong": (("MAT-1", 26, 8),),
-    "sunan": (("fuel", 28, 18),),
-    "yancheng": (("MUN-2", 30, 8),),
+    "nanjing": (("fuel", 22, 23, 24), ("MUN-1", 24, 25, 12)),
+    "nantong": (("MAT-1", 26, 27, 8),),
+    "sunan": (("fuel", 28, 29, 18),),
+    "yancheng": (("MUN-2", 30, 31, 8),),
 }
 
 MISSIONS = (
@@ -434,8 +435,7 @@ def operational_profile(role: str, airport_ids: Mapping[str, str]) -> dict[str, 
         "resource_stocks": [
             {
                 "resource_type_id": resource_id,
-                "initial_quantity": spec["stocks"][resource_id][0],
-                "replenishment_capacity_per_window": spec["stocks"][resource_id][1],
+                "initial_quantity": spec["stocks"][resource_id],
             }
             for resource_id in RESOURCE_IDS
         ],
@@ -530,13 +530,11 @@ def validate_static_definition(airport_ids: Mapping[str, str]) -> None:
     }
     for role, rows in REPLENISHMENTS.items():
         profile = profiles[role]
-        capacities = {
-            row.resource_type_id: float(row.replenishment_capacity_per_window or 0)
-            for row in profile.resource_stocks
-        }
-        for resource_id, _slot, quantity in rows:
-            if quantity > capacities.get(resource_id, 0):
-                raise RuntimeError(f"replenishment exceeds capacity: {role}/{resource_id}")
+        stock_ids = {row.resource_type_id for row in profile.resource_stocks}
+        for resource_id, start_slot, end_slot, quantity in rows:
+            if resource_id not in stock_ids:
+                raise RuntimeError(f"replenishment resource is not configured: {role}/{resource_id}")
+            ResourceReplenishment(resource_id, start_slot, end_slot, quantity)
     mission_start = min(row.window_start_slot for row in missions)
     mission_end = max(row.window_end_slot for row in missions)
     for scenario in (DamageScenario.from_mapping(row) for row in damage_scenarios(airport_ids)):
@@ -860,8 +858,13 @@ def _apply_replenishments(working: dict[str, Any], airport_ids: Mapping[str, str
     for row in working["airports"]:
         role = role_by_id[row["airport"]["airport_id"]]
         row["resource_replenishments"] = [
-            {"resource_type_id": resource_id, "slot": slot, "quantity": quantity}
-            for resource_id, slot, quantity in REPLENISHMENTS.get(role, ())
+            {
+                "resource_type_id": resource_id,
+                "start_slot": start_slot,
+                "end_slot": end_slot,
+                "quantity": quantity,
+            }
+            for resource_id, start_slot, end_slot, quantity in REPLENISHMENTS.get(role, ())
         ]
 
 

@@ -27,7 +27,12 @@ class AirportOperationalProfileTests(unittest.TestCase):
             ],
         }
         profile = AirportOperationalProfile.from_mapping(payload)
-        self.assertEqual(payload, profile.to_dict())
+        canonical = profile.to_dict()
+        self.assertTrue(canonical["configuration_complete"])
+        self.assertTrue(all(
+            "replenishment_capacity_per_window" not in row
+            for row in canonical["resource_stocks"]
+        ))
         self.assertTrue(profile.supports_aircraft("transport"))
         self.assertFalse(profile.supports_aircraft("bomber"))
         self.assertEqual(0, profile.resource_initial_quantity("MAT-99"))
@@ -88,6 +93,39 @@ class AirportOperationalProfileTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(AirportOperationsValidationError):
                     AirportOperationalProfile.from_mapping(payload)
+
+    def test_edit_input_derives_configuration_complete_and_preserves_support_level(self) -> None:
+        profile = AirportOperationalProfile.from_mapping({
+            "airport_id": "A1", "configuration_complete": "client-value-is-ignored",
+            "capacity_per_window": 4, "support_level": "legacy-L2",
+            "aircraft_support": [
+                {"aircraft_type_id": "fighter", "initial_quantity": 2, "tau_reset_windows": 1}
+            ],
+            "resource_stocks": [{"resource_type_id": "MAT-1", "initial_quantity": 8}],
+        }, derive_configuration=True)
+        self.assertTrue(profile.configuration_complete)
+        self.assertEqual("legacy-L2", profile.support_level)
+
+        incomplete = AirportOperationalProfile.from_mapping({
+            **profile.to_dict(), "configuration_complete": True, "capacity_per_window": None,
+        }, derive_configuration=True)
+        self.assertFalse(incomplete.configuration_complete)
+
+    def test_retired_replenishment_capacity_is_accepted_only_for_legacy_input(self) -> None:
+        profile = AirportOperationalProfile.from_mapping({
+            "airport_id": "A1", "configuration_complete": True,
+            "capacity_per_window": 4,
+            "aircraft_support": [],
+            "resource_stocks": [{
+                "resource_type_id": "MAT-1",
+                "initial_quantity": 8,
+                "replenishment_capacity_per_window": -999,
+            }],
+        })
+        self.assertEqual(
+            [{"resource_type_id": "MAT-1", "initial_quantity": 8}],
+            profile.to_dict()["resource_stocks"],
+        )
 
     def test_duplicate_relation_keys_are_rejected(self) -> None:
         payload = {

@@ -72,7 +72,7 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
             capacity_per_window=8,
             support_level="L1",
             aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50, 0),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 50),),
         )
         self.airports.save_airport(self.base_airport)
         self.airports.save_operational_profile(self.base_profile)
@@ -129,7 +129,7 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
             capacity_per_window=99,
             support_level="L9",
             aircraft_support=(AirportAircraftSupport("fighter", 20, 5),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 999, 0),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 999),),
         )
         self.airports.save_airport(changed_base)
         self.airports.save_operational_profile(changed_profile)

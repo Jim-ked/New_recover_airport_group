@@ -158,25 +158,23 @@ class SituationRepositoryTests(unittest.TestCase):
             "resource_stocks": [{
                 "resource_type_id": "MAT-1",
                 "initial_quantity": 7,
-                "replenishment_capacity_per_window": 3,
             }],
         })
         item = SituationAirport(
             base.airport,
             profile,
             (
-                ResourceReplenishment("MAT-1", 10, 2),
-                ResourceReplenishment("MAT-1", 12, 3),
+                ResourceReplenishment("MAT-1", 10, 12, 2),
+                ResourceReplenishment("MAT-1", 12, 15, 3),
             ),
         )
         s = Situation.create(situation_id="S1", name="S").with_airport(item)
         self.repo.save_situation(s, owner_user_id="u1")
         got = self.repo.get_situation("S1")
-        self.assertEqual(3, got.airports[0].operational_profile.resource_stocks[0].replenishment_capacity_per_window)
         self.assertEqual(
             (
-                ResourceReplenishment("MAT-1", 10, 2.0),
-                ResourceReplenishment("MAT-1", 12, 3.0),
+                ResourceReplenishment("MAT-1", 10, 12, 2.0),
+                ResourceReplenishment("MAT-1", 12, 15, 3.0),
             ),
             got.airports[0].resource_replenishments,
         )

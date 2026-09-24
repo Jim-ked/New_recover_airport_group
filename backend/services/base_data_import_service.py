@@ -168,7 +168,9 @@ class BaseDataImportService:
                 if profile_raw is not None:
                     if not isinstance(profile_raw, Mapping):
                         raise BaseDataImportError(f"items[{i}].operational_profile must be an object or null")
-                    profile = AirportOperationalProfile.from_mapping(profile_raw)
+                    profile = AirportOperationalProfile.from_mapping(
+                        profile_raw, derive_configuration=True
+                    )
                     if profile.airport_id != airport.airport_id:
                         raise BaseDataImportError(f"items[{i}] profile airport_id does not match airport")
                 bundles.append((airport, profile))

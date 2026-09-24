@@ -92,17 +92,10 @@ class AirportAircraftSupport:
 
 @dataclass(frozen=True)
 class AirportResourceStock:
-    """Baseline stock plus maximum replenishment throughput for one resource.
-
-    ``initial_quantity`` is the retained stock at the beginning of a Situation before
-    damage/mission execution. ``replenishment_capacity_per_window`` is only a ceiling:
-    it never creates stock by itself. Actual replenishment is a Situation fact and is
-    stored separately on ``SituationAirport``.
-    """
+    """Baseline stock for one resource before damage and mission execution."""
 
     resource_type_id: str
     initial_quantity: Optional[JsonNumber] = None
-    replenishment_capacity_per_window: Optional[JsonNumber] = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any], *, index: int) -> "AirportResourceStock":
@@ -112,14 +105,10 @@ class AirportResourceStock:
         if unknown:
             _fail(f"{field}.{unknown[0]}", f"unknown field: {field}.{unknown[0]}")
         initial = value.get("initial_quantity")
-        capacity = value.get("replenishment_capacity_per_window")
         return cls(
             resource_type_id=_id(value.get("resource_type_id"), f"{field}.resource_type_id"),
             initial_quantity=None if initial is None else _nonnegative_number(
                 initial, f"{field}.initial_quantity"
-            ),
-            replenishment_capacity_per_window=None if capacity is None else _nonnegative_number(
-                capacity, f"{field}.replenishment_capacity_per_window"
             ),
         )
 
@@ -127,7 +116,6 @@ class AirportResourceStock:
         return {
             "resource_type_id": self.resource_type_id,
             "initial_quantity": self.initial_quantity,
-            "replenishment_capacity_per_window": self.replenishment_capacity_per_window,
         }
 
 
@@ -155,7 +143,9 @@ class AirportOperationalProfile:
     emergency_response_level: Optional[str] = None
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "AirportOperationalProfile":
+    def from_mapping(
+        cls, value: Mapping[str, Any], *, derive_configuration: bool = False
+    ) -> "AirportOperationalProfile":
         if not isinstance(value, Mapping):
             _fail("body", "AirportOperationalProfile must be a JSON object")
         allowed = {
@@ -171,8 +161,8 @@ class AirportOperationalProfile:
         if unknown:
             _fail(str(unknown[0]), f"unknown field: {unknown[0]}")
 
-        complete = value.get("configuration_complete", False)
-        if not isinstance(complete, bool):
+        supplied_complete = value.get("configuration_complete", False)
+        if not derive_configuration and not isinstance(supplied_complete, bool):
             _fail("configuration_complete", "configuration_complete must be boolean")
 
         capacity = _optional_nonnegative_int(value.get("capacity_per_window"), "capacity_per_window")
@@ -202,6 +192,12 @@ class AirportOperationalProfile:
         if len(stock_ids) != len(set(stock_ids)):
             _fail("resource_stocks", "resource_type_id values must be unique per airport")
 
+        complete = (
+            capacity is not None
+            and all(row.initial_quantity is not None and row.tau_reset_windows is not None for row in support)
+            and all(row.initial_quantity is not None for row in stocks)
+        ) if derive_configuration else supplied_complete
+
         if complete:
             if capacity is None:
                 _fail("capacity_per_window", "capacity_per_window is required for a complete profile")
@@ -215,11 +211,6 @@ class AirportOperationalProfile:
                     _fail(
                         f"resource_stocks[{i}].initial_quantity",
                         "initial_quantity is required for a complete profile",
-                    )
-                if row.replenishment_capacity_per_window is None:
-                    _fail(
-                        f"resource_stocks[{i}].replenishment_capacity_per_window",
-                        "replenishment_capacity_per_window is required for a complete profile",
                     )
 
         return cls(
@@ -243,13 +234,6 @@ class AirportOperationalProfile:
         for row in self.resource_stocks:
             if row.resource_type_id == target:
                 return row.initial_quantity
-        return 0 if self.configuration_complete else None
-
-    def replenishment_capacity(self, resource_type_id: str) -> Optional[JsonNumber]:
-        target = _id(resource_type_id, "resource_type_id")
-        for row in self.resource_stocks:
-            if row.resource_type_id == target:
-                return row.replenishment_capacity_per_window
         return 0 if self.configuration_complete else None
 
     def to_dict(self) -> Dict[str, Any]:

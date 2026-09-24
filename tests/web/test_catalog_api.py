@@ -84,6 +84,23 @@ class CatalogApiTests(unittest.TestCase):
         self.assertEqual("AP001", created.body["airport"]["airport_id"])
         self.assertEqual("AP001", created.body["operational_profile"]["airport_id"])
 
+    def test_airport_write_derives_configuration_and_preserves_legacy_support_level(self):
+        profile = {
+            **self.profile.to_dict(),
+            "configuration_complete": "ignored-client-value",
+            "capacity_per_window": 4,
+            "support_level": "legacy-L2",
+        }
+
+        created = self.api.create_airport(
+            {"airport": self.airport.to_dict(), "operational_profile": profile},
+            principal=self.admin,
+        )
+
+        self.assertEqual(201, created.status)
+        self.assertTrue(created.body["operational_profile"]["configuration_complete"])
+        self.assertEqual("legacy-L2", created.body["operational_profile"]["support_level"])
+
     def test_airport_delete_is_blocked_while_current_situation_references_it(self):
         self.api.create_airport({
             "airport": self.airport.to_dict(), "operational_profile": self.profile.to_dict()

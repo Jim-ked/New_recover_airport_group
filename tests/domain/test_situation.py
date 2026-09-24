@@ -22,7 +22,7 @@ class SituationTests(unittest.TestCase):
         return AirportOperationalProfile(
             airport_id=airport_id, configuration_complete=True, capacity_per_window=capacity,
             aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 100, 0),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 100),),
         )
 
     def _capacity_event(self, event_id="D1", seq=0, airport_id="A1", start=2, end=5):
@@ -100,29 +100,50 @@ class SituationTests(unittest.TestCase):
         self.assertNotEqual(s1.content_hash(), Situation(situation_id="S1", name="S2", airports=(a1, a2)).content_hash())
 
 
-    def test_replenishment_schedule_is_situation_fact_and_cannot_exceed_capacity(self) -> None:
+    def test_replenishment_schedule_uses_nonoverlapping_half_open_intervals(self) -> None:
         profile = AirportOperationalProfile(
             airport_id="A1",
             configuration_complete=True,
             capacity_per_window=8,
             aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 100, 10),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 100),),
         )
         item = SituationAirport(
             self._airport(),
             profile,
-            (ResourceReplenishment("FUEL-1", 3, 6),),
+            (ResourceReplenishment("FUEL-1", 3, 6, 11),),
         )
         self.assertEqual(
-            [{"resource_type_id": "FUEL-1", "slot": 3, "quantity": 6}],
+            [{"resource_type_id": "FUEL-1", "start_slot": 3, "end_slot": 6, "quantity": 11}],
             item.to_dict()["resource_replenishments"],
         )
         with self.assertRaises(Exception):
             SituationAirport(
                 self._airport(),
                 profile,
-                (ResourceReplenishment("FUEL-1", 3, 11),),
+                (
+                    ResourceReplenishment("FUEL-1", 3, 6, 2),
+                    ResourceReplenishment("FUEL-1", 5, 8, 3),
+                ),
             )
+
+        adjacent = SituationAirport(
+            self._airport(), profile,
+            (
+                ResourceReplenishment("FUEL-1", 3, 6, 2),
+                ResourceReplenishment("FUEL-1", 6, 8, 3),
+            ),
+        )
+        self.assertEqual(2, len(adjacent.resource_replenishments))
+
+    def test_legacy_single_slot_replenishment_is_canonicalized(self) -> None:
+        row = ResourceReplenishment.from_mapping(
+            {"resource_type_id": "FUEL-1", "slot": 7, "quantity": 4}, index=0
+        )
+        self.assertEqual(
+            {"resource_type_id": "FUEL-1", "start_slot": 7, "end_slot": 8, "quantity": 4},
+            row.to_dict(),
+        )
 
     def test_missing_replenishment_entry_means_zero_not_capacity_auto_fill(self) -> None:
         profile = AirportOperationalProfile(
@@ -130,7 +151,7 @@ class SituationTests(unittest.TestCase):
             configuration_complete=True,
             capacity_per_window=8,
             aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 100, 10),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 100),),
         )
         item = SituationAirport(self._airport(), profile)
         self.assertEqual((), item.resource_replenishments)

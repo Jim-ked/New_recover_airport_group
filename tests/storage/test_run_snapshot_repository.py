@@ -32,7 +32,7 @@ class RunSnapshotRepositoryTests(unittest.TestCase):
         op = AirportOperationalProfile(
             airport_id="A1", configuration_complete=True, capacity_per_window=4, support_level="L1",
             aircraft_support=(AirportAircraftSupport("fighter", 2, 1),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 10, 0),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 10),),
         )
         mission = Mission("M1", "M", 111, 31, 1, 4, (MissionAircraftRequirement("fighter", 1, 1),))
         situation = Situation.create(situation_id="S1", name="S").with_airport(

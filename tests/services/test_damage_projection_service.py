@@ -122,7 +122,7 @@ class DamageProjectionServiceTests(unittest.TestCase):
         profile = AirportOperationalProfile(
             airport_id="A1", configuration_complete=True, capacity_per_window=10,
             aircraft_support=(AirportAircraftSupport("fighter", 5, 1),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 100, 0),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 100),),
         )
         return Situation(
             situation_id="S1", name="S",

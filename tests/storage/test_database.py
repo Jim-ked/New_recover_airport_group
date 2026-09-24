@@ -32,7 +32,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            self.assertEqual(18, migration_count)
+            self.assertEqual(len(_MIGRATIONS), migration_count)
             self.assertEqual(1, airport_count)
             self.assertIn("situations", tables)
             self.assertIn("situation_damage_scenarios", tables)
@@ -146,9 +146,9 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertEqual(0, canonical_count)
             self.assertEqual(0, scenario_count)
             self.assertEqual("unchanged", sentinel)
-            self.assertEqual(18, migrations)
+            self.assertEqual(len(_MIGRATIONS), migrations)
 
-    def test_v017_upgrades_v016_stocks_without_reinterpreting_zero_or_losing_children(self) -> None:
+    def test_v020_removes_capacity_and_converts_single_slot_children_to_intervals(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "v016.sqlite"
             with connect(path) as conn:
@@ -231,72 +231,25 @@ class DatabaseMigrationTests(unittest.TestCase):
             initialize_database(path)
 
             with connect(path) as conn:
-                airport_zero = conn.execute(
-                    """
-                    SELECT replenishment_capacity_per_window
-                    FROM airport_resource_stocks
-                    WHERE airport_id='A1' AND resource_type_id='R1'
-                    """
-                ).fetchone()[0]
-                situation_zero = conn.execute(
-                    """
-                    SELECT replenishment_capacity_per_window
-                    FROM situation_resource_stocks
-                    WHERE situation_id='S1' AND airport_id='A1' AND resource_type_id='R1'
-                    """
-                ).fetchone()[0]
                 child_row = tuple(conn.execute(
                     """
-                    SELECT situation_id, airport_id, resource_type_id, slot, quantity
+                    SELECT situation_id, airport_id, resource_type_id, start_slot, end_slot, quantity
                     FROM situation_resource_replenishments
                     """
                 ).fetchone())
 
                 conn.execute(
                     """
-                    INSERT INTO airport_resource_stocks (
-                        airport_id, resource_type_id, quantity, replenishment_capacity_per_window
-                    ) VALUES ('A1', 'R2', 50, NULL)
+                    INSERT INTO airport_resource_stocks (airport_id, resource_type_id, quantity)
+                    VALUES ('A1', 'R2', 50)
                     """
                 )
                 conn.execute(
                     """
-                    INSERT INTO situation_resource_stocks (
-                        situation_id, airport_id, resource_type_id, quantity,
-                        replenishment_capacity_per_window
-                    ) VALUES ('S1', 'A1', 'R2', 40, NULL)
+                    INSERT INTO situation_resource_stocks (situation_id, airport_id, resource_type_id, quantity)
+                    VALUES ('S1', 'A1', 'R2', 40)
                     """
                 )
-                airport_unknown = conn.execute(
-                    """
-                    SELECT replenishment_capacity_per_window
-                    FROM airport_resource_stocks
-                    WHERE airport_id='A1' AND resource_type_id='R2'
-                    """
-                ).fetchone()[0]
-                situation_unknown = conn.execute(
-                    """
-                    SELECT replenishment_capacity_per_window
-                    FROM situation_resource_stocks
-                    WHERE situation_id='S1' AND airport_id='A1' AND resource_type_id='R2'
-                    """
-                ).fetchone()[0]
-                with self.assertRaises(sqlite3.IntegrityError):
-                    conn.execute(
-                        """
-                        UPDATE airport_resource_stocks
-                        SET replenishment_capacity_per_window=-1
-                        WHERE airport_id='A1' AND resource_type_id='R2'
-                        """
-                    )
-                with self.assertRaises(sqlite3.IntegrityError):
-                    conn.execute(
-                        """
-                        UPDATE situation_resource_stocks
-                        SET replenishment_capacity_per_window=-1
-                        WHERE situation_id='S1' AND airport_id='A1' AND resource_type_id='R2'
-                        """
-                    )
 
                 airport_columns = {
                     row[1]: (row[2], row[3], row[5])
@@ -316,18 +269,14 @@ class DatabaseMigrationTests(unittest.TestCase):
                 }
                 foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchall()
 
-            self.assertEqual(0, airport_zero)
-            self.assertEqual(0, situation_zero)
-            self.assertEqual(("S1", "A1", "R1", 3, 5.0), child_row)
-            self.assertIsNone(airport_unknown)
-            self.assertIsNone(situation_unknown)
+            self.assertEqual(("S1", "A1", "R1", 3, 4, 5.0), child_row)
             self.assertEqual([], foreign_key_errors)
             self.assertIn("quantity", airport_columns)
             self.assertNotIn("initial_quantity", airport_columns)
             self.assertIn("quantity", situation_columns)
             self.assertNotIn("initial_quantity", situation_columns)
-            self.assertEqual(("REAL", 0, 0), airport_columns["replenishment_capacity_per_window"])
-            self.assertEqual(("REAL", 0, 0), situation_columns["replenishment_capacity_per_window"])
+            self.assertNotIn("replenishment_capacity_per_window", airport_columns)
+            self.assertNotIn("replenishment_capacity_per_window", situation_columns)
             self.assertEqual(1, airport_columns["airport_id"][2])
             self.assertEqual(2, airport_columns["resource_type_id"][2])
             self.assertEqual(1, situation_columns["situation_id"][2])

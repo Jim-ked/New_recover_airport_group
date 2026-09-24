@@ -7,7 +7,15 @@ def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
 def _add_column(conn: sqlite3.Connection, table: str, definition: str) -> None:
+    if not _table_exists(conn, table):
+        return
     name = definition.split()[0]
     if name not in _columns(conn, table):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")

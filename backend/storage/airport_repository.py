@@ -466,15 +466,14 @@ class AirportRepository:
                 conn.execute(
                     """
                     INSERT INTO airport_resource_stocks (
-                        airport_id, resource_type_id, quantity, replenishment_capacity_per_window
+                        airport_id, resource_type_id, quantity
                     )
-                    VALUES (?, ?, ?, ?)
+                    VALUES (?, ?, ?)
                     """,
                     (
                         profile.airport_id,
                         row.resource_type_id,
                         row.initial_quantity,
-                        row.replenishment_capacity_per_window,
                     ),
                 )
 
@@ -495,7 +494,7 @@ class AirportRepository:
             ).fetchall()
             stock_rows = conn.execute(
                 """
-                SELECT resource_type_id, quantity, replenishment_capacity_per_window
+                SELECT resource_type_id, quantity
                 FROM airport_resource_stocks
                 WHERE airport_id = ? ORDER BY resource_type_id
                 """,
@@ -519,7 +518,6 @@ class AirportRepository:
                 AirportResourceStock(
                     resource_type_id=r["resource_type_id"],
                     initial_quantity=r["quantity"],
-                    replenishment_capacity_per_window=r["replenishment_capacity_per_window"],
                 )
                 for r in stock_rows
             ),
@@ -715,8 +713,8 @@ class AirportRepository:
             )
         for row in profile.resource_stocks:
             conn.execute(
-                "INSERT INTO airport_resource_stocks (airport_id, resource_type_id, quantity, replenishment_capacity_per_window) VALUES (?, ?, ?, ?)",
-                (profile.airport_id, row.resource_type_id, row.initial_quantity, row.replenishment_capacity_per_window),
+                "INSERT INTO airport_resource_stocks (airport_id, resource_type_id, quantity) VALUES (?, ?, ?)",
+                (profile.airport_id, row.resource_type_id, row.initial_quantity),
             )
 
     def save_airport_bundle(

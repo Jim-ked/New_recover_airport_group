@@ -88,15 +88,19 @@ def _canonical_json_value(value: Any) -> Any:
 
 @dataclass(frozen=True)
 class ResourceReplenishment:
-    """Actual exogenous replenishment arriving in one Situation time window."""
+    """Actual exogenous replenishment arriving in each slot of a half-open interval."""
 
     resource_type_id: str
-    slot: int
+    start_slot: int
+    end_slot: int
     quantity: JsonNumber
 
     def __post_init__(self) -> None:
         _id(self.resource_type_id, "resource_type_id")
-        _nonnegative_int(self.slot, "slot")
+        _nonnegative_int(self.start_slot, "start_slot")
+        _nonnegative_int(self.end_slot, "end_slot")
+        if self.end_slot <= self.start_slot:
+            _fail("end_slot", "end_slot must be greater than start_slot")
         _positive_number(self.quantity, "quantity")
 
     @classmethod
@@ -104,20 +108,33 @@ class ResourceReplenishment:
         field = f"resource_replenishments[{index}]"
         if not isinstance(value, dict):
             _fail(field, f"{field} must be an object")
-        allowed = {"resource_type_id", "slot", "quantity"}
+        allowed = {"resource_type_id", "start_slot", "end_slot", "slot", "quantity"}
         unknown = [k for k in value if k not in allowed]
         if unknown:
             _fail(f"{field}.{unknown[0]}", f"unknown field: {field}.{unknown[0]}")
+        has_legacy_slot = "slot" in value
+        has_interval = "start_slot" in value or "end_slot" in value
+        if has_legacy_slot and has_interval:
+            _fail(field, "legacy slot cannot be combined with start_slot/end_slot")
+        start_slot = _nonnegative_int(
+            value.get("slot") if has_legacy_slot else value.get("start_slot"),
+            f"{field}.{'slot' if has_legacy_slot else 'start_slot'}",
+        )
+        end_slot = start_slot + 1 if has_legacy_slot else _nonnegative_int(
+            value.get("end_slot"), f"{field}.end_slot"
+        )
         return cls(
             resource_type_id=_id(value.get("resource_type_id"), f"{field}.resource_type_id"),
-            slot=_nonnegative_int(value.get("slot"), f"{field}.slot"),
+            start_slot=start_slot,
+            end_slot=end_slot,
             quantity=_positive_number(value.get("quantity"), f"{field}.quantity"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "resource_type_id": self.resource_type_id,
-            "slot": self.slot,
+            "start_slot": self.start_slot,
+            "end_slot": self.end_slot,
             "quantity": self.quantity,
         }
 
@@ -129,7 +146,13 @@ class SituationAirport:
     resource_replenishments: Tuple[ResourceReplenishment, ...] = ()
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any], *, index: int) -> "SituationAirport":
+    def from_mapping(
+        cls,
+        value: Mapping[str, Any],
+        *,
+        index: int,
+        derive_configuration: bool = True,
+    ) -> "SituationAirport":
         field = f"airports[{index}]"
         if not isinstance(value, Mapping):
             _fail(field, f"{field} must be an object")
@@ -149,7 +172,9 @@ class SituationAirport:
         # Child validators already reject aliases/unknown fields. Re-wrap their field paths
         # only at the Situation boundary by preserving the underlying precise field name.
         airport = AirportBase.from_mapping(airport_raw)
-        profile = AirportOperationalProfile.from_mapping(profile_raw)
+        profile = AirportOperationalProfile.from_mapping(
+            profile_raw, derive_configuration=derive_configuration
+        )
         replenishments = tuple(
             ResourceReplenishment.from_mapping(dict(item), index=i)
             for i, item in enumerate(raw_replenishments)
@@ -161,32 +186,25 @@ class SituationAirport:
             _fail("operational_profile.airport_id", "airport snapshot and operational profile must use the same airport_id")
 
         stock_by_id = {row.resource_type_id: row for row in self.operational_profile.resource_stocks}
-        seen = set()
+        intervals_by_resource: Dict[str, list[Tuple[int, int, int]]] = {}
         for i, item in enumerate(self.resource_replenishments):
-            key = (item.resource_type_id, item.slot)
-            if key in seen:
-                _fail(
-                    f"resource_replenishments[{i}]",
-                    "resource_type_id + slot must be unique per Situation airport",
-                )
-            seen.add(key)
             stock = stock_by_id.get(item.resource_type_id)
             if stock is None:
                 _fail(
                     f"resource_replenishments[{i}].resource_type_id",
                     "replenishment resource must be configured in the airport operational profile",
                 )
-            cap = stock.replenishment_capacity_per_window
-            if cap is None:
-                _fail(
-                    f"resource_replenishments[{i}].quantity",
-                    "cannot schedule replenishment while replenishment capacity is unknown",
-                )
-            if float(item.quantity) > float(cap) + 1e-9:
-                _fail(
-                    f"resource_replenishments[{i}].quantity",
-                    "actual replenishment cannot exceed replenishment_capacity_per_window",
-                )
+            intervals_by_resource.setdefault(item.resource_type_id, []).append(
+                (item.start_slot, item.end_slot, i)
+            )
+        for intervals in intervals_by_resource.values():
+            intervals.sort()
+            for previous, current in zip(intervals, intervals[1:]):
+                if current[0] < previous[1]:
+                    _fail(
+                        f"resource_replenishments[{current[2]}]",
+                        "replenishment intervals for the same resource must not overlap",
+                    )
 
     @property
     def airport_id(self) -> str:
@@ -200,7 +218,7 @@ class SituationAirport:
                 row.to_dict()
                 for row in sorted(
                     self.resource_replenishments,
-                    key=lambda x: (x.slot, x.resource_type_id),
+                    key=lambda x: (x.start_slot, x.end_slot, x.resource_type_id),
                 )
             ],
         }
@@ -224,7 +242,9 @@ class Situation:
         )
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "Situation":
+    def from_mapping(
+        cls, value: Mapping[str, Any], *, derive_configuration: bool = True
+    ) -> "Situation":
         if not isinstance(value, Mapping):
             _fail("situation", "Situation must be an object")
         allowed = {"situation_id", "name", "description", "airports", "missions", "damage_scenarios"}
@@ -244,7 +264,14 @@ class Situation:
             situation_id=_id(value.get("situation_id"), "situation_id"),
             name=_string(value.get("name"), "name"),
             description=_optional_string(value.get("description"), "description"),
-            airports=tuple(SituationAirport.from_mapping(item, index=i) for i, item in enumerate(raw_airports)),
+            airports=tuple(
+                SituationAirport.from_mapping(
+                    item,
+                    index=i,
+                    derive_configuration=derive_configuration,
+                )
+                for i, item in enumerate(raw_airports)
+            ),
             missions=tuple(Mission.from_mapping(item) for item in raw_missions),
             damage_scenarios=tuple(DamageScenario.from_mapping(item) for item in raw_damage),
         )

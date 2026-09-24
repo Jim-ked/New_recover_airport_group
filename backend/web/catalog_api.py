@@ -117,7 +117,9 @@ class CatalogApi:
             profile_payload = dict(raw_profile)
             if not updating and not str(profile_payload.get("airport_id") or "").strip():
                 profile_payload["airport_id"] = airport.airport_id
-            profile = AirportOperationalProfile.from_mapping(profile_payload)
+            profile = AirportOperationalProfile.from_mapping(
+                profile_payload, derive_configuration=True
+            )
             if profile.airport_id != airport.airport_id:
                 raise ApiInputError("operational_profile.airport_id must match airport.airport_id", field="operational_profile.airport_id")
         revision = CatalogApi._revision(body) if updating else None

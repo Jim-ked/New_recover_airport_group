@@ -23,7 +23,7 @@ class RunSnapshotTests(unittest.TestCase):
             airport_id="A1", configuration_complete=complete,
             capacity_per_window=8 if complete else None, support_level="L1" if complete else None,
             aircraft_support=(AirportAircraftSupport("fighter", 3 if complete else None, 2 if complete else None),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50 if complete else None, 0 if complete else None),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 50 if complete else None),),
         )
         mission = Mission(
             mission_id="M1", name="Mission", longitude=120.0, latitude=32.0,
