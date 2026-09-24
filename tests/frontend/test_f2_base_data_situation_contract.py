@@ -72,7 +72,7 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         self.assertIn("lockEditorForReadOnly", self.sit_js)
         self.assertIn("airportCandidateRegion", self.sit_js)
         self.assertIn("beginMissionLocationPick", self.sit_js)
-        self.assertIn("longitude:num($('sitMissionLon').value)", self.sit_js)
+        self.assertIn("longitude: num($('sitMissionLon').value)", self.sit_js)
         self.assertNotIn("longitude:Number($('sitMissionLon').value)", self.sit_js)
         self.assertNotIn("value=\"extreme\"", self.sit_js)
         self.assertNotIn("value=\"sustained\"", self.sit_js)
