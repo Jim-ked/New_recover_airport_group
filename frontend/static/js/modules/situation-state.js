@@ -15,6 +15,8 @@ function initialState() {
     meta: null,
     dirty: false,
     panelDraftDirty: false,
+    saving: false,
+    savingSituationId: null,
     mode: 'select',
     selected: null,
     aircraft: [],

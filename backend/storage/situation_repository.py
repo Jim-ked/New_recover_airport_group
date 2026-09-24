@@ -114,6 +114,10 @@ class SituationRepository:
             raise SituationOwnershipError("owner_user_id must be a nonblank string")
         new_hash = situation.content_hash()
         with self.connect() as conn:
+            # Acquire the SQLite write lock before reading the optimistic hash.
+            # Otherwise two deferred transactions can both validate the same stale
+            # hash and then overwrite one another.
+            conn.execute("BEGIN IMMEDIATE")
             current = conn.execute(
                 "SELECT content_hash, owner_user_id FROM situations WHERE situation_id = ?",
                 (situation.situation_id,),
@@ -635,6 +639,9 @@ class SituationRepository:
         # mutable current record cannot alter queued/running/history inputs. The response
         # reports references so the UI can explain that historical Runs remain available.
         with self.connect() as conn:
+            # Keep the final hash check and delete in one write transaction so an
+            # update cannot commit between them.
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT content_hash FROM situations WHERE situation_id=?", (situation_id,)).fetchone()
             if row is None:
                 raise KeyError(f"situation not found: {situation_id}")

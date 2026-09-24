@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -149,6 +150,42 @@ class SituationRepositoryTests(unittest.TestCase):
         with self.assertRaises(SituationConflictError):
             self.repo.save_situation(s, owner_user_id="u1", expected_content_hash=h1)
         self.assertEqual(h2, self.repo.get_content_hash("S1"))
+
+    def test_concurrent_saves_with_same_old_hash_allow_only_one_writer(self):
+        original = Situation.create(situation_id="RACE", name="Original")
+        old_hash = self.repo.save_situation(original, owner_user_id="u1")
+        candidates = [
+            Situation.create(situation_id="RACE", name="Writer A"),
+            Situation.create(situation_id="RACE", name="Writer B"),
+        ]
+        barrier = threading.Barrier(2)
+        outcomes = []
+        outcome_lock = threading.Lock()
+
+        def write(candidate):
+            repository = SituationRepository(self.db)
+            barrier.wait(timeout=5)
+            try:
+                result = ("saved", repository.save_situation(
+                    candidate, owner_user_id="u1", expected_content_hash=old_hash,
+                ))
+            except SituationConflictError as error:
+                result = ("conflict", str(error))
+            with outcome_lock:
+                outcomes.append(result)
+
+        threads = [threading.Thread(target=write, args=(candidate,)) for candidate in candidates]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(["conflict", "saved"], sorted(item[0] for item in outcomes))
+        winner_hash = next(item[1] for item in outcomes if item[0] == "saved")
+        final = self.repo.get_situation("RACE")
+        self.assertIn(final.name, {"Writer A", "Writer B"})
+        self.assertEqual(winner_hash, self.repo.get_content_hash("RACE"))
 
 
     def test_resource_replenishment_schedule_round_trip(self):
