@@ -167,9 +167,29 @@ function drawLeaflet() {
     const marker = L.marker([latitude, longitude], { icon });
     marker.on('click', () => callbacks.selectObject?.('mission', mission.mission_id));
     marker.addTo(map);
+    if (marker.getElement()) marker.getElement().dataset.missionId = mission.mission_id;
     mapLayers.push(marker);
     bindPermanentLabel(marker, mission.name,
       selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.mission, selected, labels);
+  }
+
+  const previewMission = state.missionSourceSelection?.mission;
+  if (previewMission) {
+    const latitude = Number(previewMission.latitude);
+    const longitude = Number(previewMission.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      const icon = L.divIcon({
+        className: 'situation-mission-marker preview',
+        html: '<span></span>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      const marker = L.marker([latitude, longitude], { icon, interactive: false });
+      marker.addTo(map);
+      if (marker.getElement()) marker.getElement().dataset.missionId = previewMission.mission_id;
+      mapLayers.push(marker);
+      bindPermanentLabel(marker, `${previewMission.name}（预览）`, LABEL_PRIORITY.selected, true, labels);
+    }
   }
 
   if (state.draftMissionCoord) {
@@ -218,6 +238,13 @@ function fallbackPoints() {
       lat: Number(mission.latitude),
       lon: Number(mission.longitude),
     })),
+    ...(state.missionSourceSelection?.mission ? [{
+      type: 'mission-preview',
+      id: state.missionSourceSelection.mission.mission_id,
+      name: `${state.missionSourceSelection.mission.name}（预览）`,
+      lat: Number(state.missionSourceSelection.mission.latitude),
+      lon: Number(state.missionSourceSelection.mission.longitude),
+    }] : []),
     ...(state.draftMissionCoord ? [{
       type: 'draft', id: 'draft-mission', name: '任务临时位置',
       lat: state.draftMissionCoord.lat, lon: state.draftMissionCoord.lon,
@@ -252,13 +279,13 @@ function drawFallback() {
     button.addEventListener('click', () => {
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => {
-        if (button.dataset.type !== 'draft') callbacks.highlightObject?.(button.dataset.type, button.dataset.id);
+        if (!['draft', 'mission-preview'].includes(button.dataset.type)) callbacks.highlightObject?.(button.dataset.type, button.dataset.id);
       }, 220);
     });
     button.addEventListener('dblclick', () => {
       clearTimeout(clickTimer);
       if (button.dataset.type === 'candidate') callbacks.openCandidateDetails?.(button.dataset.id);
-      else if (button.dataset.type !== 'draft') callbacks.selectObject?.(button.dataset.type, button.dataset.id, { locate: true });
+      else if (!['draft', 'mission-preview'].includes(button.dataset.type)) callbacks.selectObject?.(button.dataset.type, button.dataset.id, { locate: true });
     });
   });
 }
@@ -283,7 +310,9 @@ export function focusObject(type, objectId) {
     ? state.working.airports.find((item) => item.airport.airport_id === objectId)?.airport
     : type === 'candidate'
       ? visibleCandidates().find((item) => item.airport_id === objectId)
-    : state.working.missions.find((item) => item.mission_id === objectId);
+      : type === 'mission-preview'
+        ? state.missionSourceSelection?.mission
+        : state.working.missions.find((item) => item.mission_id === objectId);
   const latitude = Number(value?.latitude);
   const longitude = Number(value?.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {

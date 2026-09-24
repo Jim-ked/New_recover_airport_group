@@ -43,6 +43,7 @@ let lifecycleController = null;
 let mounted = false;
 let pendingPanelTransition = null;
 let candidateClickTimer = null;
+let missionSourcePromise = null;
 const EMERGENCY_RESPONSE_OPTIONS = [
   ['', '未设置'], ['level_1', '一级'], ['level_2', '二级'],
   ['level_3', '三级'], ['level_4', '四级'], ['level_5', '五级'],
@@ -94,10 +95,10 @@ function bindPanelDraft() {
 function showPanelDraftWarning(){let warning=$('panelDraftWarning');if(!warning){refs.body.insertAdjacentHTML('afterbegin',`<div id="panelDraftWarning" class="inline-message warning panel-draft-warning"><strong>当前修改尚未应用</strong><span>先继续当前编辑，或明确放弃后再切换。</span><div class="panel-draft-actions"><button id="continuePanelEditing" class="btn ghost" type="button">继续编辑</button><button id="discardPanelAndSwitch" class="btn danger" type="button">放弃并切换</button></div></div>`);warning=$('panelDraftWarning')}$('continuePanelEditing').onclick=()=>{pendingPanelTransition=null;warning.remove()};$('discardPanelAndSwitch').onclick=()=>{const transition=pendingPanelTransition;clearPanelDraft();Promise.resolve(transition?.()).catch(error=>showMessage(errText(error),'error'))}}
 function requestPanelTransition(transition){if(!state.panelDraftDirty){clearPanelDraft();return transition()}pendingPanelTransition=transition;showPanelDraftWarning();return false}
 function clearPanelDraft(){setPanelDraftDirty(false);state.draftMissionCoord=null}
-async function openSituation(id,{force=false}={}){if(!id)return;if(!force&&!(await canDiscardSituation())){refs.select.value=state.working?.situation_id||'';return}try{const d=await apiFetch(`/api/situations/${encodeURIComponent(id)}`);clearPanelDraft();clearConflict();state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta=d;state.dirty=false;state.mode='select';state.selected=null;refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));renderAll();fitMap()}catch(e){showMessage(errText(e),'error')}}
+async function openSituation(id,{force=false}={}){if(!id)return;if(!force&&!(await canDiscardSituation())){refs.select.value=state.working?.situation_id||'';return}try{const d=await apiFetch(`/api/situations/${encodeURIComponent(id)}`);clearPanelDraft();clearConflict();state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta=d;state.dirty=false;state.mode='select';state.selected=null;state.missionTab='current';state.missionSourceSelection=null;refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));renderAll();fitMap()}catch(e){showMessage(errText(e),'error')}}
 async function newSituation(){if(!writable()){showMessage('当前账号没有情境维护权限。','error');return}if(!(await canDiscardSituation()))return;clearPanelDraft();try{const d=await apiFetch('/api/situations/allocate-id',{method:'POST',body:{}});renderNewSituationEditor(d.situation_id);setTimeout(()=>$('newSituationName')?.focus(),30)}catch(e){showMessage(errText(e),'error')}}
 function renderNewSituationEditor(id){state.mode='select';state.selected=null;refs.tools.querySelectorAll('[data-mode]').forEach(button=>button.classList.remove('active'));refs.inspector.dataset.kind='situation-editor';refs.inspectorTitle.textContent='新建情境';refs.inspectorSubtitle.textContent='创建未保存的 Working Copy';refs.body.innerHTML=`<input id="newSituationId" type="hidden" value="${esc(id)}"><div class="compact-grid"><div class="field wide"><label>系统编号</label><div class="field-note">${esc(id)}（系统自动分配，删除后不复用）</div></div><div class="field wide required"><label>情境名称</label><input id="newSituationName" class="control"></div><div class="field wide"><label>说明</label><textarea id="newSituationDescription" class="control textarea-control" rows="4"></textarea></div></div><div id="newSituationMessage" class="inline-message hidden"></div><div class="inspector-footer"><button id="cancelNewSituation" class="btn ghost" type="button">取消</button><button id="createNewSituation" class="btn primary" type="button">创建</button></div>`;setInspectorOpen(true);collapseOverview();bindPanelDraft();$('cancelNewSituation').onclick=()=>{clearPanelDraft();renderInspector();syncWorkspaceChrome()};$('createNewSituation').onclick=createWorking}
-async function createWorking(){const id=$('newSituationId').value.trim(),name=$('newSituationName').value.trim(),message=$('newSituationMessage');if(!id||!name){message.textContent='情境编号和名称不能为空。';message.className='inline-message error';message.classList.remove('hidden');return}state.working={situation_id:id,name,description:$('newSituationDescription').value.trim()||null,airports:[],missions:[],damage_scenarios:[]};state.savedHash=null;state.persisted=false;state.meta=null;state.dirty=true;state.selected=null;refs.select.value='';clearPanelDraft();renderAll()}
+async function createWorking(){const id=$('newSituationId').value.trim(),name=$('newSituationName').value.trim(),message=$('newSituationMessage');if(!id||!name){message.textContent='情境编号和名称不能为空。';message.className='inline-message error';message.classList.remove('hidden');return}state.working={situation_id:id,name,description:$('newSituationDescription').value.trim()||null,airports:[],missions:[],damage_scenarios:[]};state.savedHash=null;state.persisted=false;state.meta=null;state.dirty=true;state.selected=null;state.missionTab='current';state.missionSourceSelection=null;refs.select.value='';clearPanelDraft();renderAll()}
 async function saveSituation(){if(!state.working||!writable())return;if(state.panelDraftDirty){showMessage('请先将右侧表单“应用”到当前情境，再保存。','error');return}try{let d;if(state.persisted)d=await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'PUT',body:{situation:state.working,expected_content_hash:state.savedHash}});else d=await apiFetch('/api/situations',{method:'POST',body:{situation:state.working}});state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta={...(state.meta||{}),...d};state.dirty=false;clearConflict();await loadSituationList(state.working.situation_id);renderAll();showMessage('情境已保存。','success')}catch(e){if(e instanceof ApiError&&e.status===409){showConflict();showMessage('保存失败：服务器中的情境已经变化，本地修改仍保留。','error')}else showMessage(errText(e),'error')}}
 async function deleteSituation(){if(!state.persisted||!state.working)return;const active=state.meta?.active_run_count||0,hist=state.meta?.historical_run_count||0;if(!(await confirmAction(`删除情境 ${state.working.name}？当前关联 ${active} 个活动 Run、${hist} 个历史 Run。历史 Run 的冻结快照不会被修改；活动 Run 存在时后端可能拒绝删除。`,'删除情境')))return;try{await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'DELETE',body:{expected_content_hash:state.savedHash}});clearPanelDraft();state.working=null;state.persisted=false;state.savedHash=null;state.meta=null;state.dirty=false;state.selected=null;await loadSituationList();renderAll();showMessage('情境已删除。','success')}catch(e){showMessage(errText(e),'error')}}
 function setMode(mode){state.mode=mode;state.selected=null;state.mapFocus=null;state.draftMissionCoord=null;state.missionSourceSelection=null;if(mode==='airport'){state.tempAirportIds=new Set();state.candidateFocusId=null;state.candidateDetail=null}if(mode==='mission')state.missionTab='current';if(mode!=='layers')collapseOverview();refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));setInspectorOpen(true);renderInspector();drawMap()}
@@ -352,14 +353,117 @@ function renderMissionCurrent() {
   </div>`;
 }
 
+function sourceMission(kind, index) {
+  const collection = kind === 'catalog' ? state.missionCatalog : state.missionHistory;
+  return collection[Number(index)] || null;
+}
+
+async function ensureMissionData() {
+  if (state.missionSourcesLoaded) return;
+  if (!missionSourcePromise) {
+    missionSourcePromise = (async () => {
+      let offset = 0;
+      let total = 1;
+      const catalog = [];
+      while (offset < total) {
+        const response = await apiFetch(`/api/missions?limit=500&offset=${offset}`);
+        catalog.push(...(response.items || []));
+        total = Number(response.total || 0);
+        offset += 500;
+      }
+      const history = await apiFetch('/api/missions/history?limit=500');
+      state.missionCatalog = catalog;
+      state.missionHistory = history.items || [];
+      state.missionSourcesLoaded = true;
+    })().finally(() => { missionSourcePromise = null; });
+  }
+  await missionSourcePromise;
+}
+
+function missionSourceCard(row, kind, index) {
+  const mission = row.mission;
+  const key = `${kind}:${index}`;
+  const selected = state.missionSourceSelection?.key === key;
+  const added = state.working.missions.some(item => item.mission_id === mission.mission_id);
+  const sourceLabel = kind === 'catalog'
+    ? `基础库 · T${mission.window_start_slot}–T${mission.window_end_slot}`
+    : `${shortRunId(row.source_run_id)} · ${mission.mission_id}`;
+  return `<article class="mission-card mission-source-card${selected ? ' selected' : ''}" data-source-kind="${kind}" data-source-index="${index}" data-mission-id="${esc(mission.mission_id)}" aria-current="${selected}">
+    <button class="mission-card-main" type="button">
+      <strong>${esc(mission.name)}</strong>
+      <span>${esc(mission.mission_id)} · ${esc(sourceLabel)}</span>
+      <small>${esc(missionDemandSummary(mission))}</small>
+    </button>
+    <span class="mission-source-actions">${added ? '<em>已加入</em>' : ''}<button class="mission-card-details" type="button" aria-label="预览来源任务">详情</button></span>
+  </article>`;
+}
+
+function missionSourceSections() {
+  const historyLimit = 20;
+  const historyRows = state.missionHistory.slice(0, historyLimit);
+  return `<section class="mission-source-group" data-source-group="catalog">
+    <header><div><strong>基础库任务</strong><small>当前基础任务库</small></div><span>${state.missionCatalog.length}</span></header>
+    <div class="mission-card-list">${state.missionCatalog.map((row, index) => missionSourceCard(row, 'catalog', index)).join('') || '<div class="field-note">基础库暂无任务。</div>'}</div>
+  </section>
+  <section class="mission-source-group" data-source-group="history">
+    <header><div><strong>历史运行任务</strong><small>冻结 Run Snapshot</small></div><span>${state.missionHistory.length}</span></header>
+    <div class="mission-card-list">${historyRows.map((row, index) => missionSourceCard(row, 'history', index)).join('') || '<div class="field-note">暂无可用历史任务快照。</div>'}</div>
+    ${state.missionHistory.length > historyLimit ? `<p class="field-note">仅显示最近 ${historyLimit} 条；可通过来源 Run 继续定位。</p>` : ''}
+  </section>`;
+}
+
 function renderMissionAddStart() {
   return `<div class="mission-scroll inspector-scroll">
     <div class="mission-add-intro">
       <button id="newMissionAction" class="btn primary" type="button" ${writable() ? '' : 'disabled'}>新建任务</button>
       <p class="field-note">也可从基础库或历史运行快照中预览后加入。</p>
     </div>
-    <div id="missionSourcePlaceholder" class="empty-state">任务来源将在下一阶段载入。</div>
+    <div id="missionSourceList">${state.missionSourcesLoaded ? missionSourceSections() : '<div class="empty-state">正在读取任务来源…</div>'}</div>
   </div>`;
+}
+
+function selectSourceMission(kind, index, { locate = false } = {}) {
+  const row = sourceMission(kind, index);
+  if (!row) return;
+  state.selected = null;
+  state.mapFocus = null;
+  state.missionSourceSelection = {
+    kind,
+    index: Number(index),
+    key: `${kind}:${index}`,
+    mission: deep(row.mission),
+    sourceRunId: row.source_run_id || null,
+  };
+  renderMissionMode();
+  drawMap();
+  if (locate) focusObject('mission-preview', row.mission.mission_id);
+}
+
+function bindMissionSourceCards() {
+  refs.body.querySelectorAll('.mission-source-card').forEach(card => {
+    const { sourceKind, sourceIndex } = card.dataset;
+    const main = card.querySelector('.mission-card-main');
+    main.onclick = () => {
+      clearTimeout(main._missionClickTimer);
+      main._missionClickTimer = setTimeout(() => selectSourceMission(sourceKind, sourceIndex, { locate: true }), 220);
+    };
+    main.ondblclick = event => {
+      event.preventDefault();
+      clearTimeout(main._missionClickTimer);
+      renderSourceMissionDetail(sourceKind, sourceIndex);
+    };
+    card.querySelector('.mission-card-details').onclick = () => renderSourceMissionDetail(sourceKind, sourceIndex);
+  });
+}
+
+async function loadMissionSourcesForPanel() {
+  try {
+    await ensureMissionData();
+    if (state.mode === 'mission' && state.missionTab === 'add') renderMissionMode();
+  } catch (error) {
+    const target = $('missionSourceList');
+    if (target) target.innerHTML = `<div class="inline-message error">${esc(errText(error))}</div>`;
+  }
 }
 
 function renderMissionMode() {
@@ -380,6 +484,8 @@ function renderMissionMode() {
   } else {
     const create = $('newMissionAction');
     if (create) create.onclick = () => renderMissionEditor(null);
+    if (state.missionSourcesLoaded) bindMissionSourceCards();
+    else loadMissionSourcesForPanel();
   }
 }
 
@@ -432,6 +538,75 @@ function renderMissionDetail(id) {
   if (writable()) {
     $('editMission').onclick = () => renderMissionEditor(id);
     $('removeMission').onclick = () => removeMission(id);
+  }
+}
+
+function renderSourceMissionDetail(kind, index) {
+  const row = sourceMission(kind, index);
+  if (!row) return;
+  const mission = row.mission;
+  const added = state.working.missions.some(item => item.mission_id === mission.mission_id);
+  state.mode = 'mission-source-detail';
+  state.selected = null;
+  state.missionSourceSelection = {
+    kind,
+    index: Number(index),
+    key: `${kind}:${index}`,
+    mission: deep(mission),
+    sourceRunId: row.source_run_id || null,
+  };
+  refs.inspector.dataset.kind = 'mission-editor';
+  refs.inspectorTitle.textContent = mission.name;
+  refs.inspectorSubtitle.textContent = kind === 'catalog'
+    ? `${mission.mission_id} · 基础库任务`
+    : `${mission.mission_id} · ${shortRunId(row.source_run_id)} 历史快照`;
+  refs.body.innerHTML = `<div id="sourceMissionDetail" class="mission-scroll inspector-scroll">
+    <div class="mission-source-notice">${kind === 'catalog' ? '来源：基础任务库' : `来源 Run：${esc(shortRunId(row.source_run_id))}`}</div>
+    ${missionDetailContent(mission)}
+    ${added ? '<div class="inline-message info">当前情境已存在相同任务编号。来源内容可能不同，不会自动覆盖。</div>' : ''}
+  </div><div class="inspector-footer">
+    <button id="backToMissionSources" class="btn ghost" data-readonly-navigation type="button">返回添加任务</button>
+    <button id="addSourceMission" class="btn primary" type="button" ${added || !writable() ? 'disabled' : ''}>${added ? '已加入' : '加入当前情境'}</button>
+  </div>`;
+  $('backToMissionSources').onclick = () => {
+    state.mode = 'mission';
+    state.missionTab = 'add';
+    state.missionSourceSelection = null;
+    renderMissionMode();
+    drawMap();
+  };
+  if (!added && writable()) $('addSourceMission').onclick = () => copySourceMission(kind, index);
+  drawMap();
+  focusObject('mission-preview', mission.mission_id);
+}
+
+async function copySourceMission(kind, index) {
+  const row = sourceMission(kind, index);
+  if (!row) return;
+  const mission = row.mission;
+  if (state.working.missions.some(item => item.mission_id === mission.mission_id)) {
+    showMessage('当前情境已存在同编号任务，不会覆盖。', 'error');
+    renderSourceMissionDetail(kind, index);
+    return;
+  }
+  try {
+    const body = kind === 'catalog'
+      ? { situation: state.working, mission_id: mission.mission_id }
+      : { situation: state.working, mission };
+    const response = await apiFetch('/api/situations/working-copy/copy-mission', { method: 'POST', body });
+    state.working = deep(response.situation);
+    state.mode = 'mission';
+    state.missionTab = 'current';
+    state.missionSourceSelection = null;
+    state.selected = { type: 'mission', id: mission.mission_id };
+    state.mapFocus = { type: 'mission', id: mission.mission_id };
+    markDirty();
+    renderMissionMode();
+    drawMap();
+    focusObject('mission', mission.mission_id);
+    showMessage('任务已加入当前情境，尚未保存。', 'success');
+  } catch (error) {
+    showMessage(errText(error), 'error');
   }
 }
 
@@ -796,6 +971,7 @@ function bind(signal) {
   refs.close.addEventListener('click', () => requestPanelTransition(() => {
     state.mode = 'select';
     state.selected = null;
+    state.missionSourceSelection = null;
     refs.tools.querySelectorAll('[data-mode]').forEach((button) => button.classList.remove('active'));
     setInspectorOpen(false);
     drawMap();
@@ -873,6 +1049,7 @@ export function unmount() {
   damagePreview = null;
   damageToolStages = {};
   pendingPanelTransition = null;
+  missionSourcePromise = null;
   lifecycleController?.abort();
   clearTimeout(showMessage.t);
   destroyPanels();
