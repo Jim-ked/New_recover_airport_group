@@ -147,13 +147,7 @@ def check_r0_r1_r2(r0: RunSnapshot, r1: RunSnapshot, r2: RunSnapshot) -> Compara
     reasons.extend(
         _same_fields(
             [c0, c1, c2],
-            (
-                "preference_mode",
-                "alpha",
-                "aircraft_type_weight",
-                "mip_time_limit_s",
-                "algorithm_seed",
-            ),
+            OBJECTIVE_DEFINITION_FIELDS + ("mip_time_limit_s", "algorithm_seed"),
         )
     )
     # Stable/deterministic error order without hiding duplicate root causes.

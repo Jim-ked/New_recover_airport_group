@@ -81,6 +81,30 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(check.comparable)
         self.assertIn("run_config.mip_time_limit_s differs", check.reasons)
 
+    def test_r0_r1_r2_requires_identical_final_objective_parameters_only(self):
+        r0, r1, _r2 = self._roles()
+        ds = scenario()
+        changed_objective = make_snapshot(
+            scenario=ds,
+            available_scenarios=(ds,),
+            cluster_enabled=True,
+            f3_time_reference_slots=21.0,
+            run_id="R2-OBJECTIVE",
+        )
+        check = check_r0_r1_r2(r0, r1, changed_objective)
+        self.assertFalse(check.comparable)
+        self.assertIn("run_config.f3_time_reference_slots differs", check.reasons)
+
+        changed_outer_reward = make_snapshot(
+            scenario=ds,
+            available_scenarios=(ds,),
+            cluster_enabled=True,
+            core_airport_reward_weight=9.0,
+            run_id="R2-OUTER",
+        )
+        check = check_r0_r1_r2(r0, r1, changed_outer_reward)
+        self.assertTrue(check.comparable, check.reasons)
+
     def test_multi_scenario_allows_only_damage_selection_to_change(self):
         ds = scenario()
         common = (ds,)

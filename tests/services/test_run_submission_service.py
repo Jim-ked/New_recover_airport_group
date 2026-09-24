@@ -8,6 +8,7 @@ from backend.domain.airport import AirportBase
 from backend.domain.airport_operations import AirportAircraftSupport, AirportOperationalProfile, AirportResourceStock
 from backend.domain.catalog import AircraftResourceRequirement, AircraftType, ResourceType
 from backend.domain.mission import Mission, MissionAircraftRequirement
+from backend.domain.run_config import RunConfigValidationError
 from backend.domain.situation import Situation, SituationAirport
 from backend.services.od_distance_service import ODDistanceService
 from backend.services.run_service import RunService
@@ -95,6 +96,12 @@ class RunSubmissionServiceTests(unittest.TestCase):
             "core_airports": [],
             "aircraft_type_weight": {"fighter": 1.0},
             "mip_time_limit_s": 120,
+            # Explicit test-only calibration; production has no fallback constants.
+            "f2_resource_reference_quantities": {"FUEL-1": 10.0},
+            "f2_resource_weights": {"FUEL-1": 1.0},
+            "f3_time_reference_slots": 20.0,
+            "f3_tardiness_coefficient": 1.5,
+            "unmet_demand_penalty": 25.0,
         }
 
     def tearDown(self):
@@ -123,6 +130,39 @@ class RunSubmissionServiceTests(unittest.TestCase):
     def test_missing_situation_is_explicit_not_validation_guess(self):
         with self.assertRaises(RunSubmissionSituationNotFoundError):
             self.service.validate(owner_user_id="U1", situation_id="NOPE", run_config=self.config)
+
+    def test_missing_objective_calibration_fails_before_validation_or_enqueue(self):
+        required = (
+            "f2_resource_reference_quantities",
+            "f2_resource_weights",
+            "f3_time_reference_slots",
+            "f3_tardiness_coefficient",
+            "unmet_demand_penalty",
+        )
+        for field in required:
+            with self.subTest(field=field):
+                config = dict(self.config)
+                config.pop(field)
+                with self.assertRaisesRegex(RunConfigValidationError, field):
+                    self.service.validate(
+                        owner_user_id="U1", situation_id="S1", run_config=config
+                    )
+                self.assertEqual([], self.runs.list_for_owner("U1"))
+
+        clustered = {
+            **self.config,
+            "cluster_enabled": True,
+            "cluster_size": 1,
+            "core_airports": ["A1"],
+        }
+        with self.assertRaisesRegex(RunConfigValidationError, "core_airport_reward_weight"):
+            self.service.submit(
+                run_id="RUN-MISSING-CORE",
+                owner_user_id="U1",
+                situation_id="S1",
+                run_config=clustered,
+            )
+        self.assertIsNone(self.runs.get("RUN-MISSING-CORE"))
 
 
 if __name__ == "__main__":

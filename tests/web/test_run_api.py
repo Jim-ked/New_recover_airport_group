@@ -76,6 +76,13 @@ class RunApiTests(unittest.TestCase):
             "core_airports": [],
             "aircraft_type_weight": {"fighter": 1.0},
             "mip_time_limit_s": 120,
+            # Explicit test-only calibration; production has no fallback constants.
+            "f2_resource_reference_quantities": {"FUEL-1": 10.0},
+            "f2_resource_weights": {"FUEL-1": 1.0},
+            "f3_time_reference_slots": 20.0,
+            "f3_tardiness_coefficient": 1.5,
+            "unmet_demand_penalty": 25.0,
+            "core_airport_reward_weight": 0.25,
         }
         self.body = {"situation_id": "S1", "run_config": self.config}
 

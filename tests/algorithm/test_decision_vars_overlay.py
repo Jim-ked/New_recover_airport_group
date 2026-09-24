@@ -77,10 +77,24 @@ class DecisionVarsOverlayTests(unittest.TestCase):
     def test_ontime_score_uses_half_open_window(self):
         ds, rp = self._input()
         bm = mod.build_base_path_map(ds, rp)
-        # Mission window becomes [0,4) after cropping. Outbound flight A1->M1 takes 1 slot.
+        # Mission window becomes [1,5) after preserving one early-departure slot.
         row = next(p for p in bm.path_records if p.origin_airport_id == "A1" and p.depart_slot == 0)
         self.assertEqual(1, row.mission_arrival_slot)
         self.assertEqual(1.0, row.ontime_score)
+
+    def test_arrival_must_be_inside_both_ends_of_half_open_window(self):
+        ds, rp = self._input()
+        bm = mod.build_base_path_map(ds, rp)
+        start, end = ds["static"]["missions"][0]["_duty_window"]
+        arrivals = {
+            p.mission_arrival_slot
+            for p in bm.path_records
+            if p.origin_airport_id == "A1"
+        }
+        self.assertIn(start, arrivals)
+        self.assertIn(end - 1, arrivals)
+        self.assertNotIn(end, arrivals)
+        self.assertTrue(all(start <= slot < end for slot in arrivals))
 
     def test_paths_arriving_before_mission_window_are_excluded_without_waiting(self):
         ds, rp = self._input()
@@ -104,6 +118,18 @@ class DecisionVarsOverlayTests(unittest.TestCase):
             and p.mission_arrival_slot == 3
         )
         self.assertLess(row.depart_slot, 3)
+
+    def test_snapshot_planning_start_preserves_legal_early_departure(self):
+        ds, rp = self._input()
+        bm = mod.build_base_path_map(ds, rp)
+        start, _ = ds["static"]["missions"][0]["_duty_window"]
+        row = next(
+            p for p in bm.path_records
+            if p.origin_airport_id == "A1"
+            and p.depart_slot == 0
+            and p.mission_arrival_slot == start
+        )
+        self.assertLess(row.depart_slot, start)
 
     def test_window_start_does_not_add_finish_by_deadline_constraint_yet(self):
         ds, rp = self._input()

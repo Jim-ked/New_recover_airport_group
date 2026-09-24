@@ -202,7 +202,7 @@ class RunSnapshot:
         run_config.validate_against(
             airport_ids=[a.airport_id for a in situation.airports],
             damage_scenario_ids=[s.damage_scenario_id for s in situation.damage_scenarios],
-            aircraft_type_ids=list(ac_by_id),
+            aircraft_type_ids=sorted(used_aircraft),
         )
 
         # Every aircraft type referenced by this Run must have the operational fields

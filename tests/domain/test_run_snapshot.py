@@ -7,7 +7,7 @@ from backend.domain.airport_operations import AirportAircraftSupport, AirportOpe
 from backend.domain.catalog import AircraftResourceRequirement, AircraftType, ResourceType
 from backend.domain.damage import DamageScenario
 from backend.domain.mission import Mission, MissionAircraftRequirement
-from backend.domain.run_config import RunConfig
+from backend.domain.run_config import RunConfig, RunConfigValidationError
 from backend.domain.run_snapshot import ODDistance, RunSnapshot, RunSnapshotValidationError
 from backend.domain.situation import Situation, SituationAirport
 
@@ -102,6 +102,32 @@ class RunSnapshotTests(unittest.TestCase):
                 od_distances=[ODDistance("A1", "M1", 1)], run_config=self._config(),
             )
         self.assertEqual("aircraft_types", ctx.exception.field)
+
+    def test_aircraft_weights_are_validated_against_situation_effective_types(self) -> None:
+        aircraft, resources, reqs = self._catalogs()
+        aircraft.append(AircraftType.from_mapping({
+            "aircraft_type_id": "bomber", "name": "Bomber", "speed_kmh": 700,
+            "max_range_km": 1500, "reserve_ratio": 0.2,
+            "departure_capacity_occupancy_factor": 1.0,
+            "arrival_capacity_occupancy_factor": 1.0,
+        }))
+        config = RunConfig.from_mapping({
+            "damage_scenario_id": None,
+            "preference_mode": "sortie_max",
+            "cluster_enabled": False,
+            "cluster_size": None,
+            "core_airports": [],
+            "aircraft_type_weight": {"bomber": 1.1},
+            "mip_time_limit_s": 120,
+        })
+        with self.assertRaisesRegex(
+            RunConfigValidationError, "unknown aircraft type weights.*bomber"
+        ):
+            RunSnapshot.build(
+                run_id="R-BOMBER", situation=self._situation(), aircraft_types=aircraft,
+                resource_types=resources, aircraft_resource_requirements=reqs,
+                od_distances=[ODDistance("A1", "M1", 1)], run_config=config,
+            )
 
     def test_snapshot_rejects_used_aircraft_with_missing_operational_parameter(self) -> None:
         _, resources, reqs = self._catalogs()

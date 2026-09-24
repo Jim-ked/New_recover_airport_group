@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from backend.domain.run_config import RunConfigValidationError
 from backend.services.run_service import RunAccessError, RunService
 from backend.storage.run_repository import RunRepository
 from tests.algorithm.test_snapshot_adapter import make_snapshot
@@ -47,6 +48,16 @@ class RunServiceTests(unittest.TestCase):
             self.service.request_cancel("R1", actor_user_id="U2")
         record = self.service.request_cancel("R1", actor_user_id="U1")
         self.assertEqual("cancelled", record.status)
+
+    def test_direct_snapshot_enqueue_rejects_missing_objective_calibration(self):
+        legacy_snapshot = make_snapshot(
+            run_id="LEGACY-MISSING-F3",
+            cluster_enabled=False,
+            f3_time_reference_slots=None,
+        )
+        with self.assertRaisesRegex(RunConfigValidationError, "f3_time_reference_slots"):
+            self.service.submit_snapshot(snapshot=legacy_snapshot, owner_user_id="U1")
+        self.assertIsNone(self.repo.get("LEGACY-MISSING-F3"))
 
 
 if __name__ == "__main__":

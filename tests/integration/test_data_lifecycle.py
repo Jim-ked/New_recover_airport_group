@@ -113,6 +113,12 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
                 "core_airports": [],
                 "aircraft_type_weight": {"fighter": 1.0},
                 "mip_time_limit_s": 120,
+                # Explicit test-only calibration; production has no fallback constants.
+                "f2_resource_reference_quantities": {"FUEL-1": 10.0},
+                "f2_resource_weights": {"FUEL-1": 1.0},
+                "f3_time_reference_slots": 20.0,
+                "f3_tardiness_coefficient": 1.5,
+                "unmet_demand_penalty": 25.0,
             },
             od_distances=[ODDistance("A1", "M1", 321.5)],
         )
@@ -195,6 +201,12 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
                 "damage_scenario_id": "DS1", "preference_mode": "time_min",
                 "cluster_enabled": False, "cluster_size": None, "core_airports": [],
                 "aircraft_type_weight": {}, "mip_time_limit_s": 60,
+                # Explicit test-only calibration; production has no fallback constants.
+                "f2_resource_reference_quantities": {"FUEL-1": 10.0},
+                "f2_resource_weights": {"FUEL-1": 1.0},
+                "f3_time_reference_slots": 20.0,
+                "f3_tardiness_coefficient": 1.5,
+                "unmet_demand_penalty": 25.0,
             },
             od_distances=[ODDistance("A1", "M1", 321.5)],
         )

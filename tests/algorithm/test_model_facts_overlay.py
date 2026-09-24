@@ -132,13 +132,34 @@ class ModelFactsOverlayTests(unittest.TestCase):
         early, late = paths[0], paths[-1]
         rows = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)
         self.assertGreaterEqual(rows[late.key].f3, rows[early.key].f3)
-        completion_abs = b.ds["range"][0] + early.mission_arrival_slot + early.tau_work_windows
-        window_end_abs = b.ds["range"][0] + b.ds["static"]["missions"][0]["_duty_window"][1]
+        window_start, window_end = b.ds["static"]["missions"][0]["_duty_window"]
+        completion = early.mission_arrival_slot + early.tau_work_windows
+        reference_completion = window_start + early.tau_work_windows
         expected = (
-            completion_abs
-            + 1.5 * max(0, completion_abs - window_end_abs)
+            completion - reference_completion
+            + 1.5 * max(0, completion - window_end)
         ) / 20.0
         self.assertAlmostEqual(expected, rows[early.key].f3)
+
+    def test_f3_is_invariant_under_whole_timeline_translation(self):
+        early_bundle = build_algorithm_input(make_snapshot(mission_window=(4, 8)))
+        shifted_bundle = build_algorithm_input(make_snapshot(mission_window=(14, 18)))
+        early_maps = dv.build_path_map(
+            early_bundle.ds, early_bundle.run_params, {"enabled": True, "S": ["A1", "A2"]}
+        )
+        shifted_maps = dv.build_path_map(
+            shifted_bundle.ds, shifted_bundle.run_params, {"enabled": True, "S": ["A1", "A2"]}
+        )
+        early_coeffs = mf.objective_coefficients(
+            early_bundle.ds, early_maps, early_bundle.run_params, early_bundle.runtime
+        )
+        shifted_coeffs = mf.objective_coefficients(
+            shifted_bundle.ds, shifted_maps, shifted_bundle.run_params, shifted_bundle.runtime
+        )
+        self.assertEqual(set(early_coeffs), set(shifted_coeffs))
+        for path_id in early_coeffs:
+            with self.subTest(path_id=path_id):
+                self.assertEqual(early_coeffs[path_id].f3, shifted_coeffs[path_id].f3)
 
     def test_all_preset_weights_remain_fixed(self):
         cases = {
@@ -200,7 +221,7 @@ class ModelFactsOverlayTests(unittest.TestCase):
         )
         p_yes = next(
             x for x in maps_yes.path_records
-            if x.origin_airport_id == "A1" and x.return_airport_id == "A1" and x.depart_slot == 0
+            if x.origin_airport_id == "A1" and x.return_airport_id == "A1" and x.depart_slot == 1
         )
         mf.validate_schedule_base(supplied.ds, maps_yes, supplied.run_params, {p_yes.key: 2})
 

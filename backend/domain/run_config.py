@@ -199,10 +199,15 @@ class RunConfig:
             raw.get("f2_resource_weights"),
             "f2_resource_weights",
         )
-        if bool(f2_references) != bool(f2_weights):
+        if f2_references and not f2_weights:
+            _fail(
+                "f2_resource_weights",
+                "f2_resource_weights is required when F2 references are provided",
+            )
+        if f2_weights and not f2_references:
             _fail(
                 "f2_resource_reference_quantities",
-                "F2 resource references and weights must be provided together",
+                "f2_resource_reference_quantities is required when F2 weights are provided",
             )
         if f2_references and {k for k, _ in f2_references} != {k for k, _ in f2_weights}:
             _fail(
@@ -262,6 +267,39 @@ class RunConfig:
         unknown_types = sorted({k for k, _ in self.aircraft_type_weights} - known_types)
         if unknown_types:
             _fail("aircraft_type_weight", f"unknown aircraft type weights: {unknown_types}")
+
+    def require_objective_calibration(self) -> None:
+        """Reject new/queued Runs whose objective still lacks formal calibration."""
+        if not self.f2_resource_reference_rows:
+            _fail(
+                "f2_resource_reference_quantities",
+                "f2_resource_reference_quantities is required before creating a Run",
+            )
+        if not self.f2_resource_weight_rows:
+            _fail(
+                "f2_resource_weights",
+                "f2_resource_weights is required before creating a Run",
+            )
+        if self.f3_time_reference_slots is None:
+            _fail(
+                "f3_time_reference_slots",
+                "f3_time_reference_slots is required before creating a Run",
+            )
+        if self.f3_tardiness_coefficient is None:
+            _fail(
+                "f3_tardiness_coefficient",
+                "f3_tardiness_coefficient is required before creating a Run",
+            )
+        if self.unmet_demand_penalty is None:
+            _fail(
+                "unmet_demand_penalty",
+                "unmet_demand_penalty is required before creating a Run",
+            )
+        if self.cluster_enabled and self.core_airport_reward_weight is None:
+            _fail(
+                "core_airport_reward_weight",
+                "core_airport_reward_weight is required when clustering is enabled",
+            )
 
     @property
     def aircraft_type_weight(self) -> Dict[str, float]:

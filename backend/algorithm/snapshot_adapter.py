@@ -92,7 +92,6 @@ def _compute_horizon(
     situation: Situation,
     aircraft_types: Sequence[AircraftType],
     od: Mapping[Tuple[str, str], float],
-    scenario: Optional[DamageScenario],
 ) -> Tuple[int, int]:
     """Preserve the original loose-horizon policy using canonical half-open windows.
 
@@ -104,12 +103,11 @@ def _compute_horizon(
 
     starts: List[int] = [m.window_start_slot for m in situation.missions]
     ends: List[int] = [m.window_end_slot - 1 for m in situation.missions]
-    if scenario is not None:
+    # Use every frozen scenario when defining the axis. Selecting a scenario may change
+    # projected capacities/delays, but must not move the R0/R1/R2 time origin.
+    for scenario in situation.damage_scenarios:
         starts.extend(e.start_slot for e in scenario.events)
         ends.extend(e.end_slot - 1 for e in scenario.events)
-
-    t_min = min(starts) if starts else 0
-    base_end = max(ends) if ends else t_min
 
     mission_types = _mission_aircraft_ids(situation)
     speed_by_type = {
@@ -130,7 +128,16 @@ def _compute_horizon(
         (row.tau_work_windows for m in situation.missions for row in m.aircraft_requirements),
         default=0,
     )
-    max_delay = _max_navigation_delay(scenario)
+    max_delay = max(
+        (_max_navigation_delay(item) for item in situation.damage_scenarios),
+        default=0,
+    )
+    if situation.missions:
+        earliest_arrival = min(m.window_start_slot for m in situation.missions)
+        starts.append(max(0, earliest_arrival - max_fly_windows - max_delay))
+
+    t_min = min(starts) if starts else 0
+    base_end = max(ends) if ends else t_min
     margin = 2 * max_fly_windows + max_tau_work + 2 * max_delay
     t_max = max(t_min, base_end + margin)
     return int(t_min), int(t_max)
@@ -536,7 +543,7 @@ def build_algorithm_input(snapshot: RunSnapshot) -> AlgorithmInputBundle:
                 f"selected damage scenario absent from frozen Situation: {runtime_obj.damage_scenario_id}"
             ) from exc
 
-    t_min, t_max = _compute_horizon(situation, aircraft_types, od, scenario)
+    t_min, t_max = _compute_horizon(situation, aircraft_types, od)
     timeview = _build_timeview(
         situation,
         resource_types,

@@ -82,11 +82,13 @@ def make_snapshot(
     situation_id: str = "S1",
     airport_ids: tuple[str, str] = ("A1", "A2"),
     core_airport_reward_weight: float = 0.25,
+    mission_window: tuple[int, int] = (4, 8),
+    f3_time_reference_slots: float | None = 20.0,
 ) -> RunSnapshot:
     first_airport_id, second_airport_id = airport_ids
     mission = Mission(
         mission_id="M1", name="Mission", longitude=120.0, latitude=32.0,
-        window_start_slot=4, window_end_slot=8,
+        window_start_slot=mission_window[0], window_end_slot=mission_window[1],
         aircraft_requirements=(MissionAircraftRequirement("fighter", 2, 1),),
     )
     situation = Situation.create(situation_id=situation_id, name="S").with_airport(
@@ -119,7 +121,7 @@ def make_snapshot(
         # Synthetic test-only calibration. Production has no fallback constants.
         "f2_resource_reference_quantities": {"FUEL-A": 10.0, "MAT-1": 2.0},
         "f2_resource_weights": {"FUEL-A": 0.6, "MAT-1": 0.4},
-        "f3_time_reference_slots": 20.0,
+        "f3_time_reference_slots": f3_time_reference_slots,
         "f3_tardiness_coefficient": 1.5,
         "unmet_demand_penalty": 25.0,
         "core_airport_reward_weight": core_airport_reward_weight,
@@ -198,9 +200,29 @@ class SnapshotAdapterTests(unittest.TestCase):
 
     def test_half_open_mission_window_is_shifted_to_cropped_relative_axis(self):
         bundle = build_algorithm_input(make_snapshot())
-        # With no earlier damage event, t_min is the mission start slot (4).
-        self.assertEqual(4, bundle.ds["range"][0])
-        self.assertEqual((0, 4), bundle.ds["static"]["missions"][0]["_duty_window"])
+        # Planning starts one flight slot before the earliest mission arrival window.
+        self.assertEqual(3, bundle.ds["range"][0])
+        self.assertEqual((1, 5), bundle.ds["static"]["missions"][0]["_duty_window"])
+
+    def test_time_axis_is_identical_across_damage_scenario_selection(self):
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS-EARLY", "name": "Early", "category": "custom",
+            "events": [{
+                "event_id": "E1", "sequence": 0,
+                "target": {"airport_id": "A1", "target_type": "airport", "target_id": None},
+                "damage_type": "capacity_damage", "start_slot": 1, "end_slot": 3,
+                "effect": {"closed": False, "remaining_capacity_per_window": 2},
+                "recovery_mode": "instant", "recovery_duration_slots": None,
+            }],
+        })
+        baseline = build_algorithm_input(
+            make_snapshot(available_scenarios=(scenario,), cluster_enabled=False)
+        )
+        damaged = build_algorithm_input(
+            make_snapshot(scenario=scenario, cluster_enabled=False)
+        )
+        self.assertEqual(baseline.ds["range"], damaged.ds["range"])
+        self.assertEqual(baseline.ds["timeview"]["T"], damaged.ds["timeview"]["T"])
 
     def test_damage_projection_is_frozen_into_timeview(self):
         scenario = DamageScenario.from_mapping({
@@ -251,12 +273,14 @@ class SnapshotAdapterTests(unittest.TestCase):
         )
         bundle = build_algorithm_input(snap)
         tv = bundle.ds["timeview"]
-        self.assertEqual(4, bundle.ds["range"][0])
+        self.assertEqual(3, bundle.ds["range"][0])
         self.assertEqual(10.0, tv["resource_replenishment_capacity"]["A1"]["FUEL-A"][0])
-        self.assertEqual(5.0, tv["resource_replenishment_actual"]["A1"]["FUEL-A"][0])
-        self.assertEqual(5.0, tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][0])
+        self.assertEqual(0.0, tv["resource_replenishment_actual"]["A1"]["FUEL-A"][0])
+        self.assertEqual(5.0, tv["resource_replenishment_actual"]["A1"]["FUEL-A"][1])
+        self.assertEqual(0.0, tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][0])
+        self.assertEqual(5.0, tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][1])
         self.assertEqual(100.0, tv["resource_base_boundary"]["A1"]["FUEL-A"][0])
-        self.assertEqual(105.0, tv["resources"]["A1"]["FUEL-A"][0])
+        self.assertEqual(105.0, tv["resources"]["A1"]["FUEL-A"][1])
 
     def test_replenishment_before_visible_horizon_is_folded_into_cumulative_stock(self):
         snap = make_snapshot(

@@ -311,7 +311,7 @@ class MetricsCoreTests(unittest.TestCase):
 
         snapshot = make_snapshot(
             a1_replenishment_capacity=10,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 3, 5),),
         )
         result = run_once(
             snapshot,
@@ -337,7 +337,7 @@ class MetricsCoreTests(unittest.TestCase):
         snapshot = make_snapshot(
             a1_fuel_initial=0,
             a1_replenishment_capacity=10,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 3, 5),),
         )
         result = run_once(
             snapshot,

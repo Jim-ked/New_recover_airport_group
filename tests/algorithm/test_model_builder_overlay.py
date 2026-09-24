@@ -180,6 +180,21 @@ class ModelBuilderOverlayTests(unittest.TestCase):
                 runtime=runtime, model_factory=FakeModel,
             )
 
+    def test_aircraft_type_without_legal_path_remains_soft_unmet_demand(self):
+        b = build_algorithm_input(make_snapshot(cluster_enabled=False))
+        b.run_params["aircrafts"]["fighter"]["max_range"] = 1.0
+        maps = dv.build_path_map(b.ds, b.run_params)
+        self.assertEqual([], maps.path_records)
+
+        model, pack = mb.build_model(
+            b.ds, b.run_params, maps, integer_vars=True,
+            runtime=b.runtime, model_factory=FakeModel,
+        )
+
+        self.assertEqual({}, pack["x_path"])
+        self.assertIn(("M1", "fighter"), pack["unmet_demand"])
+        self.assertIn("REQ__M1__fighter", model.cons)
+
 
 if __name__ == "__main__":
     unittest.main()

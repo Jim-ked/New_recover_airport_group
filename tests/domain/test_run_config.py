@@ -129,7 +129,7 @@ class RunConfigTests(unittest.TestCase):
 
     def test_f2_references_and_weights_must_be_supplied_together(self):
         with self.assertRaisesRegex(
-            RunConfigValidationError, "references and weights must be provided together"
+            RunConfigValidationError, "f2_resource_weights is required"
         ):
             RunConfig.from_mapping({
                 "damage_scenario_id": None,

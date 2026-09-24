@@ -50,6 +50,7 @@ class RunSnapshotService:
             raise RunSnapshotServiceError(f"situation not found: {situation_id}")
 
         canonical_config = run_config if isinstance(run_config, RunConfig) else RunConfig.from_mapping(run_config)
+        canonical_config.require_objective_calibration()
         return RunSnapshot.build(
             run_id=run_id,
             situation=situation,
