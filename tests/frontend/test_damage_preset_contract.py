@@ -20,9 +20,8 @@ class DamagePresetFrontendContractTests(unittest.TestCase):
         self.assertNotIn("damage-presets.js", self.html)
 
     def test_quick_fill_is_ui_only_and_uses_existing_capacity_event_fields(self):
-        self.assertIn("ratio: 0.80", self.js)
-        self.assertIn("ratio: 0.50", self.js)
-        self.assertIn("ratio: 0.20", self.js)
+        self.assertIn("generateDamageEvents", self.js)
+        self.assertIn("./damage-prefill.js", self.js)
         self.assertIn(".ev-cap", self.js)
         self.assertIn(".ev-closed", self.js)
         self.assertIn("remaining_capacity_per_window", self.js)
@@ -37,7 +36,7 @@ class DamagePresetFrontendContractTests(unittest.TestCase):
         start = self.js.index("async function applyDamagePresetDraft()")
         end = self.js.index("\nfunction renderDamageEditor", start)
         function_body = self.js[start:end]
-        self.assertIn("item.operational_profile.capacity_per_window", function_body)
+        self.assertIn("generateDamageEvents(readDamageParameters(), state.working.airports)", function_body)
         self.assertNotIn("apiFetch(", function_body)
 
 

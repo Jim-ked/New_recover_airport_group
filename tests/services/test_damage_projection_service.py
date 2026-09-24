@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import pathlib
+import subprocess
 import unittest
 
 from backend.domain.airport import AirportBase
@@ -10,6 +13,106 @@ from backend.services.damage_projection_service import project_damage
 
 
 class DamageProjectionServiceTests(unittest.TestCase):
+    def test_actual_frontend_generator_output_projects_to_preview_capacity(self):
+        module = pathlib.Path(__file__).resolve().parents[2] / "frontend/static/js/modules/damage-prefill.js"
+        seed_scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS1", "name": "Fixture", "category": "custom",
+            "events": [self._capacity_event("fixture", 0, 1, 2, 5)],
+        })
+        situation = self._situation(seed_scenario)
+        script = f'''
+            import {{DAMAGE_PRESETS, generateDamageEvents}} from {json.dumps(module.as_uri())};
+            const airports = {json.dumps([item.to_dict() for item in situation.airports])};
+            const outputs = [];
+            for (const [kind, preset] of Object.entries(DAMAGE_PRESETS)) {{
+                for (const seed of ['projection-1', 'projection-2', 'projection-3']) {{
+                    const result = generateDamageEvents({{
+                        kind, scope: 'all', airportIds: [], count: 1,
+                        start: 3, end: 30, seed, offset: 2,
+                        stages: structuredClone(preset.stages),
+                    }}, airports);
+                    outputs.push({{kind, seed, ...result}});
+                }}
+            }}
+            console.log(JSON.stringify(outputs));
+        '''
+        result = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            capture_output=True, text=True, encoding="utf-8", timeout=20,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        outputs = json.loads(result.stdout)
+        self.assertEqual(15, len(outputs))
+        for output in outputs:
+            with self.subTest(kind=output["kind"], seed=output["seed"]):
+                self.assertTrue(output["events"])
+                events = []
+                expected = [10] * 32
+                previous_end = None
+                for index, raw in enumerate(output["events"]):
+                    self.assertNotIn("event_id", raw)
+                    self.assertNotIn("sequence", raw)
+                    self.assertEqual("instant", raw["recovery_mode"])
+                    if previous_end is not None:
+                        self.assertEqual(previous_end, raw["start_slot"])
+                    previous_end = raw["end_slot"]
+                    remaining = raw["effect"]["remaining_capacity_per_window"]
+                    expected[raw["start_slot"]:raw["end_slot"]] = [remaining] * (raw["end_slot"] - raw["start_slot"])
+                    events.append({**raw, "event_id": f"generated-{index}", "sequence": index})
+                scenario = DamageScenario.from_mapping({
+                    "damage_scenario_id": "DS1", "name": "Generated", "category": "custom", "events": events,
+                })
+                actual = project_damage(situation, scenario, horizon_slots=32)
+                self.assertEqual(tuple(expected), actual.capacity_per_window["A1"])
+
+    def _capacity_event(self, event_id, sequence, start, end, remaining, *, recovery="instant", duration=None):
+        return {
+            "event_id": event_id, "sequence": sequence,
+            "target": {"airport_id": "A1", "target_type": "airport", "target_id": None},
+            "damage_type": "capacity_damage", "start_slot": start, "end_slot": end,
+            "effect": {"remaining_capacity_per_window": remaining},
+            "recovery_mode": recovery, "recovery_duration_slots": duration,
+        }
+
+    def test_continuous_prefill_has_no_gaps_and_recovers_at_exclusive_end(self):
+        for duration in (8, 16):
+            with self.subTest(duration=duration):
+                scenario = DamageScenario.from_mapping({
+                    "damage_scenario_id": "DS1", "name": "Continuous", "category": "custom",
+                    "events": [self._capacity_event("C1", 0, 3, 3 + duration, 5)],
+                })
+                out = project_damage(self._situation(scenario), scenario, horizon_slots=duration + 5)
+                self.assertEqual((10,) * 3 + (5,) * duration + (10,) * 2, out.capacity_per_window["A1"])
+
+    def test_extreme_adjacent_instant_stages_match_preview_without_interference(self):
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS1", "name": "Extreme", "category": "custom",
+            "events": [
+                self._capacity_event("severe", 0, 2, 5, 2),
+                self._capacity_event("closed", 1, 5, 7, 0),
+                self._capacity_event("partial", 2, 7, 11, 6),
+            ],
+        })
+        out = project_damage(self._situation(scenario), scenario, horizon_slots=13)
+        self.assertEqual((10, 10, 2, 2, 2, 0, 0, 6, 6, 6, 6, 10, 10), out.capacity_per_window["A1"])
+
+    def test_extreme_prefill_respects_existing_average_recovery_and_sequence(self):
+        events = [
+            self._capacity_event("existing", 0, 1, 3, 2, recovery="average", duration=10),
+            self._capacity_event("severe", 1, 2, 4, 3),
+            self._capacity_event("closed", 2, 4, 5, 0),
+            self._capacity_event("partial", 3, 5, 7, 6),
+        ]
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS1", "name": "Overlap", "category": "custom",
+            # Storage order must not supersede the explicit sequence.
+            "events": list(reversed(events)),
+        })
+        out = project_damage(self._situation(scenario), scenario, horizon_slots=14)
+        # Partial recovery is capped at existing capacity 4 at its start; after
+        # its exclusive end the existing average recovery trajectory resumes.
+        self.assertEqual((10, 2, 2, 2, 0, 4, 4, 6, 6, 7, 8, 9, 10, 10), out.capacity_per_window["A1"])
+
     def _situation(self, scenario: DamageScenario) -> Situation:
         airport = AirportBase.from_mapping({
             "airport_id": "A1", "airport_name": "A", "facility_type": "small_airport", "role": "military",

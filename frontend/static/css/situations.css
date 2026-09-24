@@ -371,6 +371,14 @@
 .damage-preview-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .damage-preview-row { display: grid; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; overflow-wrap: anywhere; }
 .damage-preset .field-note { margin: 8px 0; }
+.damage-preset .prefill-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.damage-preset .prefill-seed { display: flex; gap: 6px; }
+.damage-preset .prefill-seed input { flex: 1; min-width: 0; }
+.damage-preset .prefill-stage { min-width: 0; margin: 8px 0; padding: 8px; border: 1px solid rgba(80, 119, 145, .62); border-radius: 4px; }
+.damage-preset .prefill-stage legend { font-size: 12px; }
+.damage-preset #damagePresetAdvanced { margin: 10px 0; }
+.damage-preset #damagePresetAdvanced > summary { cursor: pointer; }
+.damage-preset #damagePreviewContent { max-height: 320px; overflow: auto; }
 .damage-preset-kinds { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 9px; }
 .preset-kind { height: 30px; padding: 0 4px; border: 1px solid var(--line-soft); border-radius: 4px; background: #071b29; color: var(--text-muted); font-size: 11px; }
 .preset-kind:hover { color: var(--text); border-color: #356a8b; }

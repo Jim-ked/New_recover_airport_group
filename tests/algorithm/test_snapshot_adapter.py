@@ -128,6 +128,43 @@ def make_snapshot(
 
 
 class SnapshotAdapterTests(unittest.TestCase):
+    def test_historical_categories_roundtrip_hash_and_frozen_projection_compatibility(self):
+        for category in ("low", "medium", "high", "custom"):
+            with self.subTest(category=category):
+                scenario = DamageScenario.from_mapping({
+                    "damage_scenario_id": "DS1", "name": "Historical", "category": category,
+                    "events": [{
+                        "event_id": "E1", "sequence": 0,
+                        "target": {"airport_id": "A1", "target_type": "airport", "target_id": None},
+                        "damage_type": "capacity_damage", "start_slot": 2, "end_slot": 5,
+                        "effect": {"remaining_capacity_per_window": 2},
+                        "recovery_mode": "instant", "recovery_duration_slots": None,
+                    }],
+                })
+                frozen = make_snapshot(scenario=scenario)
+                payload = frozen.to_dict()
+                situation = Situation.from_mapping(payload["situation"])
+                self.assertEqual(category, situation.damage_scenarios[0].category)
+                self.assertEqual(payload["situation_content_hash"], situation.content_hash())
+                self.assertEqual(situation.content_hash(), Situation.from_mapping(situation.to_dict()).content_hash())
+
+                # Applying an editor payload replaces only this scenario's category.
+                edited = DamageScenario.from_mapping({**scenario.to_dict(), "category": "custom"})
+                changed = situation.with_damage_scenario(edited)
+                self.assertEqual("custom", changed.damage_scenarios[0].category)
+                if category == "custom":
+                    self.assertEqual(situation.content_hash(), changed.content_hash())
+                else:
+                    self.assertNotEqual(situation.content_hash(), changed.content_hash())
+
+                self.assertEqual(category, frozen.to_dict()["situation"]["damage_scenarios"][0]["category"])
+                retry = frozen.clone_for_run("R-RETRY")
+                self.assertEqual(category, retry.to_dict()["situation"]["damage_scenarios"][0]["category"])
+                original_projection = build_algorithm_input(frozen).ds["timeview"]["cap"]
+                self.assertEqual(original_projection, build_algorithm_input(retry).ds["timeview"]["cap"])
+                self.assertEqual(original_projection, build_algorithm_input(make_snapshot(scenario=edited)).ds["timeview"]["cap"])
+                self.assertEqual([2, 2, 2, 5], original_projection["A1"][:4])
+
     def test_builds_original_algorithm_shapes_without_file_reads(self):
         bundle = build_algorithm_input(make_snapshot())
         self.assertEqual(["A1", "A2"], bundle.ds["distance"]["airports"])

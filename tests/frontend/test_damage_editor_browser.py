@@ -4,7 +4,7 @@ Only map/panel rendering and HTTP persistence boundaries are stubbed. Editor,
 DOM bindings, draft state and generator modules are loaded from the workspace.
 """
 from pathlib import Path
-import json
+
 import re
 
 import pytest
@@ -43,12 +43,17 @@ def page(browser):
     ids = re.findall(r"byId\('([^']+)'\)", state_source)
     body = "".join(f'<{"select" if key == "situationSelect" else "div"} id="{key}"></{"select" if key == "situationSelect" else "div"}>' for key in ids)
     body = body.replace('<div id="situationConfirmCancel"></div>', '<button id="situationConfirmCancel">Cancel</button>').replace('<div id="situationConfirmAction"></div>', '<button id="situationConfirmAction">Confirm</button>')
-    html = '<style>.hidden{display:none}</style><main>' + body + '<div class="situation-tools"></div><button id="overviewEditSituationInfo"></button></main><script type="module" src="/situations.js"></script>'
+    css = "".join(f'<link rel="stylesheet" href="/{name}.css">' for name in ("tokens", "shell", "components", "situations"))
+    body = body.replace('<div id="inspectorBody">', '<div id="inspectorBody" class="inspector-content" style="width:100%;max-width:440px">')
+    html = css + '<style>html,body{margin:0;height:auto;overflow:visible}.hidden{display:none}</style><main>' + body + '<div class="situation-tools"></div><button id="overviewEditSituationInfo"></button></main><script type="module" src="/situations.js"></script>'
 
     def serve(route):
         name = route.request.url.rsplit("/", 1)[-1]
         if name in ("", "index.html"):
             route.fulfill(body=html, content_type="text/html")
+            return
+        if name.endswith(".css"):
+            route.fulfill(body=(ROOT / "frontend/static/css" / name).read_text(encoding="utf-8"), content_type="text/css")
             return
         if name == "situation-map.js":
             source = "export const " + ",".join(f"{name}=()=>{{}}" for name in ["beginMissionLocationPick", "configureMap", "drawMap", "fitMap", "focusObject", "initMap", "destroyMap"]) + ";"
@@ -236,3 +241,71 @@ def test_repeated_render_and_bind_does_not_duplicate_filled_events(page):
     page.locator(".ev-cap").last.fill("7")
     assert page.locator(".ev-cap").last.input_value() == "7"
     assert page.evaluate("editor.state.panelDraftDirty")
+
+
+def test_task_defaults_and_no_task_explicit_range(page):
+    open_editor(page)
+    assert page.locator("#damagePresetStart").input_value() == "3"
+    assert page.locator("#damagePresetEnd").input_value() == "30"
+    page.evaluate("editor.state.working.missions=[];editor.renderDamageEditor('D1')")
+    assert page.locator("#damagePresetStart").input_value() == ""
+    assert page.locator("#damagePresetEnd").input_value() == ""
+    page.locator("#damagePresetPanel > summary").click()
+    page.locator("#damagePresetScope").select_option("all")
+    page.locator("#generateDamagePreview").click()
+    assert page.locator("#appendDamagePreview").is_disabled()
+    assert "范围" in page.locator("#damagePresetStatus").inner_text()
+    assert not page.evaluate("editor.state.panelDraftDirty")
+
+
+def test_seed_regeneration_and_advanced_parameter_invalidates_preview(page):
+    open_editor(page)
+    generate(page)
+    seed = page.locator("#damagePresetSeed").input_value()
+    page.locator("#changeDamageSeed").click()
+    assert page.locator("#damagePresetSeed").input_value() != seed
+    assert page.locator("#appendDamagePreview").is_disabled()
+    generate(page)
+    page.locator("#damagePresetAdvanced > summary").click()
+    page.locator("#damagePresetOffset").fill("0")
+    assert page.locator("#appendDamagePreview").is_disabled()
+    assert not page.evaluate("editor.state.panelDraftDirty")
+    page.locator("[data-preset-kind=extreme]").click()
+    assert page.locator(".prefill-stage").count() == 3
+    assert page.locator(".prefill-ratio-min").count() == 2
+    assert page.locator(".prefill-duration-min").count() == 3
+
+
+def test_ineligible_airport_and_random_count_error_are_visible(page):
+    open_editor(page)
+    page.evaluate("editor.state.working.airports[0].operational_profile.capacity_per_window=1;editor.renderDamageEditor('D1')")
+    page.locator("#damagePresetPanel > summary").click()
+    page.locator("#damagePresetScope").select_option("random")
+    page.locator("#damagePresetCount").fill("2")
+    page.locator("#generateDamagePreview").click()
+    assert page.locator("#appendDamagePreview").is_disabled()
+    assert "1" in page.locator("#damagePresetStatus").inner_text()
+    page.locator("#damagePresetScope").select_option("manual")
+    page.locator("#damagePresetAirports").select_option(["AP001"])
+    page.locator("#generateDamagePreview").click()
+    assert "AP001" in page.locator("#damagePresetStatus").inner_text()
+    assert page.locator("#appendDamagePreview").is_disabled()
+    page.locator("#damagePresetScope").select_option("all")
+    page.locator("#generateDamagePreview").click()
+    assert not page.locator("#appendDamagePreview").is_disabled()
+    assert "AP001" in page.locator("#damagePreviewContent").inner_text()
+
+
+@pytest.mark.parametrize("width", [320, 440])
+def test_narrow_editor_layout(page, width, tmp_path):
+    page.set_viewport_size({"width": width, "height": 1100})
+    open_editor(page)
+    generate(page)
+    page.locator("[data-preset-kind=extreme]").click()
+    page.locator("#damagePresetAdvanced > summary").click()
+    page.locator("#generateDamagePreview").click()
+    measurements = page.locator("#damagePresetPanel").evaluate("el=>({width:el.clientWidth,scroll:el.scrollWidth})")
+    assert measurements["scroll"] <= measurements["width"] + 1, measurements
+    image = tmp_path / f"damage-editor-{width}.png"
+    page.locator("#inspectorBody").screenshot(path=str(image))
+    print(f"Browser screenshot: {image}")
