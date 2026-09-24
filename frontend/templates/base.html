@@ -123,6 +123,7 @@
           <strong id="accountSummaryName">{% if session_user %}{{ session_user.get('display_name') or session_user.get('login_name') or session_user.get('user_id') or '当前账号' }}{% else %}未登录{% endif %}</strong>
           <small id="accountSummaryRole">{{ session_role_label }}</small>
         </div>
+        <div id="logoutMessage" class="inline-message hidden" role="alert"></div>
         <a id="accountSettingsAction" class="account-action" href="{{ url_for('ui_v1.settings_page') }}" role="menuitem">账户与安全</a>
         <button id="changePasswordAction" class="account-action" type="button" role="menuitem">修改密码</button>
         <button id="logoutAction" class="account-action danger" type="button" role="menuitem">退出登录</button>

@@ -8,6 +8,7 @@ const roleLabel = document.getElementById('accountRole');
 const summaryName = document.getElementById('accountSummaryName');
 const summaryRole = document.getElementById('accountSummaryRole');
 const logoutAction = document.getElementById('logoutAction');
+const logoutMessage = document.getElementById('logoutMessage');
 const changePasswordAction = document.getElementById('changePasswordAction');
 const passwordModal = document.getElementById('passwordModal');
 const passwordCancel = document.getElementById('passwordCancel');
@@ -105,9 +106,28 @@ passwordSave?.addEventListener('click', async () => {
   } finally { passwordSave.disabled = false; }
 });
 logoutAction?.addEventListener('click', async () => {
-  closeAccount();
-  try { await apiFetch('/api/auth/logout', { method: 'POST', body: {} }); } catch (_) { /* logout is idempotent */ }
-  redirectToLogin();
+  logoutAction.disabled = true;
+  if (logoutMessage) {
+    logoutMessage.textContent = '';
+    logoutMessage.className = 'inline-message hidden';
+  }
+  try {
+    await apiFetch('/api/auth/logout', {
+      method: 'POST', body: {}, notifyAuthRequired: false,
+    });
+    closeAccount();
+    redirectToLogin();
+  } catch (error) {
+    if (logoutMessage) {
+      logoutMessage.textContent = error instanceof ApiError
+        ? `退出未完成：${error.message}` : '退出未完成，请稍后重试。';
+      logoutMessage.className = 'inline-message error';
+      logoutMessage.classList.remove('hidden');
+    }
+    openAccount();
+  } finally {
+    logoutAction.disabled = false;
+  }
 });
 globalThis.addEventListener('app:auth-required', redirectToLogin);
 loadAccount();

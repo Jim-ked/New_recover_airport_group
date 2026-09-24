@@ -62,12 +62,14 @@ def install_session_auth(
 
         g.current_principal = None
         g.session_invalid_reason = None
+        g.clear_csrf_cookie = False
         raw = session.get("user")
         if raw is None:
             return None
         user_id = raw.get("user_id") if isinstance(raw, dict) else None
         if not isinstance(user_id, str) or not user_id:
             session.clear()
+            g.clear_csrf_cookie = True
             g.session_invalid_reason = "malformed"
             return None
         try:
@@ -83,6 +85,7 @@ def install_session_auth(
         )
         if not result.valid:
             session.clear()
+            g.clear_csrf_cookie = True
             g.session_invalid_reason = result.reason
             return None
         principal = result.principal
@@ -98,6 +101,14 @@ def install_session_auth(
             raw["display_name"] = authority.get("display_name")
             session["user"] = raw
         return None
+
+    @app.after_request
+    def _clear_invalid_session_csrf(response):
+        from flask import g
+
+        if getattr(g, "clear_csrf_cookie", False):
+            response.delete_cookie("csrftoken")
+        return response
 
 
 def session_principal_resolver(_request: Any) -> Optional[Principal]:
@@ -151,7 +162,9 @@ def create_auth_blueprint(
             return jsonify(error_body("ACCOUNT_DISABLED", "账号已禁用")), 403
         now = int(time.time())
         session.clear()
-        session.permanent = True
+        # Authentication is scoped to the browser session. Server-side idle,
+        # absolute-timeout and auth-revision checks still validate every request.
+        session.permanent = False
         session["user"] = {
             "user_id": user["user_id"],
             "login_name": user["login_name"],

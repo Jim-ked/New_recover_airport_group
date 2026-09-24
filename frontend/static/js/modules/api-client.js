@@ -35,7 +35,9 @@ function emitAuthRequired(response, payload) {
   globalThis.dispatchEvent(new CustomEvent('app:auth-required', { detail: { code, status: 401 } }));
 }
 
-export async function apiFetch(path, { method = 'GET', body = undefined, signal = undefined } = {}) {
+export async function apiFetch(path, {
+  method = 'GET', body = undefined, signal = undefined, notifyAuthRequired = true,
+} = {}) {
   const upper = method.toUpperCase();
   let response;
   try {
@@ -53,7 +55,7 @@ export async function apiFetch(path, { method = 'GET', body = undefined, signal 
   let payload = null;
   try { payload = await response.json(); } catch (_) { payload = null; }
   if (!response.ok) {
-    emitAuthRequired(response, payload);
+    if (notifyAuthRequired) emitAuthRequired(response, payload);
     const info = payload?.error || {};
     throw new ApiError(info.message || `请求失败（HTTP ${response.status}）`, {
       status: response.status,
