@@ -164,16 +164,16 @@ class SituationRepository:
                     INSERT INTO situation_airports (
                         situation_id, airport_id, airport_name, facility_type, role,
                         icao_code, iata_code, region, municipality,
-                        longitude, latitude, elevation_m, scheduled_service, runways_known,
-                        configuration_complete, capacity_per_window, support_level
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        longitude, latitude, elevation_m, scheduled_service, parking_stand_count, runways_known,
+                        configuration_complete, capacity_per_window, support_level, emergency_response_level
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         situation.situation_id, ap.airport_id, ap.airport_name, ap.facility_type, ap.role,
                         ap.icao_code, ap.iata_code, ap.region, ap.municipality,
                         ap.longitude, ap.latitude, ap.elevation_m, int(ap.scheduled_service),
-                        int(ap.runways is not None), int(op.configuration_complete),
-                        op.capacity_per_window, op.support_level,
+                        ap.parking_stand_count, int(ap.runways is not None), int(op.configuration_complete),
+                        op.capacity_per_window, op.support_level, op.emergency_response_level,
                     ),
                 )
                 if ap.runways is not None:
@@ -454,6 +454,7 @@ class SituationRepository:
                     scheduled_service=bool(a["scheduled_service"]), icao_code=a["icao_code"],
                     iata_code=a["iata_code"], region=a["region"], municipality=a["municipality"],
                     elevation_m=a["elevation_m"], runways=runways,
+                    parking_stand_count=a["parking_stand_count"],
                 )
                 support_rows = conn.execute(
                     """
@@ -474,6 +475,7 @@ class SituationRepository:
                 op = AirportOperationalProfile(
                     airport_id=a["airport_id"], configuration_complete=bool(a["configuration_complete"]),
                     capacity_per_window=a["capacity_per_window"], support_level=a["support_level"],
+                    emergency_response_level=a["emergency_response_level"],
                     aircraft_support=tuple(
                         AirportAircraftSupport(r["aircraft_type_id"], r["initial_quantity"], r["tau_reset_windows"])
                         for r in support_rows

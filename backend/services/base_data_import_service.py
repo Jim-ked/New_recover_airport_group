@@ -211,6 +211,11 @@ class BaseDataImportService:
                     "latitude": float(row.get("latitude")),
                     "elevation_m": _float_or_none(row.get("elevation_m")),
                     "scheduled_service": _bool(row.get("scheduled_service")),
+                    "parking_stand_count": (
+                        None
+                        if _none_if_blank(row.get("parking_stand_count")) is None
+                        else int(str(row.get("parking_stand_count")).strip())
+                    ),
                     "runways": _json_cell(row.get("runways_json"), field="runways_json", default=None),
                 }
                 profile = _json_cell(row.get("operational_profile_json"), field="operational_profile_json", default=None)

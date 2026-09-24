@@ -15,10 +15,12 @@ class SituationServiceTests(unittest.TestCase):
             "longitude": 120, "latitude": 30, "scheduled_service": False,
             "icao_code": None, "iata_code": None, "region": None, "municipality": None,
             "elevation_m": None, "runway_count": None, "max_runway_length_m": None, "runways": None,
+            "parking_stand_count": 6,
         })
         profile = AirportOperationalProfile.from_mapping({
             "airport_id": "A1", "configuration_complete": True, "capacity_per_window": 8,
             "aircraft_support": [], "resource_stocks": [],
+            "emergency_response_level": "level_2",
         })
         s = copy_airport_into_situation(Situation.create(situation_id="S1", name="S"), ap, profile)
 
@@ -26,10 +28,14 @@ class SituationServiceTests(unittest.TestCase):
         newer_profile = AirportOperationalProfile.from_mapping({**profile.to_dict(), "capacity_per_window": 12})
         self.assertEqual("Original", s.airports[0].airport.airport_name)
         self.assertEqual(8, s.airports[0].operational_profile.capacity_per_window)
+        self.assertEqual(6, s.airports[0].airport.parking_stand_count)
+        self.assertEqual("level_2", s.airports[0].operational_profile.emergency_response_level)
 
         s2 = copy_airport_into_situation(s, newer_ap, newer_profile)
         self.assertEqual("Changed Base", s2.airports[0].airport.airport_name)
         self.assertEqual(12, s2.airports[0].operational_profile.capacity_per_window)
+        self.assertEqual(6, s2.airports[0].airport.parking_stand_count)
+        self.assertEqual("level_2", s2.airports[0].operational_profile.emergency_response_level)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from typing import Any, Dict, Mapping, NoReturn, Optional, Sequence, Tuple, Unio
 
 JsonNumber = Union[int, float]
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+EMERGENCY_RESPONSE_LEVELS = frozenset({"level_1", "level_2", "level_3", "level_4", "level_5"})
 
 
 class AirportOperationsValidationError(ValueError):
@@ -151,6 +152,7 @@ class AirportOperationalProfile:
     support_level: Optional[str] = None
     aircraft_support: Tuple[AirportAircraftSupport, ...] = ()
     resource_stocks: Tuple[AirportResourceStock, ...] = ()
+    emergency_response_level: Optional[str] = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "AirportOperationalProfile":
@@ -161,6 +163,7 @@ class AirportOperationalProfile:
             "configuration_complete",
             "capacity_per_window",
             "support_level",
+            "emergency_response_level",
             "aircraft_support",
             "resource_stocks",
         }
@@ -173,6 +176,15 @@ class AirportOperationalProfile:
             _fail("configuration_complete", "configuration_complete must be boolean")
 
         capacity = _optional_nonnegative_int(value.get("capacity_per_window"), "capacity_per_window")
+        emergency_response_level = _optional_string(
+            value.get("emergency_response_level"), "emergency_response_level"
+        )
+        if emergency_response_level is not None and emergency_response_level not in EMERGENCY_RESPONSE_LEVELS:
+            _fail(
+                "emergency_response_level",
+                "emergency_response_level must be one of: "
+                + ", ".join(sorted(EMERGENCY_RESPONSE_LEVELS)),
+            )
 
         raw_support = value.get("aircraft_support", [])
         if not isinstance(raw_support, list):
@@ -215,6 +227,7 @@ class AirportOperationalProfile:
             configuration_complete=complete,
             capacity_per_window=capacity,
             support_level=_optional_string(value.get("support_level"), "support_level"),
+            emergency_response_level=emergency_response_level,
             aircraft_support=support,
             resource_stocks=stocks,
         )
@@ -245,6 +258,7 @@ class AirportOperationalProfile:
             "configuration_complete": self.configuration_complete,
             "capacity_per_window": self.capacity_per_window,
             "support_level": self.support_level,
+            "emergency_response_level": self.emergency_response_level,
             "aircraft_support": [row.to_dict() for row in self.aircraft_support],
             "resource_stocks": [row.to_dict() for row in self.resource_stocks],
         }

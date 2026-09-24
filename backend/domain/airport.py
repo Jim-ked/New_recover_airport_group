@@ -27,6 +27,7 @@ AIRPORT_FIELDS = frozenset(
         "latitude",
         "elevation_m",
         "scheduled_service",
+        "parking_stand_count",
         "runway_count",
         "max_runway_length_m",
         "runways",
@@ -112,6 +113,12 @@ def _optional_number(
     if value is None:
         return None
     return _number(value, field, minimum=minimum, maximum=maximum)
+
+
+def _nonnegative_integer(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        _fail(field, f"{field} must be a nonnegative integer")
+    return value
 
 
 def _required_bool(value: Any, field: str) -> bool:
@@ -250,6 +257,7 @@ class AirportBase:
     municipality: Optional[str] = None
     elevation_m: Optional[JsonNumber] = None
     runways: Optional[Tuple[RunwayBase, ...]] = None
+    parking_stand_count: Optional[int] = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "AirportBase":
@@ -334,6 +342,11 @@ class AirportBase:
             region=_optional_string(value.get("region"), "region"),
             municipality=_optional_string(value.get("municipality"), "municipality"),
             elevation_m=_optional_number(value.get("elevation_m"), "elevation_m"),
+            parking_stand_count=(
+                None
+                if value.get("parking_stand_count") is None
+                else _nonnegative_integer(value.get("parking_stand_count"), "parking_stand_count")
+            ),
             runways=runways,
         )
 
@@ -362,6 +375,7 @@ class AirportBase:
             "latitude": self.latitude,
             "elevation_m": self.elevation_m,
             "scheduled_service": self.scheduled_service,
+            "parking_stand_count": self.parking_stand_count,
             "runway_count": self.runway_count,
             "max_runway_length_m": self.max_runway_length_m,
             "runways": None if self.runways is None else [r.to_dict() for r in self.runways],

@@ -23,6 +23,7 @@ VALID_AIRPORT = {
     "latitude": 40.077349,
     "elevation_m": 35.4,
     "scheduled_service": True,
+    "parking_stand_count": 84,
     "runway_count": 1,
     "max_runway_length_m": 3799.9,
     "runways": [
@@ -126,6 +127,19 @@ class AirportBaseDomainTests(unittest.TestCase):
         with self.assertRaises(AirportValidationError) as caught:
             AirportBase.from_mapping(payload)
         self.assertEqual("max_runway_length_m", caught.exception.field)
+
+    def test_parking_stand_count_is_optional_nonnegative_integer(self) -> None:
+        legacy = dict(VALID_AIRPORT)
+        legacy.pop("parking_stand_count")
+        self.assertIsNone(AirportBase.from_mapping(legacy).parking_stand_count)
+
+        for bad in (-1, 1.5, True, "12"):
+            with self.subTest(bad=bad):
+                payload = dict(VALID_AIRPORT)
+                payload["parking_stand_count"] = bad
+                with self.assertRaises(AirportValidationError) as caught:
+                    AirportBase.from_mapping(payload)
+                self.assertEqual("parking_stand_count", caught.exception.field)
 
     def test_operational_fields_do_not_belong_to_airport_base(self) -> None:
         for field in ("support_level", "default_config", "capacity", "supported_aircraft", "fuel"):

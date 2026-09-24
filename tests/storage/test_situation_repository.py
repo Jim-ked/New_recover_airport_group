@@ -40,10 +40,12 @@ class SituationRepositoryTests(unittest.TestCase):
             "longitude": 120, "latitude": 30, "scheduled_service": False,
             "icao_code": None, "iata_code": None, "region": "CN-32", "municipality": "X",
             "elevation_m": 10, "runway_count": 0, "max_runway_length_m": None, "runways": [],
+            "parking_stand_count": 18,
         })
         op = AirportOperationalProfile.from_mapping({
             "airport_id": "A1", "configuration_complete": True, "capacity_per_window": capacity,
             "support_level": "L1",
+            "emergency_response_level": "level_3",
             "aircraft_support": [
                 {"aircraft_type_id": "fighter", "initial_quantity": 2, "tau_reset_windows": 2}
             ],
@@ -89,6 +91,8 @@ class SituationRepositoryTests(unittest.TestCase):
         self.assertEqual((), got.airports[0].airport.runways)
         self.assertTrue(got.airports[0].operational_profile.supports_aircraft("fighter"))
         self.assertEqual(2, got.airports[0].operational_profile.aircraft_support[0].initial_quantity)
+        self.assertEqual(18, got.airports[0].airport.parking_stand_count)
+        self.assertEqual("level_3", got.airports[0].operational_profile.emergency_response_level)
 
     def test_explicit_save_replaces_children_and_no_autosave(self):
         saved = Situation.create(situation_id="S1", name="S").with_airport(self._item()).with_mission(self._mission())

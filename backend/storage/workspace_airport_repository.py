@@ -33,6 +33,7 @@ class WorkspaceAirportRepository(AirportRepository):
                 configuration_complete=False,
                 capacity_per_window=None,
                 support_level=None,
+                emergency_response_level=None,
                 aircraft_support=(),
                 resource_stocks=(),
             )

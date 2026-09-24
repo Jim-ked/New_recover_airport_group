@@ -15,6 +15,7 @@ class AirportOperationalProfileTests(unittest.TestCase):
             "configuration_complete": True,
             "capacity_per_window": 8,
             "support_level": "L2",
+            "emergency_response_level": "level_4",
             "aircraft_support": [
                 {"aircraft_type_id": "fighter", "initial_quantity": 16, "tau_reset_windows": 1},
                 {"aircraft_type_id": "transport", "initial_quantity": 0, "tau_reset_windows": 3},
@@ -101,6 +102,29 @@ class AirportOperationalProfileTests(unittest.TestCase):
         with self.assertRaises(AirportOperationsValidationError) as caught:
             AirportOperationalProfile.from_mapping(payload)
         self.assertEqual("aircraft_support", caught.exception.field)
+
+    def test_emergency_response_level_is_optional_and_five_level(self) -> None:
+        legacy = AirportOperationalProfile.from_mapping({
+            "airport_id": "A1", "configuration_complete": False,
+            "aircraft_support": [], "resource_stocks": [],
+        })
+        self.assertIsNone(legacy.emergency_response_level)
+
+        for level in ("level_1", "level_2", "level_3", "level_4", "level_5"):
+            profile = AirportOperationalProfile.from_mapping({
+                "airport_id": "A1", "configuration_complete": False,
+                "emergency_response_level": level,
+                "aircraft_support": [], "resource_stocks": [],
+            })
+            self.assertEqual(level, profile.emergency_response_level)
+
+        with self.assertRaises(AirportOperationsValidationError) as caught:
+            AirportOperationalProfile.from_mapping({
+                "airport_id": "A1", "configuration_complete": False,
+                "emergency_response_level": "L6",
+                "aircraft_support": [], "resource_stocks": [],
+            })
+        self.assertEqual("emergency_response_level", caught.exception.field)
 
 
 if __name__ == "__main__":

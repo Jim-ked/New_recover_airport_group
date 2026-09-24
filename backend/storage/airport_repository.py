@@ -76,8 +76,8 @@ class AirportRepository:
                 INSERT INTO airports (
                     airport_id, airport_name, facility_type, role, icao_code, iata_code,
                     region, municipality, longitude, latitude, elevation_m,
-                    scheduled_service, runways_known
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    scheduled_service, parking_stand_count, runways_known
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(airport_id) DO UPDATE SET
                     airport_name=excluded.airport_name,
                     facility_type=excluded.facility_type,
@@ -90,6 +90,7 @@ class AirportRepository:
                     latitude=excluded.latitude,
                     elevation_m=excluded.elevation_m,
                     scheduled_service=excluded.scheduled_service,
+                    parking_stand_count=excluded.parking_stand_count,
                     runways_known=excluded.runways_known
                 """,
                 (
@@ -105,6 +106,7 @@ class AirportRepository:
                     float(airport.latitude),
                     None if airport.elevation_m is None else float(airport.elevation_m),
                     int(airport.scheduled_service),
+                    airport.parking_stand_count,
                     int(airport.runways is not None),
                 ),
             )
@@ -123,8 +125,8 @@ class AirportRepository:
                     INSERT INTO airports (
                         airport_id, airport_name, facility_type, role, icao_code, iata_code,
                         region, municipality, longitude, latitude, elevation_m,
-                        scheduled_service, runways_known
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        scheduled_service, parking_stand_count, runways_known
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(airport_id) DO UPDATE SET
                         airport_name=excluded.airport_name,
                         facility_type=excluded.facility_type,
@@ -137,6 +139,7 @@ class AirportRepository:
                         latitude=excluded.latitude,
                         elevation_m=excluded.elevation_m,
                         scheduled_service=excluded.scheduled_service,
+                        parking_stand_count=excluded.parking_stand_count,
                         runways_known=excluded.runways_known
                     """,
                     (
@@ -152,6 +155,7 @@ class AirportRepository:
                         float(airport.latitude),
                         None if airport.elevation_m is None else float(airport.elevation_m),
                         int(airport.scheduled_service),
+                        airport.parking_stand_count,
                         int(airport.runways is not None),
                     ),
                 )
@@ -293,6 +297,7 @@ class AirportRepository:
             region=row["region"],
             municipality=row["municipality"],
             elevation_m=row["elevation_m"],
+            parking_stand_count=row["parking_stand_count"],
             runways=runways,
         )
 
@@ -424,18 +429,21 @@ class AirportRepository:
             conn.execute(
                 """
                 INSERT INTO airport_operational_profiles (
-                    airport_id, configuration_complete, capacity_per_window, support_level
-                ) VALUES (?, ?, ?, ?)
+                    airport_id, configuration_complete, capacity_per_window, support_level,
+                    emergency_response_level
+                ) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(airport_id) DO UPDATE SET
                     configuration_complete=excluded.configuration_complete,
                     capacity_per_window=excluded.capacity_per_window,
-                    support_level=excluded.support_level
+                    support_level=excluded.support_level,
+                    emergency_response_level=excluded.emergency_response_level
                 """,
                 (
                     profile.airport_id,
                     int(profile.configuration_complete),
                     profile.capacity_per_window,
                     profile.support_level,
+                    profile.emergency_response_level,
                 ),
             )
             conn.execute("DELETE FROM airport_aircraft_support WHERE airport_id = ?", (profile.airport_id,))
@@ -498,6 +506,7 @@ class AirportRepository:
             configuration_complete=bool(row["configuration_complete"]),
             capacity_per_window=row["capacity_per_window"],
             support_level=row["support_level"],
+            emergency_response_level=row["emergency_response_level"],
             aircraft_support=tuple(
                 AirportAircraftSupport(
                     aircraft_type_id=r["aircraft_type_id"],
@@ -630,15 +639,15 @@ class AirportRepository:
                 INSERT INTO airports (
                     airport_id, airport_name, facility_type, role, icao_code, iata_code,
                     region, municipality, longitude, latitude, elevation_m,
-                    scheduled_service, runways_known, revision, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    scheduled_service, parking_stand_count, runways_known, revision, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
                 (
                     airport.airport_id, airport.airport_name, airport.facility_type, airport.role,
                     airport.icao_code, airport.iata_code, airport.region, airport.municipality,
                     float(airport.longitude), float(airport.latitude),
                     None if airport.elevation_m is None else float(airport.elevation_m),
-                    int(airport.scheduled_service), int(airport.runways is not None),
+                    int(airport.scheduled_service), airport.parking_stand_count, int(airport.runways is not None),
                 ),
             )
         else:
@@ -647,6 +656,7 @@ class AirportRepository:
                 UPDATE airports SET
                     airport_name=?, facility_type=?, role=?, icao_code=?, iata_code=?, region=?, municipality=?,
                     longitude=?, latitude=?, elevation_m=?, scheduled_service=?, runways_known=?,
+                    parking_stand_count=?,
                     revision=revision+1, updated_at=CURRENT_TIMESTAMP
                 WHERE airport_id=?
                 """,
@@ -654,7 +664,7 @@ class AirportRepository:
                     airport.airport_name, airport.facility_type, airport.role, airport.icao_code, airport.iata_code,
                     airport.region, airport.municipality, float(airport.longitude), float(airport.latitude),
                     None if airport.elevation_m is None else float(airport.elevation_m), int(airport.scheduled_service),
-                    int(airport.runways is not None), airport.airport_id,
+                    int(airport.runways is not None), airport.parking_stand_count, airport.airport_id,
                 ),
             )
         conn.execute("DELETE FROM runways WHERE airport_id=?", (airport.airport_id,))
@@ -686,14 +696,15 @@ class AirportRepository:
     def _write_profile(conn: sqlite3.Connection, profile: AirportOperationalProfile) -> None:
         conn.execute(
             """
-            INSERT INTO airport_operational_profiles (airport_id, configuration_complete, capacity_per_window, support_level)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO airport_operational_profiles (airport_id, configuration_complete, capacity_per_window, support_level, emergency_response_level)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(airport_id) DO UPDATE SET
                 configuration_complete=excluded.configuration_complete,
                 capacity_per_window=excluded.capacity_per_window,
-                support_level=excluded.support_level
+                support_level=excluded.support_level,
+                emergency_response_level=excluded.emergency_response_level
             """,
-            (profile.airport_id, int(profile.configuration_complete), profile.capacity_per_window, profile.support_level),
+            (profile.airport_id, int(profile.configuration_complete), profile.capacity_per_window, profile.support_level, profile.emergency_response_level),
         )
         conn.execute("DELETE FROM airport_aircraft_support WHERE airport_id=?", (profile.airport_id,))
         conn.execute("DELETE FROM airport_resource_stocks WHERE airport_id=?", (profile.airport_id,))
