@@ -237,7 +237,7 @@ def test_candidate_click_locates_double_click_opens_and_checkbox_only_selects(pa
     assert checkbox.is_checked()
 
     row.dblclick()
-    page.wait_for_selector("text=全空域（仿真假设）")
+    page.wait_for_selector("text=全空域")
     assert page.evaluate("editor.state.mode") == "candidate-detail"
     assert page.locator("#inspectorBody").get_by_text("实际机位").count() == 1
 
