@@ -42,6 +42,16 @@ import {
 let lifecycleController = null;
 let mounted = false;
 let pendingPanelTransition = null;
+let candidateClickTimer = null;
+const EMERGENCY_RESPONSE_OPTIONS = [
+  ['', '未设置'], ['level_1', '一级'], ['level_2', '二级'],
+  ['level_3', '三级'], ['level_4', '四级'], ['level_5', '五级'],
+];
+const AIRPORT_PROTECTION_MEASURES = [
+  '航空器掩蔽防护', '重要设施工程防护', '伪装与隐蔽防护', '主动防护',
+  '机场围界和道口', '控制区通行管制与监控报警', '要害部位安全保卫',
+];
+const emergencyResponseLabel = value => EMERGENCY_RESPONSE_OPTIONS.find(([key]) => key === value)?.[1] || '未设置';
 
 function wasAborted(error) {
   return error?.name === 'AbortError' || error?.body?.name === 'AbortError';
@@ -90,14 +100,20 @@ function renderNewSituationEditor(id){state.mode='select';state.selected=null;re
 async function createWorking(){const id=$('newSituationId').value.trim(),name=$('newSituationName').value.trim(),message=$('newSituationMessage');if(!id||!name){message.textContent='情境编号和名称不能为空。';message.className='inline-message error';message.classList.remove('hidden');return}state.working={situation_id:id,name,description:$('newSituationDescription').value.trim()||null,airports:[],missions:[],damage_scenarios:[]};state.savedHash=null;state.persisted=false;state.meta=null;state.dirty=true;state.selected=null;refs.select.value='';clearPanelDraft();renderAll()}
 async function saveSituation(){if(!state.working||!writable())return;if(state.panelDraftDirty){showMessage('请先将右侧表单“应用”到当前情境，再保存。','error');return}try{let d;if(state.persisted)d=await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'PUT',body:{situation:state.working,expected_content_hash:state.savedHash}});else d=await apiFetch('/api/situations',{method:'POST',body:{situation:state.working}});state.working=deep(d.situation);state.savedHash=d.content_hash;state.persisted=true;state.meta={...(state.meta||{}),...d};state.dirty=false;clearConflict();await loadSituationList(state.working.situation_id);renderAll();showMessage('情境已保存。','success')}catch(e){if(e instanceof ApiError&&e.status===409){showConflict();showMessage('保存失败：服务器中的情境已经变化，本地修改仍保留。','error')}else showMessage(errText(e),'error')}}
 async function deleteSituation(){if(!state.persisted||!state.working)return;const active=state.meta?.active_run_count||0,hist=state.meta?.historical_run_count||0;if(!(await confirmAction(`删除情境 ${state.working.name}？当前关联 ${active} 个活动 Run、${hist} 个历史 Run。历史 Run 的冻结快照不会被修改；活动 Run 存在时后端可能拒绝删除。`,'删除情境')))return;try{await apiFetch(`/api/situations/${encodeURIComponent(state.working.situation_id)}`,{method:'DELETE',body:{expected_content_hash:state.savedHash}});clearPanelDraft();state.working=null;state.persisted=false;state.savedHash=null;state.meta=null;state.dirty=false;state.selected=null;await loadSituationList();renderAll();showMessage('情境已删除。','success')}catch(e){showMessage(errText(e),'error')}}
-function setMode(mode){state.mode=mode;state.selected=null;state.draftMissionCoord=null;if(mode==='airport')state.tempAirportIds=new Set();if(mode!=='layers')collapseOverview();refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));setInspectorOpen(true);renderInspector()}
-function lockEditorForReadOnly(){if(writable())return;refs.body.querySelectorAll('input,select,textarea,button').forEach(el=>{el.disabled=true});refs.inspectorSubtitle.textContent=`${refs.inspectorSubtitle.textContent} · 只读`; }
+function setMode(mode){state.mode=mode;state.selected=null;state.mapFocus=null;state.draftMissionCoord=null;if(mode==='airport'){state.tempAirportIds=new Set();state.candidateFocusId=null;state.candidateDetail=null}if(mode!=='layers')collapseOverview();refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));setInspectorOpen(true);renderInspector()}
+function lockEditorForReadOnly(){if(writable())return;refs.body.querySelectorAll('input,select,textarea,button:not([data-readonly-navigation])').forEach(el=>{el.disabled=true});refs.inspectorSubtitle.textContent=`${refs.inspectorSubtitle.textContent} · 只读`; }
 function applyPermissionUi(){const can=writable();refs.newBtn.disabled=!can;document.getElementById('overviewEditSituationInfo').disabled=!can;for(const mode of ['airport','mission','damage']){const b=refs.tools.querySelector(`[data-mode="${mode}"]`);if(b){b.disabled=!can&&mode!=='damage';b.title=can?'':mode==='damage'?'查看损毁场景':'当前账号为只读权限';}}}
 function renderAll(){applyPermissionUi();renderHeader();renderOverview();renderInspector();drawMap();syncWorkspaceChrome()}
 function renderOverview(){const s=state.working;const ac=s?.airports?.length||0,mc=s?.missions?.length||0,dc=s?.damage_scenarios?.length||0;refs.overviewCounts.textContent=`机场 ${ac} · 任务 ${mc} · 损毁 ${dc}`;const col=(title,items)=>`<div class="overview-column"><h3>${title}</h3>${items.length?items.map(item=>`<div class="overview-item"><span class="overview-item-key">${esc(item[0])}</span><span class="overview-item-value"><span>${esc(item[1])}</span>${item[2]?`<small>${esc(item[2])}</small>`:''}</span></div>`).join(''):'<div class="overview-empty">暂无</div>'}</div>`;refs.overviewContent.innerHTML=col('机场',(s?.airports||[]).map(item=>[airportNumber(item.airport.airport_id),item.airport.airport_name]))+col('任务',(s?.missions||[]).map(mission=>[mission.mission_id,mission.name]))+col('损毁场景',(s?.damage_scenarios||[]).map(scenario=>[scenario.damage_scenario_id,scenario.name,`${scenario.events.length} 事件`]));}
 function objectCard(type,id,title,sub){return `<button class="object-card ${state.selected?.type===type&&state.selected?.id===id?'selected':''}" type="button" data-object-type="${type}" data-object-id="${esc(id)}"><span><strong>${esc(title)}</strong><small>${esc(sub)}</small></span><svg class="ui-icon"><use href="#i-arrow-right"></use></svg></button>`}
-function renderInspector(){if(!state.working){refs.body.replaceChildren();setInspectorOpen(false);return}if(state.mode==='airport'){setInspectorOpen(true);renderAirportCandidates();return}if(state.mode==='mission'){setInspectorOpen(true);renderMissionMode();return}if(state.mode==='damage'){setInspectorOpen(true);renderDamageMode();return}if(state.selected?.type==='airport'){setInspectorOpen(true);renderAirportEditor(state.selected.id);return}if(state.selected?.type==='mission'){setInspectorOpen(true);renderMissionEditor(state.selected.id);return}refs.body.replaceChildren();setInspectorOpen(false)}
+function renderInspector(){if(!state.working){refs.body.replaceChildren();setInspectorOpen(false);return}if(state.mode==='airport'){setInspectorOpen(true);renderAirportCandidates();return}if(state.mode==='candidate-detail'){setInspectorOpen(true);renderCandidateAirportDetail(state.selected?.id);return}if(state.mode==='mission'){setInspectorOpen(true);renderMissionMode();return}if(state.mode==='damage'){setInspectorOpen(true);renderDamageMode();return}if(state.selected?.type==='airport'){setInspectorOpen(true);renderAirportEditor(state.selected.id);return}if(state.selected?.type==='mission'){setInspectorOpen(true);renderMissionEditor(state.selected.id);return}refs.body.replaceChildren();setInspectorOpen(false)}
 function renderSituationInfoEditor(){collapseOverview();refs.inspectorTitle.textContent='情境信息';refs.inspectorSubtitle.textContent=state.working.situation_id;refs.body.innerHTML=`<div class="compact-grid"><div class="field wide"><label>情境编号</label><input class="control" value="${esc(state.working.situation_id)}" readonly></div><div class="field wide"><label>名称</label><input id="editSituationName" class="control" value="${esc(state.working.name)}"></div><div class="field wide"><label>说明</label><textarea id="editSituationDescription" class="control textarea-control" rows="4">${esc(state.working.description||'')}</textarea></div></div><div class="inspector-footer"><button id="cancelSituationInfo" class="btn ghost" type="button">取消</button><button id="applySituationInfo" class="btn primary" type="button">应用到情境</button></div>`;bindPanelDraft();$('cancelSituationInfo').onclick=()=>{clearPanelDraft();renderInspector()};$('applySituationInfo').onclick=async()=>{const name=$('editSituationName').value.trim();if(!name){showMessage('情境名称不能为空。','error');return}try{const candidate=deep(state.working);candidate.name=name;candidate.description=$('editSituationDescription').value.trim()||null;state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();renderSituationInfoEditor();showMessage('情境信息已应用到当前情境。','success')}catch(e){showMessage(errText(e),'error')}};lockEditorForReadOnly()}
+function airportPaneTabs(){return `<div class="airport-detail-tabs" role="tablist"><button class="active" type="button" data-readonly-navigation data-airport-pane="basic">基础信息</button><button type="button" data-readonly-navigation data-airport-pane="operations">运行保障数据</button></div>`}
+function bindAirportPaneTabs(){const tabs=refs.body.querySelector('.airport-detail-tabs');if(!tabs)return;tabs.querySelectorAll('button').forEach(button=>button.onclick=()=>{tabs.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item===button));refs.body.querySelectorAll('[data-airport-section]').forEach(section=>section.classList.toggle('hidden',section.dataset.airportSection!==button.dataset.airportPane))});refs.body.querySelectorAll('[data-airport-section="operations"]').forEach(section=>section.classList.add('hidden'))}
+function airportRunwayFacts(airport){if(airport.runways==null)return'<div class="field-note">跑道结构数据未知。</div>';if(!airport.runways.length)return'<div class="field-note">已确认无跑道。</div>';return `<div class="runway-fact-list">${airport.runways.map(runway=>`<article class="runway-fact"><strong>${esc(runway.runway_id)}</strong><dl class="airport-facts"><div><dt>长度</dt><dd>${esc(runway.length_m==null?'—':`${runway.length_m} m`)}</dd></div><div><dt>宽度</dt><dd>${esc(runway.width_m==null?'—':`${runway.width_m} m`)}</dd></div><div><dt>道面</dt><dd>${esc(runway.surface||'—')}</dd></div><div><dt>灯光</dt><dd>${runway.lighted==null?'未知':runway.lighted?'有':'无'}</dd></div><div><dt>低端</dt><dd>${esc(runway.low_end?.ident||'—')}</dd></div><div><dt>高端</dt><dd>${esc(runway.high_end?.ident||'—')}</dd></div></dl></article>`).join('')}</div>`}
+function airportProtectionFacts(){return `<ol class="protection-list">${AIRPORT_PROTECTION_MEASURES.map(item=>`<li>${esc(item)}</li>`).join('')}</ol><p class="field-note">标准化基础资料条目，不计入运行保障评分。</p>`}
+function airportBasicFacts(airport){return `<section class="editor-section" data-airport-section="basic"><h3>基础信息</h3><dl class="airport-facts"><div><dt>编号</dt><dd>${esc(airportNumber(airport.airport_id))}</dd></div><div><dt>技术编号</dt><dd>${esc(airport.airport_id)}</dd></div><div><dt>设施类型</dt><dd>${esc(airport.facility_type||'—')}</dd></div><div><dt>机场性质</dt><dd>${esc(airportRoleLabel(airport.role))}</dd></div><div><dt>ICAO / IATA</dt><dd>${esc([airport.icao_code,airport.iata_code].filter(Boolean).join(' / ')||'—')}</dd></div><div><dt>区域</dt><dd>${esc(regionDisplayWithCode(airport.region))}</dd></div><div><dt>城市</dt><dd>${esc(airport.municipality||'—')}</dd></div><div><dt>坐标</dt><dd>${esc(formatCoordinate(airport.longitude))}, ${esc(formatCoordinate(airport.latitude))}</dd></div><div><dt>高程</dt><dd>${esc(airport.elevation_m==null?'—':`${airport.elevation_m} m`)}</dd></div><div><dt>定期服务</dt><dd>${airport.scheduled_service?'是':'否'}</dd></div><div><dt>实际机位</dt><dd>${esc(airport.parking_stand_count??'—')}</dd></div><div><dt>可用空域</dt><dd>全空域（仿真假设）</dd></div></dl></section><section class="editor-section" data-airport-section="basic"><h3>跑道信息</h3>${airportRunwayFacts(airport)}</section><section class="editor-section" data-airport-section="basic"><h3>机场防护措施</h3>${airportProtectionFacts()}</section>`}
+function airportOperationalFacts(profile){if(!profile)return'<section class="editor-section" data-airport-section="operations"><h3>运行保障数据</h3><div class="field-note">尚未建立运行保障配置。</div></section>';return `<section class="editor-section" data-airport-section="operations"><h3>运行保障数据</h3><dl class="airport-facts"><div><dt>配置完整</dt><dd>${profile.configuration_complete?'是':'否'}</dd></div><div><dt>综合保障等级</dt><dd>${esc(profile.support_level||'—')}</dd></div><div><dt>每窗容量</dt><dd>${esc(profile.capacity_per_window??'—')}</dd></div><div><dt>应急处理能力</dt><dd>${esc(emergencyResponseLabel(profile.emergency_response_level))}</dd></div></dl><p class="field-note">应急处理能力表示机场受损后场道及关键设施的抢修恢复能力。</p></section><section class="editor-section" data-airport-section="operations"><h3>支持机型</h3>${(profile.aircraft_support||[]).map(row=>`<div class="overview-item"><span>${esc(row.aircraft_type_id)}</span><span>${esc(row.initial_quantity??'—')} 架 · 整备 ${esc(row.tau_reset_windows??'—')} 窗</span></div>`).join('')||'<div class="field-note">暂无支持机型。</div>'}</section><section class="editor-section" data-airport-section="operations"><h3>资源库存与每窗补给上限</h3>${(profile.resource_stocks||[]).map(row=>`<div class="overview-item"><span>${esc(row.resource_type_id)}</span><span>库存 ${esc(row.initial_quantity??'—')} · 补给 ${esc(row.replenishment_capacity_per_window??'—')}/窗</span></div>`).join('')||'<div class="field-note">暂无资源配置。</div>'}</section>`}
 async function ensureAirportCatalog(){if(state.airportCatalog.length)return;let offset=0,total=1,out=[];while(offset<total){const d=await apiFetch(`/api/airports?limit=500&offset=${offset}`);out.push(...(d.items||[]));total=d.total||0;offset+=500}state.airportCatalog=out}
 async function renderAirportCandidates() {
   refs.inspector.dataset.kind = 'airport-candidates';
@@ -142,18 +158,37 @@ async function renderAirportCandidates() {
         const alreadyAdded = existing.has(item.airport_id);
         const checked = state.tempAirportIds.has(item.airport_id);
         const status = item.configuration_complete === true ? '运行数据已配置' : '运行数据待配置';
-        return `<label class="candidate-row${alreadyAdded ? ' disabled' : ''}${checked ? ' selected' : ''}">
-          <input type="checkbox" value="${esc(item.airport_id)}" ${checked ? 'checked' : ''} ${alreadyAdded ? 'disabled' : ''}>
+        const focused = state.candidateFocusId === item.airport_id;
+        return `<div class="candidate-row${alreadyAdded ? ' disabled' : ''}${checked ? ' selected' : ''}${focused ? ' focused' : ''}" role="button" tabindex="0" data-airport-id="${esc(item.airport_id)}">
+          <input type="checkbox" aria-label="选择 ${esc(item.airport_name)}" value="${esc(item.airport_id)}" ${checked ? 'checked' : ''} ${alreadyAdded ? 'disabled' : ''}>
           <span><strong>${esc(item.airport_name)}</strong><small>${esc(airportNumber(item.airport_id))} · ${esc(regionDisplayName(item.region || ''))} · ${status}</small></span>
           <span>${alreadyAdded ? '已加入' : '未加入'}</span>
-        </label>`;
+        </div>`;
       }).join('') || '<div class="empty-state">没有匹配机场。</div>';
       refs.body.querySelectorAll('#airportCandidateList input').forEach((checkbox) => {
+        checkbox.addEventListener('click', event => event.stopPropagation());
+        checkbox.addEventListener('dblclick', event => event.stopPropagation());
         checkbox.addEventListener('change', () => {
           if (checkbox.checked) state.tempAirportIds.add(checkbox.value);
           else state.tempAirportIds.delete(checkbox.value);
           updateCount();
           drawMap();
+        });
+      });
+      refs.body.querySelectorAll('#airportCandidateList .candidate-row').forEach(row => {
+        const activate = () => {
+          clearTimeout(candidateClickTimer);
+          candidateClickTimer = setTimeout(() => highlightObject('candidate', row.dataset.airportId, { locate: true }), 220);
+        };
+        row.addEventListener('click', activate);
+        row.addEventListener('dblclick', event => {
+          event.preventDefault();
+          clearTimeout(candidateClickTimer);
+          openCandidateDetails(row.dataset.airportId);
+        });
+        row.addEventListener('keydown', event => {
+          if (event.key === 'Enter') openCandidateDetails(row.dataset.airportId);
+          if (event.key === ' ') { event.preventDefault(); highlightObject('candidate', row.dataset.airportId, { locate: true }); }
         });
       });
       updateCount();
@@ -168,6 +203,9 @@ async function renderAirportCandidates() {
     refs.body.innerHTML = `<div class="inline-message error">${esc(errText(error))}</div>`;
   }
 }
+function highlightObject(type,id,{locate=false}={}){state.mapFocus={type,id};if(type==='candidate'){state.candidateFocusId=id;refs.body.querySelectorAll('#airportCandidateList .candidate-row').forEach(row=>row.classList.toggle('focused',row.dataset.airportId===id))}drawMap();if(locate)focusObject(type,id)}
+function openCandidateDetails(id){const existing=airportItem(id);if(existing){selectObject('airport',id,{locate:true});return}requestPanelTransition(()=>{state.mode='candidate-detail';state.selected={type:'candidate',id};state.mapFocus={type:'candidate',id};state.candidateFocusId=id;state.candidateDetail=null;renderInspector();drawMap()})}
+async function renderCandidateAirportDetail(id){if(!id){setMode('airport');return}refs.inspector.dataset.kind='airport-editor';refs.inspectorTitle.textContent='机场详情';refs.inspectorSubtitle.textContent=`${airportNumber(id)} · 基础库`;refs.body.innerHTML='<div class="empty-state">正在读取机场详情…</div>';try{const bundle=state.candidateDetail?.airport?.airport_id===id?state.candidateDetail:await apiFetch(`/api/airports/${encodeURIComponent(id)}`);if(state.mode!=='candidate-detail'||state.selected?.id!==id)return;state.candidateDetail=bundle;const airport=bundle.airport;refs.inspectorTitle.textContent=airport.airport_name;refs.body.innerHTML=`${airportPaneTabs()}<div class="inspector-scroll">${airportBasicFacts(airport)}${airportOperationalFacts(bundle.operational_profile)}</div><div class="inspector-footer"><button id="backToAirportCandidates" class="btn ghost" type="button">返回添加机场</button><button id="queueCandidateAirport" class="btn primary" type="button">${state.tempAirportIds.has(id)?'取消待添加':'加入待添加'}</button></div>`;bindAirportPaneTabs();$('backToAirportCandidates').onclick=()=>{state.mode='airport';state.selected=null;renderInspector()};$('queueCandidateAirport').onclick=()=>{toggleCandidate(id);$('queueCandidateAirport').textContent=state.tempAirportIds.has(id)?'取消待添加':'加入待添加'};lockEditorForReadOnly()}catch(error){refs.body.innerHTML=`<div class="inline-message error">${esc(errText(error))}</div><div class="inspector-footer"><button id="backToAirportCandidates" class="btn ghost" type="button">返回添加机场</button></div>`;$('backToAirportCandidates').onclick=()=>{state.mode='airport';state.selected=null;renderInspector()}}}
 async function addSelectedAirports(){const ids=[...state.tempAirportIds];if(!ids.length)return;try{let s=state.working;for(const id of ids){const d=await apiFetch('/api/situations/working-copy/copy-airport',{method:'POST',body:{situation:s,airport_id:id}});s=d.situation}state.working=deep(s);state.tempAirportIds=new Set();markDirty();renderAirportCandidates();showMessage(`已加入 ${ids.length} 个机场，尚未保存。`,'success')}catch(e){showMessage(errText(e),'error')}}
 function opt(items,current,getId,getName){return `<option value="">请选择…</option>${items.map(x=>{const id=getId(x),name=getName(x);return `<option value="${esc(id)}" ${String(id)===String(current)?'selected':''}>${esc(name)}（${esc(id)}）</option>`}).join('')}`}
 function removeRowButton(){return '<button class="mini-button remove-row" type="button" aria-label="删除此行"><svg class="ui-icon"><use href="#i-close"></use></svg></button>'}
@@ -185,42 +223,37 @@ function renderAirportEditor(id) {
   refs.inspectorTitle.textContent = airport.airport_name;
   refs.inspectorSubtitle.textContent = `${airportNumber(airport.airport_id)} · ${profile.configuration_complete ? '运行数据已配置' : '运行数据待配置'}`;
   refs.body.innerHTML = `
-    <section class="editor-section">
-      <h3>基础信息</h3>
-      <dl class="airport-facts">
-        <div><dt>编号</dt><dd>${esc(airportNumber(airport.airport_id))}</dd></div>
-        <div><dt>技术编号</dt><dd>${esc(airport.airport_id)}</dd></div>
-        <div><dt>设施类型</dt><dd>${esc(airport.facility_type || '—')}</dd></div>
-        <div><dt>机场性质</dt><dd>${esc(airportRoleLabel(airport.role))}</dd></div>
-        <div><dt>区域</dt><dd>${esc(regionDisplayWithCode(airport.region))}</dd></div>
-        <div><dt>坐标</dt><dd>${esc(formatCoordinate(airport.longitude))}, ${esc(formatCoordinate(airport.latitude))}</dd></div>
-      </dl>
-    </section>
-    <section class="editor-section">
+    ${airportPaneTabs()}
+    <div class="inspector-scroll">
+    ${airportBasicFacts(airport)}
+    <section class="editor-section" data-airport-section="operations">
       <h3>运行保障</h3>
       <div class="compact-grid">
-        <div class="field"><label>保障等级</label><input id="sitSupportLevel" class="control" value="${esc(val(profile.support_level))}"></div>
+        <div class="field"><label>综合保障等级</label><input id="sitSupportLevel" class="control" value="${esc(val(profile.support_level))}"></div>
         <div class="field"><label>单时间窗容量</label><input id="sitCapacity" class="control" type="number" min="0" value="${esc(val(profile.capacity_per_window))}"></div>
+        <div class="field wide"><label>应急处理能力</label><select id="sitEmergencyResponseLevel" class="control">${EMERGENCY_RESPONSE_OPTIONS.map(([value,label])=>`<option value="${value}" ${profile.emergency_response_level===value?'selected':''}>${label}</option>`).join('')}</select></div>
         <label class="check-row"><input id="sitConfigComplete" type="checkbox" ${profile.configuration_complete ? 'checked' : ''}> 运行保障配置完整</label>
       </div>
+      <p>应急处理能力表示机场受损后场道及关键设施的抢修恢复能力。</p>
     </section>
-    <section class="editor-section">
+    <section class="editor-section" data-airport-section="operations">
       <h3>支持机型</h3><div id="sitSupportRows">${(profile.aircraft_support || []).map(supportRow).join('')}</div>
       <button id="sitAddSupport" class="btn ghost" type="button">添加机型</button>
     </section>
-    <section class="editor-section">
+    <section class="editor-section" data-airport-section="operations">
       <h3>资源配置</h3><div id="sitStockRows">${(profile.resource_stocks || []).map(stockRow).join('')}</div>
       <button id="sitAddStock" class="btn ghost" type="button">添加资源</button>
       <h4 class="editor-subtitle">补给计划</h4><div id="sitReplenishRows">${(item.resource_replenishments || []).map(replenishRow).join('')}</div>
       <button id="sitAddReplenish" class="btn ghost" type="button">添加补给</button>
     </section>
-    <div class="editor-action-label">操作</div>
+    </div>
     <div class="inspector-footer">
       <button id="cancelAirportEdit" class="btn ghost" type="button">取消</button>
       <button id="restoreAirportBase" class="btn" type="button">恢复 Base Data 基线</button>
       <button id="removeAirport" class="btn danger" type="button">移出情境</button>
       <button id="applyAirport" class="btn primary" type="button">应用</button>
     </div>`;
+  bindAirportPaneTabs();
   bindDynamic('sitAddSupport', 'sitSupportRows', supportRow);
   bindDynamic('sitAddStock', 'sitStockRows', stockRow);
   bindDynamic('sitAddReplenish', 'sitReplenishRows', replenishRow);
@@ -232,7 +265,7 @@ function renderAirportEditor(id) {
   lockEditorForReadOnly();
 }
 function collectRows(sel,fn){return [...refs.body.querySelectorAll(sel)].map(fn)}
-async function applyAirport(){try{const candidate=deep(state.working);const x=candidate.airports.find(v=>v.airport.airport_id===state.selected.id);if(!x)return;x.operational_profile={...x.operational_profile,configuration_complete:$('sitConfigComplete').checked,capacity_per_window:int($('sitCapacity').value),support_level:$('sitSupportLevel').value.trim()||null,aircraft_support:collectRows('.support-row',r=>({aircraft_type_id:r.querySelector('.row-aircraft').value,initial_quantity:int(r.querySelector('.row-initial').value),tau_reset_windows:int(r.querySelector('.row-reset').value)})),resource_stocks:collectRows('.stock-row',r=>({resource_type_id:r.querySelector('.row-resource').value,initial_quantity:num(r.querySelector('.row-stock').value),replenishment_capacity_per_window:num(r.querySelector('.row-cap').value)}))};x.resource_replenishments=collectRows('.replenish-row',r=>({resource_type_id:r.querySelector('.row-resource').value,slot:int(r.querySelector('.row-slot').value),quantity:num(r.querySelector('.row-qty').value)}));state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();showMessage('机场配置已应用到当前情境，尚未保存。','success');renderInspector()}catch(e){showMessage(errText(e),'error')}}
+async function applyAirport(){try{const candidate=deep(state.working);const x=candidate.airports.find(v=>v.airport.airport_id===state.selected.id);if(!x)return;x.operational_profile={...x.operational_profile,configuration_complete:$('sitConfigComplete').checked,capacity_per_window:int($('sitCapacity').value),support_level:$('sitSupportLevel').value.trim()||null,emergency_response_level:$('sitEmergencyResponseLevel').value||null,aircraft_support:collectRows('.support-row',r=>({aircraft_type_id:r.querySelector('.row-aircraft').value,initial_quantity:int(r.querySelector('.row-initial').value),tau_reset_windows:int(r.querySelector('.row-reset').value)})),resource_stocks:collectRows('.stock-row',r=>({resource_type_id:r.querySelector('.row-resource').value,initial_quantity:num(r.querySelector('.row-stock').value),replenishment_capacity_per_window:num(r.querySelector('.row-cap').value)}))};x.resource_replenishments=collectRows('.replenish-row',r=>({resource_type_id:r.querySelector('.row-resource').value,slot:int(r.querySelector('.row-slot').value),quantity:num(r.querySelector('.row-qty').value)}));state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();showMessage('机场配置已应用到当前情境，尚未保存。','success');renderInspector()}catch(e){showMessage(errText(e),'error')}}
 async function restoreAirportBase(){if(!(await confirmAction('恢复会用当前 Base Data 的机场及运行配置替换该情境机场配置；现有本情境补给安排也会被清除。','恢复基础配置')))return;try{const d=await apiFetch('/api/situations/working-copy/copy-airport',{method:'POST',body:{situation:state.working,airport_id:state.selected.id}});state.working=deep(d.situation);clearPanelDraft();markDirty();renderInspector();showMessage('已恢复基础配置，尚未保存。','success')}catch(e){showMessage(errText(e),'error')}}
 async function removeAirport(){const id=state.selected.id;const refsDamage=state.working.damage_scenarios.flatMap(s=>s.events).filter(e=>e.target.airport_id===id);if(refsDamage.length){showMessage(`该机场仍被 ${refsDamage.length} 个损毁事件引用，请先删除相关事件。`,'error');return}if(!(await confirmAction(`从当前情境移除机场 ${airportNumber(id)}？只影响当前情境，不删除 Base Data。`,'移出情境')))return;state.working.airports=state.working.airports.filter(x=>x.airport.airport_id!==id);clearPanelDraft();state.selected=null;markDirty();renderInspector()}
 async function ensureMissionData(){if(!state.missionCatalog.length){let offset=0,total=1,out=[];while(offset<total){const d=await apiFetch(`/api/missions?limit=500&offset=${offset}`);out.push(...(d.items||[]));total=d.total||0;offset+=500}state.missionCatalog=out}if(!state.missionHistory.length){const h=await apiFetch('/api/missions/history?limit=500');state.missionHistory=h.items||[]}}
@@ -483,9 +516,9 @@ function renderDamageEditor(id) {
 function bindDamageEvents(){refs.body.querySelectorAll('.remove-event').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.closest('.damage-event').remove()});refs.body.querySelectorAll('.ev-type').forEach(s=>s.onchange=()=>{const card=s.closest('.damage-event');const ev={event_id:card.querySelector('.ev-id').value,sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:s.value,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect:{},recovery_mode:s.value==='aircraft_damage'?'none':'instant',recovery_duration_slots:null};card.outerHTML=damageEventRow(ev,Number(card.dataset.eventIndex));bindDamageEvents();bindPanelDraft()});refs.body.querySelectorAll('.ev-recovery').forEach(s=>s.onchange=()=>{const input=s.closest('.damage-event').querySelector('.ev-duration');input.disabled=s.value!=='average';if(input.disabled)input.value=''});refs.body.querySelectorAll('.add-loss-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-aircraft">${opt(state.aircraft,'',x=>x.aircraft_type.aircraft_type_id,x=>x.aircraft_type.name)}</select><input class="control loss-qty" type="number" min="1" value="1"></div>`)});refs.body.querySelectorAll('.add-resource-row').forEach(b=>b.onclick=()=>{setPanelDraftDirty(true);b.previousElementSibling.insertAdjacentHTML('beforeend',`<div class="damage-effect-grid effect-row"><select class="control loss-resource">${opt(state.resources,'',x=>x.resource_type.resource_type_id,x=>x.resource_type.name)}</select><input class="control loss-qty" type="number" min="0" step="any" value="0"></div>`)});}
 function eventFromCard(card){const type=card.querySelector('.ev-type').value;let effect;if(type==='capacity_damage'){const closed=card.querySelector('.ev-closed').value==='true';effect={closed,remaining_capacity_per_window:closed?0:int(card.querySelector('.ev-cap').value)}}else if(type==='navigation_delay'){effect={departure_delay_slots:int(card.querySelector('.ev-dep-delay').value)||0,return_delay_slots:int(card.querySelector('.ev-ret-delay').value)||0}}else if(type==='aircraft_damage'){const loss={};card.querySelectorAll('.effect-row').forEach(r=>{const id=r.querySelector('.loss-aircraft').value;if(id)loss[id]=int(r.querySelector('.loss-qty').value)});effect={aircraft_loss:loss}}else{const rem={};card.querySelectorAll('.effect-row').forEach(r=>{const id=r.querySelector('.loss-resource').value;if(id)rem[id]=Number(r.querySelector('.loss-qty').value)});effect={remaining_quantity:rem}}const recovery=type==='aircraft_damage'?'none':card.querySelector('.ev-recovery').value;return {event_id:card.querySelector('.ev-id').value.trim(),sequence:int(card.querySelector('.ev-seq').value),target:{airport_id:card.querySelector('.ev-airport').value,target_type:'airport',target_id:null},damage_type:type,start_slot:int(card.querySelector('.ev-start').value),end_slot:int(card.querySelector('.ev-end').value),effect,recovery_mode:recovery,recovery_duration_slots:recovery==='average'?int(card.querySelector('.ev-duration').value):null}}
 async function applyDamageScenario(oldId){if(!writable())return;const id=$('damageScenarioId').value.trim(),name=$('damageScenarioName').value.trim();if(!id||!name){showMessage('损毁场景编号和名称不能为空。','error');return}if(!oldId&&state.working.damage_scenarios.some(x=>x.damage_scenario_id===id)){showMessage('当前情境已存在同编号损毁场景。','error');return}try{const candidate=deep(state.working);const scenario={damage_scenario_id:id,name,category:'custom',events:[...refs.body.querySelectorAll('.damage-event')].map(eventFromCard)};if(oldId)candidate.damage_scenarios=candidate.damage_scenarios.map(x=>x.damage_scenario_id===oldId?scenario:x);else candidate.damage_scenarios.push(scenario);state.working=await canonicalizeWorking(candidate);clearPanelDraft();markDirty();showMessage('损毁场景已应用到当前情境。','success');renderDamageEditor(id)}catch(e){showMessage(errText(e),'error')}}
-function visibleCandidateAirports(){if(state.mode!=='airport')return[];const existing=new Set((state.working?.airports||[]).map(x=>x.airport.airport_id));return state.airportCatalog.filter(x=>!existing.has(x.airport_id)&&(!state.candidateQuery||`${x.airport_id} ${x.airport_name}`.toLowerCase().includes(state.candidateQuery))&&(!state.candidateRole||x.role===state.candidateRole)&&(!state.candidateRegion||String(x.region||'')===state.candidateRegion))}
+function visibleCandidateAirports(){if(!['airport','candidate-detail'].includes(state.mode))return[];const existing=new Set((state.working?.airports||[]).map(x=>x.airport.airport_id));return state.airportCatalog.filter(x=>!existing.has(x.airport_id)&&(!state.candidateQuery||`${x.airport_id} ${x.airport_name}`.toLowerCase().includes(state.candidateQuery))&&(!state.candidateRole||x.role===state.candidateRole)&&(!state.candidateRegion||String(x.region||'')===state.candidateRegion))}
 function toggleCandidate(id){const row=state.airportCatalog.find(x=>x.airport_id===id);if(!row)return;if(state.tempAirportIds.has(id))state.tempAirportIds.delete(id);else state.tempAirportIds.add(id);const input=refs.body.querySelector(`#airportCandidateList input[value="${CSS.escape(id)}"]`);if(input){input.checked=state.tempAirportIds.has(id);input.closest('.candidate-row')?.classList.toggle('selected',input.checked)}const add=$('addAirportsToSituation');if(add)add.textContent=`加入当前情境（${state.tempAirportIds.size}）`;drawMap()}
-async function selectObject(type,id,{locate=false}={}){return requestPanelTransition(()=>{collapseOverview();state.mode='select';refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));state.selected={type,id};renderInspector();drawMap();if(locate)focusObject(type,id)})}
+async function selectObject(type,id,{locate=false}={}){return requestPanelTransition(()=>{collapseOverview();state.mode='select';state.mapFocus={type,id};refs.tools.querySelectorAll('[data-mode]').forEach(b=>b.classList.remove('active'));state.selected={type,id};renderInspector();drawMap();if(locate)focusObject(type,id)})}
 function bind(signal) {
   refs.select.addEventListener('change', () => openSituation(refs.select.value), { signal });
   refs.newBtn.addEventListener('click', newSituation, { signal });
@@ -516,7 +549,7 @@ function bind(signal) {
 }
 
 async function init(signal) {
-  configureMap({ selectObject, toggleCandidate, visibleCandidateAirports, message: showMessage, markPanelDraft: () => setPanelDraftDirty(true), signal });
+  configureMap({ selectObject, highlightObject, openCandidateDetails, toggleCandidate, visibleCandidateAirports, message: showMessage, markPanelDraft: () => setPanelDraftDirty(true), signal });
   configurePanels({
     selectObject,
     setMode,

@@ -63,9 +63,23 @@ function addFitControl() {
 
 function airportMarkerClass(airport, damaged) {
   const airportId = airport.airport_id;
-  const selected = state.selected?.type === 'airport' && state.selected.id === airportId;
+  const selected = (state.selected?.type === 'airport' && state.selected.id === airportId)
+    || (state.mapFocus?.type === 'airport' && state.mapFocus.id === airportId);
   return ['situation-airport-marker', airportRoleClass(airport.role), selected ? 'selected' : '', damaged ? 'damage' : '']
     .filter(Boolean).join(' ');
+}
+
+function bindMarkerActivation(marker, singleClick, doubleClick) {
+  let clickTimer = null;
+  marker.on('click', () => {
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(singleClick, 220);
+  });
+  marker.on('dblclick', (event) => {
+    clearTimeout(clickTimer);
+    if (event.originalEvent) globalThis.L.DomEvent.stop(event.originalEvent);
+    doubleClick();
+  });
 }
 
 function bindPermanentLabel(marker, text, priority, forceVisible, labels) {
@@ -100,21 +114,26 @@ function drawLeaflet() {
       iconAnchor: [8, 8],
     });
     const marker = L.marker([latitude, longitude], { icon });
-    marker.on('click', () => callbacks.selectObject?.('airport', airport.airport_id));
+    bindMarkerActivation(
+      marker,
+      () => callbacks.highlightObject?.('airport', airport.airport_id),
+      () => callbacks.selectObject?.('airport', airport.airport_id, { locate: true }),
+    );
     marker.addTo(map);
     mapLayers.push(marker);
     bindPermanentLabel(marker, airportMapLabel(airport),
       selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.airport, selected, labels);
   }
 
-  if (state.mode === 'airport') {
+  if (state.mode === 'airport' || state.mode === 'candidate-detail') {
     for (const airport of visibleCandidates()) {
       const latitude = Number(airport.latitude);
       const longitude = Number(airport.longitude);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
       const chosen = state.tempAirportIds.has(airport.airport_id);
+      const focused = state.candidateFocusId === airport.airport_id;
       const icon = L.divIcon({
-        className: `situation-candidate-marker ${airportRoleClass(airport.role)}${chosen ? ' selected' : ''}`,
+        className: `situation-candidate-marker ${airportRoleClass(airport.role)}${chosen ? ' selected' : ''}${focused ? ' focused' : ''}`,
         html: '<span></span>',
         iconSize: [16, 16],
         iconAnchor: [8, 8],
@@ -124,7 +143,11 @@ function drawLeaflet() {
         direction: 'top',
         className: 'map-object-tooltip',
       });
-      marker.on('click', () => callbacks.toggleCandidate?.(airport.airport_id));
+      bindMarkerActivation(
+        marker,
+        () => callbacks.highlightObject?.('candidate', airport.airport_id),
+        () => callbacks.openCandidateDetails?.(airport.airport_id),
+      );
       marker.addTo(map);
       mapLayers.push(marker);
     }
@@ -176,6 +199,7 @@ function fallbackPoints() {
       role: item.airport.role,
       lat: Number(item.airport.latitude),
       lon: Number(item.airport.longitude),
+      focused: state.mapFocus?.type === 'airport' && state.mapFocus.id === item.airport.airport_id,
     })),
     ...visibleCandidates().map((airport) => ({
       type: 'candidate',
@@ -185,6 +209,7 @@ function fallbackPoints() {
       lat: Number(airport.latitude),
       lon: Number(airport.longitude),
       chosen: state.tempAirportIds.has(airport.airport_id),
+      focused: state.candidateFocusId === airport.airport_id,
     })),
     ...state.working.missions.map((mission) => ({
       type: 'mission',
@@ -220,12 +245,20 @@ function drawFallback() {
     const top = 12 + 76 * (maxLat - point.lat) / (maxLat - minLat);
     const damage = point.type === 'airport' && damaged.has(point.id);
     const roleClass = point.type === 'airport' || point.type === 'candidate' ? ` ${airportRoleClass(point.role)}` : '';
-    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' damage' : ''}${point.chosen ? ' selected' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(point.name)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
+    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' damage' : ''}${point.chosen ? ' selected' : ''}${point.focused ? ' focused' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(point.name)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
   }).join('');
   refs.fallbackObjects.querySelectorAll('button').forEach((button) => {
+    let clickTimer = null;
     button.addEventListener('click', () => {
-      if (button.dataset.type === 'candidate') callbacks.toggleCandidate?.(button.dataset.id);
-      else if (button.dataset.type !== 'draft') callbacks.selectObject?.(button.dataset.type, button.dataset.id);
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        if (button.dataset.type !== 'draft') callbacks.highlightObject?.(button.dataset.type, button.dataset.id);
+      }, 220);
+    });
+    button.addEventListener('dblclick', () => {
+      clearTimeout(clickTimer);
+      if (button.dataset.type === 'candidate') callbacks.openCandidateDetails?.(button.dataset.id);
+      else if (button.dataset.type !== 'draft') callbacks.selectObject?.(button.dataset.type, button.dataset.id, { locate: true });
     });
   });
 }
@@ -248,6 +281,8 @@ export function focusObject(type, objectId) {
   if (!map || !state.working) return;
   const value = type === 'airport'
     ? state.working.airports.find((item) => item.airport.airport_id === objectId)?.airport
+    : type === 'candidate'
+      ? visibleCandidates().find((item) => item.airport_id === objectId)
     : state.working.missions.find((item) => item.mission_id === objectId);
   const latitude = Number(value?.latitude);
   const longitude = Number(value?.longitude);

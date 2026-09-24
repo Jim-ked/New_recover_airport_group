@@ -26,6 +26,9 @@ function initialState() {
     candidateQuery: '',
     candidateRole: '',
     candidateRegion: '',
+    candidateFocusId: null,
+    candidateDetail: null,
+    mapFocus: null,
     draftMissionCoord: null,
   };
 }

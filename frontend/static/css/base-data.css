@@ -65,6 +65,8 @@
 .data-table td.actions{overflow:visible}
 .pager{display:flex;align-items:center;justify-content:center;gap:12px;min-height:42px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--text-muted)}
 .data-detail-body{overflow:auto;padding:13px}
+.data-detail-body:has(.editor-scroll){display:flex;min-height:0;overflow:hidden;padding:0;flex-direction:column}
+.editor-scroll{min-height:0;overflow:auto;padding:13px}
 
 .detail-empty{padding:26px 10px;text-align:center;color:var(--text-muted);font-size:11px}
 .detail-error{padding:14px 10px;border:1px solid #8c3b3b;border-radius:var(--radius-sm);color:#ffb2b2;font-size:11px;line-height:1.5}
@@ -91,7 +93,7 @@
 .dynamic-row .field{margin:0}
 .mini-button{height:32px;min-width:32px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#0a2335;color:var(--text-muted)}
 .mini-button:hover{color:#fff;border-color:var(--line-strong)}
-.editor-footer{position:sticky;bottom:-13px;margin:16px -13px -13px;padding:10px 13px;background:linear-gradient(180deg,rgba(8,27,42,.92),var(--bg-surface-raised));border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:6px}
+.editor-footer{flex:0 0 auto;padding:10px 13px;background:var(--bg-surface-raised);border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:6px}
 
 .airport-data-panes{display:flex;gap:3px;margin:-2px 0 12px;padding:3px;border:1px solid var(--line-soft);border-radius:7px;background:#061826}
 .airport-data-panes button{flex:1;height:34px;border:0;border-radius:5px;background:transparent;color:var(--text-muted);font-size:11px}
@@ -104,6 +106,12 @@
 .operations-explainer span{margin-top:4px;color:var(--text-secondary);font-size:10px;line-height:1.55}
 .operations-dependency-note{margin-bottom:9px;padding:8px 9px;border:1px solid #806b3d;border-radius:6px;background:rgba(71,52,20,.25);color:#d8bd78;font-size:10px;line-height:1.5}
 .configure-operations-action{margin-top:10px}
+.static-assumption{display:flex;justify-content:space-between;gap:12px;margin-top:12px;padding:9px 10px;border:1px solid var(--line-soft);border-radius:6px;background:#071a28;font-size:11px}
+.static-assumption span{color:var(--text-secondary)}
+.protection-list{margin:0;padding-left:22px;display:grid;gap:5px;color:var(--text-secondary);font-size:11px;line-height:1.45}
+.runway-fact-list{display:grid;gap:8px}
+.runway-fact{padding:9px;border:1px solid var(--line-soft);border-radius:6px;background:#071a28}
+.runway-fact>strong{display:block;margin-bottom:7px;font-size:11px}
 
 .import-modal{width:min(620px,calc(100vw - 32px))}
 .import-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
