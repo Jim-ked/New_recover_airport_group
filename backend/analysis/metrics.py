@@ -130,7 +130,7 @@ def _path_for_chain(
 
 
 def _snapshot_resource_baseline(payload: Mapping[str, Any]) -> Dict[str, Dict[str, Dict[str, float]]]:
-    """Frozen pre-damage stock and replenishment-throughput baselines."""
+    """Frozen pre-damage stock baselines."""
 
     out: Dict[str, Dict[str, Dict[str, float]]] = {}
     situation = payload.get("situation") or {}
@@ -146,18 +146,13 @@ def _snapshot_resource_baseline(payload: Mapping[str, Any]) -> Dict[str, Dict[st
             if not rid:
                 raise MetricsBuildError(f"airport {aid} contains resource stock without resource_type_id")
             initial = stock.get("initial_quantity")
-            capacity = stock.get("replenishment_capacity_per_window")
             if initial is None:
                 raise MetricsBuildError(f"airport {aid}/{rid} initial resource quantity is missing")
-            if capacity is None:
-                raise MetricsBuildError(f"airport {aid}/{rid} replenishment capacity is missing")
             initial_f = float(initial)
-            capacity_f = float(capacity)
-            if initial_f < 0 or capacity_f < 0:
+            if initial_f < 0:
                 raise MetricsBuildError(f"airport {aid}/{rid} resource baseline is negative")
             rows[rid] = {
                 "initial_quantity": initial_f,
-                "replenishment_capacity_per_window": capacity_f,
             }
         out[aid] = rows
     return out
@@ -296,9 +291,8 @@ def _build_resource_metrics(
     """Consumable-stock metrics with explicit replenishment flow.
 
     The denominator of every remaining ratio is the frozen pre-damage initial stock.
-    Replenishment capacity is a ceiling only; actual replenishment comes from the frozen
-    Situation schedule and is already included in the optimizer's effective stock
-    boundary.
+    Actual replenishment comes from the frozen Situation schedule and is already included
+    in the optimizer's effective stock boundary.
     """
 
     n = len(windows)
@@ -308,7 +302,6 @@ def _build_resource_metrics(
     tv = ds.get("timeview") or {}
     effective_raw = tv.get("resources") or {}
     base_boundary_raw = tv.get("resource_base_boundary") or {}
-    replenishment_capacity_raw = tv.get("resource_replenishment_capacity") or {}
     replenishment_actual_raw = tv.get("resource_replenishment_actual") or {}
     replenishment_cumulative_raw = tv.get("resource_replenishment_cumulative") or {}
 
@@ -350,7 +343,6 @@ def _build_resource_metrics(
         by_resource: Dict[str, Any] = {}
         for rid in sorted(baseline[aid]):
             init = float(baseline[aid][rid]["initial_quantity"])
-            cap_scalar = float(baseline[aid][rid]["replenishment_capacity_per_window"])
 
             def _series(block: Mapping[str, Any], label: str) -> List[float]:
                 seq = ((block.get(aid) or {}).get(rid))
@@ -360,20 +352,29 @@ def _build_resource_metrics(
 
             base_boundary = _series(base_boundary_raw, "resource base-boundary")
             effective = _series(effective_raw, "effective resource")
-            capacity = _series(replenishment_capacity_raw, "replenishment capacity")
             actual = _series(replenishment_actual_raw, "replenishment actual")
             replenishment_cumulative = _series(
                 replenishment_cumulative_raw, "replenishment cumulative"
             )
 
             for i in range(n):
-                if abs(capacity[i] - cap_scalar) > _EPS:
+                if actual[i] < -_EPS:
                     raise MetricsBuildError(
-                        f"replenishment capacity drift: {aid}/{rid}/t={windows[i]}"
+                        f"actual replenishment is negative: {aid}/{rid}/t={windows[i]}"
                     )
-                if actual[i] < -_EPS or actual[i] > capacity[i] + _EPS:
+                if i == 0:
+                    if replenishment_cumulative[i] + _EPS < actual[i]:
+                        raise MetricsBuildError(
+                            f"replenishment cumulative starts below visible arrival: "
+                            f"{aid}/{rid}/t={windows[i]}"
+                        )
+                elif abs(
+                    replenishment_cumulative[i]
+                    - replenishment_cumulative[i - 1]
+                    - actual[i]
+                ) > _EPS:
                     raise MetricsBuildError(
-                        f"actual replenishment exceeds capacity: {aid}/{rid}/t={windows[i]}"
+                        f"replenishment cumulative drift: {aid}/{rid}/t={windows[i]}"
                     )
                 expected_effective = base_boundary[i] + replenishment_cumulative[i]
                 if abs(effective[i] - expected_effective) > _EPS:
@@ -417,7 +418,6 @@ def _build_resource_metrics(
 
             by_resource[rid] = {
                 "initial": init,
-                "replenishment_capacity_per_window": capacity,
                 "replenishment_actual": actual,
                 "replenishment_cumulative": replenishment_cumulative,
                 "damage_adjusted_base_boundary": base_boundary,

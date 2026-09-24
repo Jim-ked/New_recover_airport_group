@@ -172,12 +172,10 @@ class ModelFactsOverlayTests(unittest.TestCase):
         with self.assertRaisesRegex(mf.ModelFactError, "shared resource violated"):
             mf.validate_schedule_base(b.ds, maps, b.run_params, {p.key: 2})
 
-    def test_replenishment_capacity_alone_does_not_create_stock_but_actual_schedule_does(self):
+    def test_only_actual_replenishment_schedule_creates_stock(self):
         from backend.domain.situation import ResourceReplenishment
 
-        no_supply = build_algorithm_input(
-            make_snapshot(a1_fuel_initial=0, a1_replenishment_capacity=10)
-        )
+        no_supply = build_algorithm_input(make_snapshot(a1_fuel_initial=0))
         maps_no = dv.build_path_map(
             no_supply.ds, no_supply.run_params, {"enabled": True, "S": ["A1", "A2"]}
         )
@@ -191,8 +189,7 @@ class ModelFactsOverlayTests(unittest.TestCase):
         supplied = build_algorithm_input(
             make_snapshot(
                 a1_fuel_initial=0,
-                a1_replenishment_capacity=10,
-                a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5),),
+                a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5, 5),),
             )
         )
         maps_yes = dv.build_path_map(

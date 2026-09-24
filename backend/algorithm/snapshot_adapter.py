@@ -8,7 +8,7 @@ from backend.domain.catalog import AircraftResourceRequirement, AircraftType, Re
 from backend.domain.damage import DamageScenario, NavigationDelayEffect
 from backend.domain.run_config import RunConfig
 from backend.domain.run_snapshot import RunSnapshot, SNAPSHOT_SCHEMA
-from backend.domain.situation import Situation
+from backend.domain.situation import ResourceReplenishment, Situation
 from backend.services.damage_projection_service import DamageProjection, project_damage
 from backend.services.snapshot_materialization import SnapshotMaterializationError, materialize_situation
 
@@ -217,59 +217,52 @@ def _build_replenishment_maps(
 ) -> Tuple[
     Dict[str, Dict[str, List[float]]],
     Dict[str, Dict[str, List[float]]],
-    Dict[str, Dict[str, List[float]]],
 ]:
-    """Return capacity, actual-arrival, and cumulative-arrival series.
+    """Return actual-arrival and cumulative-arrival series.
 
     Actual replenishment is a frozen Situation fact. Missing schedule entries mean zero.
-    The baseline capacity is only a ceiling and never creates stock automatically.
-    Entries before the cropped run horizon are folded into the cumulative series so the
-    first visible slot sees stock that has already arrived.
+    Each interval contributes ``quantity`` in every slot in ``[start_slot, end_slot)``.
+    Arrivals before the cropped run horizon are folded into the cumulative series so the
+    first visible slot sees stock that has already arrived. Intervals after the horizon
+    remain outside the run input instead of changing the solver horizon.
     """
 
     T = t_max - t_min + 1
     resource_ids = sorted(r.resource_type_id for r in resources)
-    capacity: Dict[str, Dict[str, List[float]]] = {}
     actual: Dict[str, Dict[str, List[float]]] = {}
     cumulative: Dict[str, Dict[str, List[float]]] = {}
 
     for item in situation.airports:
         aid = item.airport_id
-        stock_by_id = {
-            row.resource_type_id: row
-            for row in item.operational_profile.resource_stocks
-        }
-        capacity[aid] = {}
         actual[aid] = {}
         cumulative[aid] = {}
 
-        schedule_by_resource: Dict[str, Dict[int, float]] = {}
+        schedule_by_resource: Dict[str, List[ResourceReplenishment]] = {}
         for row in item.resource_replenishments:
-            schedule_by_resource.setdefault(row.resource_type_id, {})[row.slot] = float(row.quantity)
+            schedule_by_resource.setdefault(row.resource_type_id, []).append(row)
 
         for rid in resource_ids:
-            stock = stock_by_id.get(rid)
-            cap = 0.0 if stock is None else float(stock.replenishment_capacity_per_window or 0.0)
-            capacity[aid][rid] = [cap] * T
-
-            schedule = schedule_by_resource.get(rid, {})
-            prior = sum(float(q) for slot, q in schedule.items() if slot < t_min)
+            schedule = schedule_by_resource.get(rid, [])
+            prior = sum(
+                max(0, min(row.end_slot, t_min) - row.start_slot) * float(row.quantity)
+                for row in schedule
+            )
             visible: List[float] = []
             running = prior
             cumul: List[float] = []
             for abs_slot in range(t_min, t_max + 1):
-                q = float(schedule.get(abs_slot, 0.0))
-                if q < -1e-12 or q > cap + 1e-9:
-                    raise AlgorithmInputError(
-                        f"replenishment violates frozen capacity: {aid}/{rid}/slot={abs_slot}"
-                    )
+                q = sum(
+                    float(row.quantity)
+                    for row in schedule
+                    if row.start_slot <= abs_slot < row.end_slot
+                )
                 visible.append(q)
                 running += q
                 cumul.append(running)
             actual[aid][rid] = visible
             cumulative[aid][rid] = cumul
 
-    return capacity, actual, cumulative
+    return actual, cumulative
 
 
 def _build_timeview(
@@ -290,13 +283,12 @@ def _build_timeview(
     base_boundary, _fuel_by_id_base, _legacy_fuel_base, _mats_base, _muns_base = _resource_maps(
         situation, resources, projection, t_min, t_max
     )
-    replenishment_capacity, replenishment_actual, replenishment_cumulative = _build_replenishment_maps(
+    replenishment_actual, replenishment_cumulative = _build_replenishment_maps(
         situation, resources, t_min=t_min, t_max=t_max
     )
 
     # The optimizer consumes an effective cumulative stock boundary:
     # damage-adjusted baseline stock + actual replenishment that has arrived through t.
-    # Replenishment capacity alone never changes this boundary.
     effective_resources: Dict[str, Dict[str, List[float]]] = {}
     for item in situation.airports:
         aid = item.airport_id
@@ -369,7 +361,6 @@ def _build_timeview(
         "resources": effective_resources,
         # Explicit components retained for analysis/audit. Do not infer one from the other.
         "resource_base_boundary": base_boundary,
-        "resource_replenishment_capacity": replenishment_capacity,
         "resource_replenishment_actual": replenishment_actual,
         "resource_replenishment_cumulative": replenishment_cumulative,
         "fuel_by_resource": fuel_by_id,

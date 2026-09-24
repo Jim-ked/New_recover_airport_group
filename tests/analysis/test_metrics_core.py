@@ -310,8 +310,7 @@ class MetricsCoreTests(unittest.TestCase):
         from backend.domain.situation import ResourceReplenishment
 
         snapshot = make_snapshot(
-            a1_replenishment_capacity=10,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 6, 5),),
         )
         result = run_once(
             snapshot,
@@ -322,7 +321,7 @@ class MetricsCoreTests(unittest.TestCase):
         fuel = metrics["resources"]["by_airport"]["A1"]["FUEL-A"]
         chain = result.solution.sortie_chains[0]
         i = metrics["time_axis"]["windows"].index(chain.depart_window)
-        self.assertEqual(10.0, fuel["replenishment_capacity_per_window"][i])
+        self.assertNotIn("replenishment_capacity_per_window", fuel)
         self.assertEqual(5.0, fuel["replenishment_actual"][i])
         self.assertEqual(5.0, fuel["replenishment_cumulative"][i])
         self.assertEqual(100.0, fuel["damage_adjusted_base_boundary"][i])
@@ -336,8 +335,7 @@ class MetricsCoreTests(unittest.TestCase):
 
         snapshot = make_snapshot(
             a1_fuel_initial=0,
-            a1_replenishment_capacity=10,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 6, 5),),
         )
         result = run_once(
             snapshot,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import unittest
 
 from backend.algorithm.snapshot_adapter import build_algorithm_input
@@ -18,7 +20,6 @@ def airport(
     qty: int = 2,
     *,
     fuel_initial: float = 100,
-    replenishment_capacity: float = 0,
     replenishments: tuple[ResourceReplenishment, ...] = (),
 ) -> SituationAirport:
     base = AirportBase.from_mapping({
@@ -39,8 +40,8 @@ def airport(
         capacity_per_window=5,
         aircraft_support=(AirportAircraftSupport("fighter", qty, 2),),
         resource_stocks=(
-            AirportResourceStock("FUEL-A", fuel_initial, replenishment_capacity),
-            AirportResourceStock("MAT-1", 20, 0),
+            AirportResourceStock("FUEL-A", fuel_initial),
+            AirportResourceStock("MAT-1", 20),
         ),
     )
     return SituationAirport(base, profile, replenishments)
@@ -71,7 +72,6 @@ def make_snapshot(
     *,
     scenario: DamageScenario | None = None,
     a1_fuel_initial: float = 100,
-    a1_replenishment_capacity: float = 0,
     a1_replenishments: tuple[ResourceReplenishment, ...] = (),
     cluster_enabled: bool = True,
     preference_mode: str = "sortie_max",
@@ -93,7 +93,6 @@ def make_snapshot(
         airport(
             first_airport_id,
             fuel_initial=a1_fuel_initial,
-            replenishment_capacity=a1_replenishment_capacity,
             replenishments=a1_replenishments,
         )
     ).with_airport(
@@ -244,29 +243,95 @@ class SnapshotAdapterTests(unittest.TestCase):
         )
 
 
-    def test_actual_replenishment_is_separate_from_capacity_and_updates_effective_stock(self):
+    def test_interval_replenishment_arrives_each_slot_and_updates_effective_stock(self):
         snap = make_snapshot(
-            a1_replenishment_capacity=10,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 5),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 7, 5),),
         )
         bundle = build_algorithm_input(snap)
         tv = bundle.ds["timeview"]
         self.assertEqual(4, bundle.ds["range"][0])
-        self.assertEqual(10.0, tv["resource_replenishment_capacity"]["A1"]["FUEL-A"][0])
-        self.assertEqual(5.0, tv["resource_replenishment_actual"]["A1"]["FUEL-A"][0])
-        self.assertEqual(5.0, tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][0])
+        self.assertNotIn("resource_replenishment_capacity", tv)
+        self.assertEqual([5.0, 5.0, 5.0, 0.0], tv["resource_replenishment_actual"]["A1"]["FUEL-A"][:4])
+        self.assertEqual([5.0, 10.0, 15.0, 15.0], tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][:4])
         self.assertEqual(100.0, tv["resource_base_boundary"]["A1"]["FUEL-A"][0])
-        self.assertEqual(105.0, tv["resources"]["A1"]["FUEL-A"][0])
+        self.assertEqual([105.0, 110.0, 115.0, 115.0], tv["resources"]["A1"]["FUEL-A"][:4])
 
     def test_replenishment_before_visible_horizon_is_folded_into_cumulative_stock(self):
         snap = make_snapshot(
-            a1_replenishment_capacity=10,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 2, 4),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 1, 4, 4),),
         )
         tv = build_algorithm_input(snap).ds["timeview"]
         self.assertEqual(0.0, tv["resource_replenishment_actual"]["A1"]["FUEL-A"][0])
-        self.assertEqual(4.0, tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][0])
-        self.assertEqual(104.0, tv["resources"]["A1"]["FUEL-A"][0])
+        self.assertEqual(12.0, tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][0])
+        self.assertEqual(112.0, tv["resources"]["A1"]["FUEL-A"][0])
+
+    def test_legacy_frozen_single_slot_replenishment_remains_readable_without_rewrite(self):
+        current = make_snapshot()
+        payload = current.to_dict()
+        first_airport = payload["situation"]["airports"][0]
+        first_airport["operational_profile"]["resource_stocks"][0][
+            "replenishment_capacity_per_window"
+        ] = 10
+        first_airport["resource_replenishments"] = [
+            {"resource_type_id": "FUEL-A", "slot": 4, "quantity": 5}
+        ]
+        payload_json = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        legacy = RunSnapshot(
+            run_id=current.run_id,
+            situation_id=current.situation_id,
+            content_hash=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            payload_json=payload_json,
+        )
+
+        tv = build_algorithm_input(legacy).ds["timeview"]
+
+        self.assertEqual([5.0, 0.0], tv["resource_replenishment_actual"]["A1"]["FUEL-A"][:2])
+        self.assertEqual([5.0, 5.0], tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][:2])
+        self.assertIn(
+            "replenishment_capacity_per_window",
+            legacy.to_dict()["situation"]["airports"][0]["operational_profile"]["resource_stocks"][0],
+        )
+        self.assertIn("slot", legacy.to_dict()["situation"]["airports"][0]["resource_replenishments"][0])
+
+    def test_adjacent_intervals_and_different_resources_expand_independently(self):
+        snap = make_snapshot(a1_replenishments=(
+            ResourceReplenishment("FUEL-A", 4, 6, 5),
+            ResourceReplenishment("FUEL-A", 6, 8, 7),
+            ResourceReplenishment("MAT-1", 5, 7, 2),
+        ))
+        tv = build_algorithm_input(snap).ds["timeview"]
+        self.assertEqual([5.0, 5.0, 7.0, 7.0, 0.0], tv["resource_replenishment_actual"]["A1"]["FUEL-A"][:5])
+        self.assertEqual([0.0, 2.0, 2.0, 0.0, 0.0], tv["resource_replenishment_actual"]["A1"]["MAT-1"][:5])
+        self.assertEqual([105.0, 110.0, 117.0, 124.0, 124.0], tv["resources"]["A1"]["FUEL-A"][:5])
+        self.assertEqual([20.0, 22.0, 24.0, 24.0, 24.0], tv["resources"]["A1"]["MAT-1"][:5])
+
+    def test_no_replenishment_keeps_zero_flow_and_initial_stock(self):
+        tv = build_algorithm_input(make_snapshot()).ds["timeview"]
+        self.assertTrue(all(value == 0 for value in tv["resource_replenishment_actual"]["A1"]["FUEL-A"]))
+        self.assertTrue(all(value == 0 for value in tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"]))
+        self.assertTrue(all(value == 100 for value in tv["resources"]["A1"]["FUEL-A"]))
+
+    def test_resource_damage_boundary_and_external_replenishment_are_combined_in_order(self):
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS-R", "name": "Resource", "category": "custom",
+            "events": [{
+                "event_id": "R1", "sequence": 0,
+                "target": {"airport_id": "A1", "target_type": "airport", "target_id": None},
+                "damage_type": "resource_damage", "start_slot": 2, "end_slot": 4,
+                "effect": {"remaining_quantity": {"FUEL-A": 40}},
+                "recovery_mode": "instant", "recovery_duration_slots": None,
+            }],
+        })
+        tv = build_algorithm_input(make_snapshot(
+            scenario=scenario,
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 3, 5, 5),),
+        )).ds["timeview"]
+        self.assertEqual([40.0, 40.0, 100.0], tv["resource_base_boundary"]["A1"]["FUEL-A"][:3])
+        self.assertEqual([0.0, 5.0, 5.0], tv["resource_replenishment_actual"]["A1"]["FUEL-A"][:3])
+        self.assertEqual([0.0, 5.0, 10.0], tv["resource_replenishment_cumulative"]["A1"]["FUEL-A"][:3])
+        self.assertEqual([40.0, 45.0, 110.0], tv["resources"]["A1"]["FUEL-A"][:3])
 
 
 if __name__ == "__main__":
