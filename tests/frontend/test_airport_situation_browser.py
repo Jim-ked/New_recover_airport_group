@@ -134,6 +134,35 @@ def serve_layout_api(route, situation):
     elif path == "/situations/working-copy/canonicalize":
         posted = json.loads(request.post_data or "{}")
         payload = {"situation": posted["situation"], "working_copy_hash": "layout-working-hash"}
+    elif path == "/situations/working-copy/copy-airport":
+        posted = json.loads(request.post_data or "{}")
+        index = int(posted["airport_id"][3:])
+        copied = {
+            **airport(f"APX{index:03d}", f"Candidate {index:03d}")["airport"],
+            "configuration_complete": True,
+            "longitude": 100 + (index % 30) * 0.2,
+            "latitude": 20 + (index // 30) * 0.2,
+        }
+        copied_profile = {
+            "airport_id": copied["airport_id"], "configuration_complete": True,
+            "capacity_per_window": 1, "support_level": "L1",
+            "emergency_response_level": "level_1", "aircraft_support": [], "resource_stocks": [],
+        }
+        updated = json.loads(json.dumps(posted["situation"], ensure_ascii=False))
+        updated["airports"].append({"airport": copied, "operational_profile": copied_profile,
+                                    "resource_replenishments": []})
+        payload = {"situation": updated}
+    elif path == "/airports":
+        items = [situation["airports"][0]["airport"]]
+        items.extend({
+            **airport(f"APX{index:03d}", f"Candidate {index:03d}")["airport"],
+            "configuration_complete": True,
+            "longitude": 100 + (index % 30) * 0.2,
+            "latitude": 20 + (index // 30) * 0.2,
+        } for index in range(565))
+        offset = int(request.url.split("offset=", 1)[1].split("&", 1)[0]) if "offset=" in request.url else 0
+        limit = int(request.url.split("limit=", 1)[1].split("&", 1)[0]) if "limit=" in request.url else 500
+        payload = {"items": items[offset:offset + limit], "total": len(items)}
     else:
         route.fulfill(status=404, body=json.dumps({"error": {"message": f"Unhandled {path}"}}),
                       content_type="application/json")
@@ -420,6 +449,67 @@ def test_actual_situation_page_edits_multiple_interval_replenishments(actual_sit
         {"resource_type_id": "fuel", "start_slot": 36, "end_slot": 42, "quantity": 10},
         {"resource_type_id": "fuel", "start_slot": 42, "end_slot": 45, "quantity": 3},
     ]
+
+
+def test_candidate_map_reuses_current_objects_and_diffs_debounced_search(actual_situation_page):
+    page = actual_situation_page
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.evaluate("""() => {
+      window.__mapPerf = {adds: 0, removes: 0, longTasks: []};
+      const marker = L.marker;
+      L.marker = (...args) => { window.__mapPerf.adds += 1; return marker(...args); };
+      const remove = L.Marker.prototype.remove;
+      L.Marker.prototype.remove = function(...args) {
+        window.__mapPerf.removes += 1;
+        return remove.apply(this, args);
+      };
+      window.__currentAirportNode = document.querySelector('.situation-airport-marker');
+      window.__currentMissionNode = document.querySelector('.situation-mission-marker');
+      new PerformanceObserver(list => window.__mapPerf.longTasks.push(
+        ...list.getEntries().map(item => item.duration)
+      )).observe({type: 'longtask', buffered: true});
+    }""")
+
+    started = page.evaluate("performance.now()")
+    page.locator('[data-mode="airport"]').click()
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 565")
+    opened_ms = page.evaluate("start => performance.now() - start", started)
+    opened = page.evaluate("""() => ({
+      ...window.__mapPerf,
+      candidates: document.querySelectorAll('.situation-candidate-marker').length,
+      currentAirportPreserved: document.querySelector('.situation-airport-marker') === window.__currentAirportNode,
+      currentMissionPreserved: document.querySelector('.situation-mission-marker') === window.__currentMissionNode,
+    })""")
+    assert opened["adds"] == 565, opened
+    assert opened["removes"] == 0, opened
+    assert opened["currentAirportPreserved"] and opened["currentMissionPreserved"], opened
+
+    search = page.locator("#airportCandidateSearch")
+    search.fill("Candidate 00")
+    page.wait_for_timeout(180)
+    assert page.locator(".situation-candidate-marker").count() == 10
+    narrow = page.evaluate("structuredClone(window.__mapPerf)")
+    assert narrow["adds"] == 565
+    assert narrow["removes"] == 555
+    assert page.evaluate("document.querySelector('.situation-airport-marker') === window.__currentAirportNode")
+    assert page.evaluate("document.querySelector('.situation-mission-marker') === window.__currentMissionNode")
+
+    search.fill("Candidate 0")
+    page.wait_for_timeout(180)
+    assert page.locator(".situation-candidate-marker").count() == 100
+    expanded = page.evaluate("structuredClone(window.__mapPerf)")
+    assert expanded["adds"] == 655
+
+    search.fill("")
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 565")
+    cleared = page.evaluate("structuredClone(window.__mapPerf)")
+    assert cleared["adds"] == 1120
+    page.locator('.candidate-row[data-airport-id="APX000"] input').check()
+    page.locator("#addAirportsToSituation").click()
+    page.wait_for_function("document.querySelectorAll('.situation-airport-marker').length === 2")
+    assert page.locator(".situation-candidate-marker").count() == 564
+    print(json.dumps({"open_ms": opened_ms, "opened": opened, "narrow": narrow,
+                      "expanded": expanded, "cleared": cleared}, ensure_ascii=False))
 
 
 def test_actual_situation_page_preserves_remove_confirmation_path(actual_situation_page):

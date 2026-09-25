@@ -56,7 +56,7 @@ def page(browser):
             route.fulfill(body=(ROOT / "frontend/static/css" / name).read_text(encoding="utf-8"), content_type="text/css")
             return
         if name == "situation-map.js":
-            source = "export const " + ",".join(f"{name}=()=>{{}}" for name in ["beginMissionLocationPick", "cancelMissionLocationPick", "configureMap", "drawMap", "fitMap", "focusObject", "initMap", "destroyMap"]) + ";"
+            source = "export const " + ",".join(f"{name}=()=>{{}}" for name in ["beginMissionLocationPick", "cancelMissionLocationPick", "configureMap", "drawMap", "fitMap", "focusObject", "initMap", "destroyMap", "updateCandidateMarkers"]) + ";"
         elif name == "situation-panels.js":
             source = "export const " + ",".join(f"{name}=()=>{{}}" for name in ["clearConflict", "collapseOverview", "configurePanels", "destroyPanels", "initPanels", "setInspectorOpen", "showConflict", "syncWorkspaceChrome"]) + ";"
         elif name == "api-client.js":

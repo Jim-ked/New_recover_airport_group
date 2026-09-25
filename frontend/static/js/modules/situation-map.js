@@ -7,6 +7,7 @@ import { escapeHtml, page, refs, state } from './situation-state.js';
 
 const WORLD_BOUNDS = [[-85.05112878, -180], [85.05112878, 180]];
 const mapLayers = [];
+const candidateMarkers = new Map();
 const externalLayers = { airports: null, missions: null };
 const externalCache = { airports: null, missions: null };
 let map = null;
@@ -28,6 +29,8 @@ export function configureMap(nextCallbacks) {
 function clearMapLayers() {
   for (const layer of mapLayers) layer.remove?.();
   mapLayers.length = 0;
+  for (const marker of candidateMarkers.values()) marker.remove?.();
+  candidateMarkers.clear();
   refs.fallbackObjects?.replaceChildren();
 }
 
@@ -94,6 +97,55 @@ function bindPermanentLabel(marker, text, priority, forceVisible, labels) {
   if (element) labels.push({ element, priority, forceVisible });
 }
 
+function candidateIcon(airport) {
+  const chosen = state.tempAirportIds.has(airport.airport_id);
+  const focused = state.candidateFocusId === airport.airport_id;
+  return globalThis.L.divIcon({
+    className: `situation-candidate-marker ${airportRoleClass(airport.role)}${chosen ? ' selected' : ''}${focused ? ' focused' : ''}`,
+    html: '<span></span>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function candidateVisualKey(airport) {
+  return `${airportRoleClass(airport.role)}:${state.tempAirportIds.has(airport.airport_id)}:${state.candidateFocusId === airport.airport_id}`;
+}
+
+function syncCandidateLeafletMarkers() {
+  if (!map || !state.working) return;
+  const visible = new Map(visibleCandidates().map((airport) => [airport.airport_id, airport]));
+  for (const [airportId, marker] of candidateMarkers) {
+    if (visible.has(airportId)) continue;
+    marker.remove();
+    candidateMarkers.delete(airportId);
+  }
+  for (const [airportId, airport] of visible) {
+    const latitude = Number(airport.latitude);
+    const longitude = Number(airport.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    let marker = candidateMarkers.get(airportId);
+    if (!marker) {
+      marker = globalThis.L.marker([latitude, longitude], { icon: candidateIcon(airport) });
+      marker.bindTooltip(escapeHtml(airportMapTooltip(airport)), {
+        direction: 'top',
+        className: 'map-object-tooltip',
+      });
+      bindMarkerActivation(
+        marker,
+        () => callbacks.highlightObject?.('candidate', airportId),
+        () => callbacks.openCandidateDetails?.(airportId),
+      );
+      marker._candidateVisualKey = candidateVisualKey(airport);
+      marker.addTo(map);
+      candidateMarkers.set(airportId, marker);
+    } else if (marker._candidateVisualKey !== candidateVisualKey(airport)) {
+      marker.setIcon(candidateIcon(airport));
+      marker._candidateVisualKey = candidateVisualKey(airport);
+    }
+  }
+}
+
 function drawLeaflet() {
   clearMapLayers();
   if (!map || !state.working) return;
@@ -126,33 +178,7 @@ function drawLeaflet() {
       selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.airport, selected, labels);
   }
 
-  if (state.mode === 'airport' || state.mode === 'candidate-detail') {
-    for (const airport of visibleCandidates()) {
-      const latitude = Number(airport.latitude);
-      const longitude = Number(airport.longitude);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-      const chosen = state.tempAirportIds.has(airport.airport_id);
-      const focused = state.candidateFocusId === airport.airport_id;
-      const icon = L.divIcon({
-        className: `situation-candidate-marker ${airportRoleClass(airport.role)}${chosen ? ' selected' : ''}${focused ? ' focused' : ''}`,
-        html: '<span></span>',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
-      });
-      const marker = L.marker([latitude, longitude], { icon });
-      marker.bindTooltip(escapeHtml(airportMapTooltip(airport)), {
-        direction: 'top',
-        className: 'map-object-tooltip',
-      });
-      bindMarkerActivation(
-        marker,
-        () => callbacks.highlightObject?.('candidate', airport.airport_id),
-        () => callbacks.openCandidateDetails?.(airport.airport_id),
-      );
-      marker.addTo(map);
-      mapLayers.push(marker);
-    }
-  }
+  syncCandidateLeafletMarkers();
 
   for (const mission of state.working.missions) {
     const latitude = Number(mission.latitude);
@@ -299,6 +325,11 @@ function drawFallback() {
 export function drawMap() {
   if (fallback) drawFallback();
   else drawLeaflet();
+}
+
+export function updateCandidateMarkers() {
+  if (fallback) drawFallback();
+  else syncCandidateLeafletMarkers();
 }
 
 export function fitMap() {

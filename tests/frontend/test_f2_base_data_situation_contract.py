@@ -103,9 +103,9 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         self.assertIn("export async function beforeLeave", self.bd_js)
 
     def test_f2_respects_permission_aware_mutation(self):
-        self.assertIn("/api/me", self.bd_js)
+        self.assertIn("getAccount", self.bd_js)
         self.assertIn("catalog.write", self.bd_js)
-        self.assertIn("/api/me", self.sit_main)
+        self.assertIn("getAccount", self.sit_main)
         self.assertIn("situations.write", self.sit_state)
 
 
