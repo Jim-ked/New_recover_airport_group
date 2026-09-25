@@ -81,7 +81,7 @@ class SettingsFrontendContractTests(unittest.TestCase):
             self.assertNotIn(obsolete, combined)
 
     def test_settings_uses_existing_account_and_user_apis(self):
-        self.assertIn("/api/me", SETTINGS_JS)
+        self.assertIn("getAccount", SETTINGS_JS)
         self.assertIn("/api/users", SETTINGS_JS)
         self.assertNotIn("backup", SETTINGS_JS.lower())
 

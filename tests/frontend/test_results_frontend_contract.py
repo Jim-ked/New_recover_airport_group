@@ -369,7 +369,7 @@ process.stdout.write(JSON.stringify({{payload:state.payload,selection:state.sele
         self.assertIn("bottomMode", saved)
         self.assertNotIn("payload", saved)
         self.assertIn("restoreSavedComparisons", JS)
-        self.assertIn("/api/me", JS)
+        self.assertIn("getAccount", JS)
 
     def test_bottom_tabs_keep_full_airport_resource_and_scheme_views(self):
         for label in ("全机场承接", "资源变化", "方案结构", "出动架次", "承接占比"):

@@ -1,4 +1,5 @@
 import { apiFetch, ApiError, saveBlob } from './api-client.js';
+import { getAccount } from './account-context.js';
 import { formatInteger, formatPercent, formatSeconds } from './number-display.js';
 
 const STAGE_GROUPS = [
@@ -936,11 +937,13 @@ function returnToLiveRun() {
   renderCurrentRun();
 }
 
-async function refreshRuns() {
+async function refreshRuns(options) {
   try {
+    const background = options?.background === true;
+    const pollSuffix = background ? '&_background_poll=1' : '';
     const [payload] = await Promise.all([
-      apiFetch('/api/runs?limit=100'),
-      refreshWorkerStatus(),
+      apiFetch(`/api/runs?limit=100${pollSuffix}`),
+      refreshWorkerStatus({ background }),
     ]);
     state.runs = payload.items || [];
     const previous = state.activeRun;
@@ -971,9 +974,10 @@ async function refreshRuns() {
       && ['succeeded', 'failed', 'cancelled'].includes(state.activeRun.status)
     );
     if (transitionedToTerminal) {
-      await refreshActiveEvents({ force: true });
+      if (background) await refreshActiveEvents({ force: true, background: true });
+      else await refreshActiveEvents({ force: true });
     } else if (state.activeRun?.status === 'running') {
-      await refreshActiveEvents();
+      await refreshActiveEvents({ background });
     }
 
     renderQueue();
@@ -982,16 +986,16 @@ async function refreshRuns() {
   } catch (error) { handleError(error); }
 }
 
-async function refreshWorkerStatus() {
+async function refreshWorkerStatus({ background = false } = {}) {
   try {
-    state.workerStatus = await apiFetch('/api/runs/worker-status');
+    state.workerStatus = await apiFetch(`/api/runs/worker-status${background ? '?_background_poll=1' : ''}`);
   } catch (error) {
     state.workerStatus = { connected: false, reason: 'status_unavailable' };
     console.warn('Worker status unavailable', error);
   }
 }
 
-async function refreshActiveEvents({ force = false } = {}) {
+async function refreshActiveEvents({ force = false, background = false } = {}) {
   const run = state.activeRun;
   if (!run?.run_id || (!force && run.status !== 'running')) return;
   if (state.eventRequest) await state.eventRequest;
@@ -999,7 +1003,8 @@ async function refreshActiveEvents({ force = false } = {}) {
   const request = (async () => {
     let keepReading = true;
     while (keepReading && state.activeRunId === runId) {
-      const payload = await apiFetch(`/api/runs/${encodeURIComponent(runId)}/events?after_seq=${state.activeAfterSeq}&limit=200`);
+      const pollSuffix = background ? '&_background_poll=1' : '';
+      const payload = await apiFetch(`/api/runs/${encodeURIComponent(runId)}/events?after_seq=${state.activeAfterSeq}&limit=200${pollSuffix}`);
       if (state.activeRunId !== runId) break;
       const incoming = payload.events || [];
       if (incoming.length) {
@@ -1022,7 +1027,7 @@ async function refreshActiveEvents({ force = false } = {}) {
 }
 
 async function refreshEvents() {
-  await refreshActiveEvents();
+  await refreshActiveEvents({ background: true });
 }
 
 async function cancelQueuedRun(run) {
@@ -1088,13 +1093,17 @@ function bindFormEvents() {
   refs.logExportButton.addEventListener('click', exportLog);
 }
 
-globalThis.addEventListener('app:account-ready', (event) => {
-  state.permissions = new Set(event.detail?.permissions || []);
+function applyAccount(account) {
+  state.permissions = new Set(account?.permissions || []);
   state.accountReady = true;
   applyRunPermissionState();
   renderQueue();
   renderHistory();
   renderCurrentRun();
+}
+
+globalThis.addEventListener('app:account-ready', (event) => {
+  applyAccount(event.detail);
 });
 
 async function init() {
@@ -1105,9 +1114,10 @@ async function init() {
   renderCurrentRun();
   applyRunPermissionState();
   try {
-    await Promise.all([loadSituations(), refreshRuns()]);
+    const [account] = await Promise.all([getAccount(), loadSituations(), refreshRuns()]);
+    applyAccount(account);
   } catch (error) { handleError(error); }
-  state.listTimer = window.setInterval(refreshRuns, 5000);
+  state.listTimer = window.setInterval(() => refreshRuns({ background: true }), 5000);
   state.eventTimer = window.setInterval(refreshEvents, 1500);
   state.elapsedTimer = window.setInterval(renderElapsed, 1000);
 }

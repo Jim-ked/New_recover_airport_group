@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { getAccount } from './account-context.js';
 import { formatPercent } from './number-display.js';
 
 const DEFAULT_EXPERT_ID = 'default';
@@ -794,7 +795,7 @@ async function init() {
     state.search.draft = '';
     state.search.applied = '';
     refs.search.value = '';
-    state.me = await apiFetch('/api/me');
+    state.me = await getAccount();
     bind();
     await Promise.all([loadSets(), loadExperts()]);
   } catch (error) {

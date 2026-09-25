@@ -1,4 +1,5 @@
 import { apiFetch as requestJson, apiText as requestText, ApiError } from './api-client.js';
+import { getAccount } from './account-context.js';
 import { formatCoordinate, formatDecimal, formatDistance, formatInteger, formatPercent } from './number-display.js';
 import { regionDisplayName, regionDisplayWithCode } from './region-display.js';
 
@@ -386,7 +387,7 @@ function bind(signal){
 
 async function init(context){
   try{
-    state.me=await apiFetch('/api/me');
+    state.me=await getAccount();
     bind(lifecycleController.signal);
     const params=new URL(context?.url||window.location.href,window.location.href).searchParams;
     const requestedTab=params.get('tab'); const requestedId=params.get('id');

@@ -1,4 +1,5 @@
 import { apiFetch, apiDownload, saveBlob, ApiError } from './api-client.js';
+import { getAccount } from './account-context.js';
 import { formatDecimal, formatHhi, formatInteger, formatPercent } from './number-display.js';
 
 const VIEW_STATE = Object.freeze({
@@ -709,7 +710,7 @@ globalThis.addEventListener('pagehide',()=>{captureWorkspaceState();persistSessi
 async function init(){
   renderViewState();
   try{
-    const account=await apiFetch('/api/me');
+    const account=await getAccount();
     state.userId=account.user_id;
     state.canExport=Boolean(account.permissions?.includes('results.export'));
     restoreSessionState();

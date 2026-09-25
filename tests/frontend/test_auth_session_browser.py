@@ -43,6 +43,7 @@ def browser():
 
 @pytest.fixture
 def auth_server(tmp_path):
+    calls = {"me": 0}
     repository = UserRepository(tmp_path / "auth-browser.db")
     repository.init_schema()
     repository.create_user(
@@ -68,6 +69,7 @@ def auth_server(tmp_path):
 
     @app.get("/api/me")
     def me():
+        calls["me"] += 1
         denied = require_principal()
         if denied:
             return denied
@@ -90,7 +92,7 @@ def auth_server(tmp_path):
     server = make_server("127.0.0.1", 0, app, threaded=True)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    yield f"http://127.0.0.1:{server.server_port}"
+    yield f"http://127.0.0.1:{server.server_port}", calls
     server.shutdown()
     thread.join(timeout=3)
 
@@ -105,9 +107,12 @@ def _login(page, base_url):
 
 
 def test_browser_session_restore_and_logout_failure_contract(browser, auth_server):
+    auth_server, calls = auth_server
     context = browser.new_context()
     page = context.new_page()
     _login(page, auth_server)
+    page.wait_for_function("() => document.documentElement.dataset.role === 'operator'")
+    assert calls["me"] == 1
 
     cookies = {cookie["name"]: cookie for cookie in context.cookies(auth_server)}
     assert cookies["session"]["expires"] == -1
@@ -127,7 +132,9 @@ def test_browser_session_restore_and_logout_failure_contract(browser, auth_serve
     restored_page = restored_context.new_page()
     restored_page.goto(f"{auth_server}/situations")
     restored_page.wait_for_selector("#accountTrigger")
+    restored_page.wait_for_function("() => document.documentElement.dataset.role === 'operator'")
     assert restored_page.url == f"{auth_server}/situations"
+    assert calls["me"] == 2
 
     restored_page.route(
         "**/api/auth/logout",

@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { getAccount } from './account-context.js';
 
 const $ = (id) => document.getElementById(id);
 const ROLE_LABELS = Object.freeze({ viewer: '游客', operator: '操作员', admin: '管理员' });
@@ -785,7 +786,7 @@ function bind() {
 async function init() {
   bind();
   try {
-    state.account = await apiFetch('/api/me');
+    state.account = await getAccount();
     renderAccount();
     renderTabs();
   } catch (error) {

@@ -20,6 +20,23 @@ from backend.storage.user_repository import (
 from backend.web.http import error_body
 
 
+def is_public_asset_request(endpoint: Optional[str]) -> bool:
+    """Return true only for routes that are deliberately public and data-free."""
+    return endpoint == "static" or bool(endpoint and endpoint.startswith("tiles_v1."))
+
+
+def is_passive_run_poll(method: str, path: str) -> bool:
+    """Identify automatic run status reads that must not extend the idle deadline."""
+    if method.upper() != "GET":
+        return False
+    parts = [part for part in path.split("?")[0].split("/") if part]
+    if parts == ["api", "runs"] or parts == ["api", "runs", "worker-status"]:
+        return True
+    return len(parts) in (3, 4) and parts[:2] == ["api", "runs"] and (
+        len(parts) == 3 or parts[3] == "events"
+    )
+
+
 def _issue_csrf(response: Any, *, secure: bool) -> Any:
     try:
         from flask import session
@@ -58,11 +75,13 @@ def install_session_auth(
 
     @app.before_request
     def _resolve_session():
-        from flask import g, session
+        from flask import g, request, session
 
         g.current_principal = None
         g.session_invalid_reason = None
         g.clear_csrf_cookie = False
+        if is_public_asset_request(request.endpoint):
+            return None
         raw = session.get("user")
         if raw is None:
             return None
@@ -91,7 +110,11 @@ def install_session_auth(
         principal = result.principal
         assert principal is not None
         g.current_principal = principal
-        if result.refresh_last_seen:
+        passive_poll = (
+            request.args.get("_background_poll") == "1"
+            and is_passive_run_poll(request.method, request.path)
+        )
+        if result.refresh_last_seen and not passive_poll:
             raw = dict(raw)
             raw["last_seen_at"] = int(time.time())
             # Role/display facts are refreshed from the account authority. auth_revision

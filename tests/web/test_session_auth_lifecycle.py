@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from flask import Flask, g, jsonify
+from flask import Blueprint, Flask, g, jsonify
 
 from backend.storage.user_repository import UserRepository
 from backend.web.flask_auth import create_auth_blueprint, install_session_auth
@@ -29,11 +29,28 @@ def _app(tmp_path: Path, *, idle: int = 1800, absolute: int = 28800):
         idle_timeout_seconds=idle, absolute_timeout_seconds=absolute,
     ))
 
+    tiles = Blueprint("tiles_v1", __name__, url_prefix="/tiles")
+
+    @tiles.get("/<source>/<int:z>/<int:x>/<int:y>.jpg")
+    def tile(source, z, x, y):
+        return b"tile", 200, {"Content-Type": "image/jpeg"}
+
+    app.register_blueprint(tiles)
+
     @app.get("/protected")
     def protected():
         if g.current_principal is None:
             return jsonify({"error": "authentication required"}), 401
         return jsonify({"user_id": g.current_principal.user_id})
+
+    @app.get("/api/runs")
+    @app.get("/api/runs/worker-status")
+    @app.get("/api/runs/<run_id>")
+    @app.get("/api/runs/<run_id>/events")
+    def run_poll(run_id=None):
+        if g.current_principal is None:
+            return jsonify({"error": "authentication required"}), 401
+        return jsonify({"run_id": run_id, "items": []})
 
     return app, repository
 
@@ -125,3 +142,64 @@ def test_password_change_clears_both_cookies_and_requires_new_password(tmp_path)
     assert any(value.startswith("csrftoken=;") and "Max-Age=0" in value for value in cleared)
     assert _login(client).status_code == 401
     assert _login(client, "Changed-pass-2").status_code == 200
+
+
+def test_public_assets_skip_authority_and_run_polls_do_not_refresh_idle(tmp_path):
+    app, repository = _app(tmp_path)
+    client = app.test_client()
+    assert _login(client).status_code == 200
+    with client.session_transaction() as session:
+        session["user"]["last_seen_at"] = int(time.time()) - 5
+        original_last_seen = session["user"]["last_seen_at"]
+        session.modified = True
+
+    calls = 0
+    original_get = repository.get
+
+    def counted_get(user_id):
+        nonlocal calls
+        calls += 1
+        return original_get(user_id)
+
+    repository.get = counted_get
+    assert client.get("/static/missing.css").status_code == 404
+    assert client.get("/tiles/world/4/1/2.jpg").status_code == 200
+    assert calls == 0
+
+    for path in ("/api/runs", "/api/runs/worker-status", "/api/runs/R1", "/api/runs/R1/events"):
+        separator = "&" if "?" in path else "?"
+        path = f"{path}{separator}_background_poll=1"
+        assert client.get(path).status_code == 200
+    assert calls == 4
+    with client.session_transaction() as session:
+        assert session["user"]["last_seen_at"] == original_last_seen
+
+    assert client.get("/api/runs").status_code == 200
+    with client.session_transaction() as session:
+        assert session["user"]["last_seen_at"] > original_last_seen
+
+    with client.session_transaction() as session:
+        session["user"]["last_seen_at"] = original_last_seen
+        session.modified = True
+    assert client.get("/protected").status_code == 200
+    assert calls == 6
+    with client.session_transaction() as session:
+        assert session["user"]["last_seen_at"] > original_last_seen
+
+
+def test_run_poll_still_rejects_expired_disabled_and_revised_sessions(tmp_path):
+    for reason in ("idle", "absolute", "disabled", "revision"):
+        app, repository = _app(tmp_path / reason, idle=10, absolute=20)
+        client = app.test_client()
+        assert _login(client).status_code == 200
+        with client.session_transaction() as session:
+            if reason == "idle":
+                session["user"]["last_seen_at"] = int(time.time()) - 11
+            elif reason == "absolute":
+                session["user"]["issued_at"] = int(time.time()) - 21
+            session.modified = True
+        if reason == "disabled":
+            repository.set_disabled("U1", True)
+        elif reason == "revision":
+            repository.set_role("U1", "viewer")
+        assert client.get("/api/runs/R1/events?_background_poll=1").status_code == 401

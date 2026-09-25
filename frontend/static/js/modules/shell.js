@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { clearAccount, getAccount } from './account-context.js';
 
 const authenticated = document.body.dataset.authenticated === 'true';
 const accountTrigger = document.getElementById('accountTrigger');
@@ -64,7 +65,7 @@ function roleText(role) {
 async function loadAccount() {
   if (!authenticated) { redirectToLogin(); return; }
   try {
-    account = await apiFetch('/api/me');
+    account = await getAccount();
     roleLabel.textContent = roleText(account.role);
     summaryRole.textContent = roleText(account.role);
     const accountName = account.display_name || account.login_name || displayName?.textContent?.trim() || account.user_id;
@@ -73,7 +74,6 @@ async function loadAccount() {
       summaryName.textContent = accountName;
     }
     document.documentElement.dataset.role = account.role || 'viewer';
-    globalThis.dispatchEvent(new CustomEvent('app:account-ready', { detail: account }));
   } catch (error) {
     if (!(error instanceof ApiError && error.status === 401)) console.error(error);
   }
@@ -99,6 +99,7 @@ passwordSave?.addEventListener('click', async () => {
   passwordSave.disabled = true;
   try {
     await apiFetch('/api/auth/change-password', { method: 'POST', body: { current_password: currentPassword.value, new_password: newPassword.value } });
+    clearAccount();
     setPasswordMessage('密码已修改，需要重新登录。', 'success');
     setTimeout(redirectToLogin, 350);
   } catch (error) {
@@ -115,6 +116,7 @@ logoutAction?.addEventListener('click', async () => {
     await apiFetch('/api/auth/logout', {
       method: 'POST', body: {}, notifyAuthRequired: false,
     });
+    clearAccount();
     closeAccount();
     redirectToLogin();
   } catch (error) {

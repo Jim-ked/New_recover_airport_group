@@ -11,6 +11,7 @@ SHELL = (ROOT / "frontend/static/css/shell.css").read_text(encoding="utf-8")
 COMPONENTS = (ROOT / "frontend/static/css/components.css").read_text(encoding="utf-8")
 SHELL_JS = (ROOT / "frontend/static/js/modules/shell.js").read_text(encoding="utf-8")
 API_JS = (ROOT / "frontend/static/js/modules/api-client.js").read_text(encoding="utf-8")
+ACCOUNT_JS = (ROOT / "frontend/static/js/modules/account-context.js").read_text(encoding="utf-8")
 ASSET_README = (ROOT / "docs/frontend-static.md").read_text(encoding="utf-8")
 LEAFLET_README = (ROOT / "frontend/static/vendor/leaflet/README.md").read_text(encoding="utf-8")
 PAGE_CSS = [
@@ -55,7 +56,9 @@ class SharedUiF0ContractTests(unittest.TestCase):
         self.assertIn("app:auth-required", API_JS)
         self.assertIn("app:auth-required", SHELL_JS)
         self.assertIn("window.location.replace", SHELL_JS)
-        self.assertIn("/api/me", SHELL_JS)
+        self.assertIn("getAccount", SHELL_JS)
+        self.assertIn("/api/me", ACCOUNT_JS)
+        self.assertIn("if (pending) return pending", ACCOUNT_JS)
 
     def test_visual_assets_are_manual_local_slots_not_network_dependencies(self):
         self.assertIn("manual", ASSET_README.lower())
