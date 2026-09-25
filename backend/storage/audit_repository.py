@@ -123,26 +123,25 @@ class AuditRepository:
             raise AuditRepositoryError("outcome must be success, denied or error")
         details_json = canonical_json(dict(details or {}))
         with self.connect() as conn:
-            cur = conn.execute(
+            row = conn.execute(
                 """
                 INSERT INTO audit_events (
                     actor_user_id, actor_role, action, resource_type, resource_id,
                     request_method, request_path, source_address, response_status,
                     outcome, details_json
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                RETURNING *
                 """,
                 (
                     actor_user_id, actor_role, action.strip(), resource_type, resource_id,
                     request_method.strip().upper(), request_path.strip(), source_address,
                     response_status, outcome, details_json,
                 ),
-            )
-            audit_id = int(cur.lastrowid)
-        with self.connect() as conn:
-            row = conn.execute("SELECT * FROM audit_events WHERE audit_id=?", (audit_id,)).fetchone()
-        if row is None:
-            raise AuditRepositoryError("audit event disappeared after insert")
-        return self._row(row)
+            ).fetchone()
+            if row is None:
+                raise AuditRepositoryError("audit event disappeared after insert")
+            record = self._row(row)
+        return record
 
     def query(
         self,
