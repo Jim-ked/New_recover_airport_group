@@ -98,6 +98,21 @@
         <input id="showAllDamage" type="checkbox" disabled aria-describedby="otherDamageUnavailable">
       </label>
       <p id="otherDamageUnavailable" class="layer-unavailable">缺少既定 projection endpoint，本轮不可用。</p>
+      <section class="map-legend" aria-label="地图标识说明">
+        <strong>机场类别</strong>
+        <div class="map-legend-grid role-legend">
+          <span><i class="map-legend-airport airport-role-civil"><b></b></i>民用</span>
+          <span><i class="map-legend-airport airport-role-military"><b></b></i>军用</span>
+          <span><i class="map-legend-airport airport-role-joint"><b></b></i>军民两用</span>
+        </div>
+        <strong>对象来源与状态</strong>
+        <div class="map-legend-grid source-legend">
+          <span><i class="map-legend-source current"></i>当前情境</span>
+          <span><i class="map-legend-source candidate"></i>待加入候选</span>
+          <span><i class="map-legend-source reference"></i>基础参考</span>
+          <span><i class="map-legend-source damage"></i>损毁事件配置</span>
+        </div>
+      </section>
       <div id="layerScopeStatus" class="layer-scope-status"></div>
     </div>
   </section>

@@ -138,8 +138,8 @@ function candidateIcon(airport) {
   return globalThis.L.divIcon({
     className: `situation-candidate-marker ${airportRoleClass(airport.role)}${queued ? ' candidate-queued' : ''}${focused ? ' map-state-focused' : ''}`,
     html: '<span></span>',
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
 }
 
@@ -212,8 +212,8 @@ function drawLeaflet() {
     const icon = L.divIcon({
       className: airportMarkerClass(airport, isDamaged),
       html: '<span></span>',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
     });
     const marker = L.marker([latitude, longitude], {
       icon,
@@ -357,6 +357,15 @@ function fallbackPoints() {
   ];
 }
 
+function fallbackZIndex(point) {
+  if (point.type === 'draft') return 900;
+  if (point.type === 'mission-preview') return 800;
+  if (['airport', 'candidate', 'mission'].includes(point.type)) {
+    return markerZIndexOffset(point.type, point.id);
+  }
+  return 100;
+}
+
 function drawFallback() {
   refs.fallback.classList.remove('hidden');
   refs.map.classList.add('hidden');
@@ -378,7 +387,7 @@ function drawFallback() {
     const damage = point.type === 'airport' && damaged.has(point.id);
     const roleClass = point.type === 'airport' || point.type === 'candidate' ? ` ${airportRoleClass(point.role)}` : '';
     const title = `${point.name}${damage ? '；存在损毁事件配置' : ''}`;
-    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' has-damage-config' : ''}${point.selected ? ' map-state-selected' : ''}${point.focused ? ' map-state-focused' : ''}${point.primary ? ' map-state-primary' : ''}${point.queued ? ' candidate-queued' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(title)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
+    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' has-damage-config' : ''}${point.selected ? ' map-state-selected' : ''}${point.focused ? ' map-state-focused' : ''}${point.primary ? ' map-state-primary' : ''}${point.queued ? ' candidate-queued' : ''}" style="left:${left}%;top:${top}%;z-index:${fallbackZIndex(point)}" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(title)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
   }).join('');
   refs.fallbackObjects.querySelectorAll('button').forEach((button) => {
     let clickTimer = null;
@@ -526,8 +535,8 @@ function renderCatalogLayer(kind) {
       icon: globalThis.L.divIcon({
         className: markerClass,
         html: '<span></span>',
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
       }),
     });
     const tooltip = kind === 'airports' ? airportMapTooltip(item) : item.name;

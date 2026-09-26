@@ -299,6 +299,35 @@ def test_added_airport_double_click_opens_situation_editor_and_footer_stays_visi
     assert footer_box and footer_box["y"] + footer_box["height"] <= 520, layout
 
 
+def test_fallback_focused_airport_stacks_above_different_mission_at_same_coordinate(page):
+    page.evaluate("""async () => {
+      const {state} = await import('/situation-state.js');
+      const {drawMap} = await import('/situation-map.js');
+      const airport = state.working.airports[0].airport;
+      state.working.missions = [{
+        mission_id: 'M-SAME-COORD', name: '同坐标任务',
+        longitude: airport.longitude, latitude: airport.latitude,
+        window_start_slot: 0, window_end_slot: 1, aircraft_requirements: [],
+      }];
+      state.mapFocus = {type: 'airport', id: airport.airport_id};
+      document.getElementById('situationInspector').style.display = 'none';
+      drawMap();
+    }""")
+    airport = page.locator('.fallback-object.airport[data-id="AP002"]')
+    mission = page.locator('.fallback-object.mission[data-id="M-SAME-COORD"]')
+    airport_box = airport.bounding_box()
+    assert airport_box is not None
+    hit = page.evaluate(
+        "({x,y}) => document.elementFromPoint(x,y)?.closest('.fallback-object')?.dataset.type",
+        {"x": airport_box["x"] + airport_box["width"] / 2,
+         "y": airport_box["y"] + airport_box["height"] / 2},
+    )
+    assert hit == "airport"
+    assert int(airport.evaluate("e => getComputedStyle(e).zIndex")) > int(
+        mission.evaluate("e => getComputedStyle(e).zIndex")
+    )
+
+
 def test_read_only_airport_editor_disables_mutations(page):
     page.evaluate("editor.state.me={permissions:[]};editor.renderAirportEditor('AP002')")
     page.locator('.airport-detail-tabs [data-airport-pane="operations"]').click()
@@ -600,6 +629,72 @@ def test_current_airport_focus_and_formal_selection_are_distinct(actual_situatio
     assert "has-damage-config" in marker.get_attribute("class")
     label = page.locator(".situation-map-label.map-label-selected")
     assert label.count() == 1
+
+
+def test_airport_marker_spec_renders_three_roles_sources_and_legend(actual_situation_page):
+    page = actual_situation_page
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap, setCatalogLayer} = await import('/static/js/modules/situation-map.js');
+      const seed = state.working.airports[0];
+      state.working.airports = ['civil', 'military', 'joint'].map((role, index) => ({
+        ...structuredClone(seed),
+        airport: {
+          ...structuredClone(seed.airport),
+          airport_id: `ROLE-${role}`,
+          airport_name: `Role ${role}`,
+          role,
+          longitude: 112 + index * 3,
+          latitude: 30 + index * 2,
+        },
+      }));
+      drawMap();
+      await setCatalogLayer('airports', true);
+    }""")
+
+    rendered = page.locator(".situation-airport-marker")
+    assert rendered.count() == 3
+    styles = page.locator(".situation-airport-marker").evaluate_all("""nodes => nodes.map(node => {
+      const body = getComputedStyle(node.querySelector('span'));
+      const container = getComputedStyle(node);
+      return {
+        classes: node.className,
+        container: [container.width, container.height],
+        body: [body.width, body.height],
+        fill: body.backgroundColor,
+        radius: body.borderRadius,
+        clip: body.clipPath,
+      };
+    })""")
+    assert all(row["container"] == ["24px", "24px"] for row in styles)
+    assert all(row["body"] == ["13px", "13px"] for row in styles)
+    assert len({row["fill"] for row in styles}) == 3
+    by_role = {next(role for role in ("civil", "military", "joint") if f"airport-role-{role}" in row["classes"]): row
+               for row in styles}
+    assert by_role["civil"]["radius"] == "50%"
+    assert by_role["military"]["clip"] != "none"
+    assert by_role["joint"]["clip"] != "none"
+
+    reference = page.locator(".catalog-airport-marker").first
+    reference_style = reference.evaluate("""node => ({
+      container: [getComputedStyle(node).width, getComputedStyle(node).height],
+      body: [getComputedStyle(node.querySelector('span')).width, getComputedStyle(node.querySelector('span')).height],
+    })""")
+    assert reference_style == {"container": ["16px", "16px"], "body": ["8px", "8px"]}
+
+    page.locator('[data-mode="airport"]').click()
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length > 500")
+    candidate_style = page.locator(".situation-candidate-marker").first.evaluate("""node => ({
+      container: [getComputedStyle(node).width, getComputedStyle(node).height],
+      body: [getComputedStyle(node.querySelector('span')).width, getComputedStyle(node.querySelector('span')).height],
+    })""")
+    assert candidate_style == {"container": ["20px", "20px"], "body": ["11px", "11px"]}
+
+    page.locator("#layerScopeButton").click()
+    legend = page.locator(".map-legend")
+    assert legend.is_visible()
+    for label in ("机场类别", "民用", "军用", "军民两用", "当前情境", "待加入候选", "基础参考", "损毁事件配置"):
+        assert label in legend.inner_text()
 
 
 def test_actual_situation_page_preserves_remove_confirmation_path(actual_situation_page):

@@ -13,6 +13,7 @@ SITUATION_JS = MODULES / "situation-map.js"
 RUNTIME_CSS = ROOT / "frontend/static/css/gis-runtime.css"
 SITUATION_CSS = ROOT / "frontend/static/css/situations.css"
 RUNTIME_HTML = ROOT / "frontend/templates/pages/gis_runtime.html"
+SITUATION_HTML = ROOT / "frontend/templates/pages/situations.html"
 
 
 def run_module(module_name: str, body: str) -> object:
@@ -171,9 +172,33 @@ process.stdout.write(JSON.stringify({current:view(1), three:view(3), six:view(6)
             self.assertIn(".airport-role-unknown", css)
         for token in ("width:7px;height:7px", "width:9px;height:9px", "width:10px;height:10px", "width:11px;height:11px"):
             self.assertIn(token, runtime)
-        self.assertIn("width:9px;height:9px", situation)
+        for token in ("width:13px;height:13px", "width:11px;height:11px", "width:8px;height:8px"):
+            self.assertIn(token, situation)
         self.assertIn("width:8px;height:8px", runtime)
         self.assertNotIn("runtime-route", runtime)
+
+    def test_situation_airport_marker_spec_has_distinct_sizes_colors_and_legend(self) -> None:
+        source = "".join(SITUATION_JS.read_text(encoding="utf-8").split())
+        css = "".join(SITUATION_CSS.read_text(encoding="utf-8").split())
+        html = SITUATION_HTML.read_text(encoding="utf-8")
+
+        for token in (
+            "iconSize:[24,24],iconAnchor:[12,12]",
+            "iconSize:[20,20],iconAnchor:[10,10]",
+            "iconSize:[16,16],iconAnchor:[8,8]",
+        ):
+            self.assertIn(token, source)
+        for token in (
+            ".situation-airport-markerspan{display:block;box-sizing:border-box;width:13px;height:13px",
+            ".situation-candidate-markerspan{display:block;box-sizing:border-box;width:11px;height:11px",
+            ".catalog-airport-markerspan{box-sizing:border-box;width:8px;height:8px",
+            ".airport-role-civil{--airport-fill:",
+            ".airport-role-military{--airport-fill:",
+            ".airport-role-joint{--airport-fill:",
+        ):
+            self.assertIn(token, css)
+        for label in ("机场类别", "民用", "军用", "军民两用", "当前情境", "待加入候选", "基础参考", "损毁事件配置"):
+            self.assertIn(label, html)
 
     def test_user_facing_runtime_language_uses_task_activity_not_airline_routes(self) -> None:
         source = RUNTIME_JS.read_text(encoding="utf-8")
