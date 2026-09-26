@@ -246,7 +246,7 @@ def page(browser):
     page.add_init_script("window.bundles=" + __import__("json").dumps(bundles, ensure_ascii=False))
     page.goto("http://airport.test/index.html")
     page.wait_for_function("window.ready===true")
-    page.evaluate("""()=>{const inspector=document.getElementById('situationInspector'),header=inspector.querySelector('header');for(const id of ['inspectorTitle','inspectorSubtitle','panelDraftStatus'])header.append(document.getElementById(id));inspector.append(document.getElementById('inspectorBody'));Object.assign(editor.state,{me:{permissions:['situations.write']},working:{situation_id:'S1',name:'测试',airports:[window.bundles.AP002.airport?{airport:window.bundles.AP002.airport,operational_profile:window.bundles.AP002.operational_profile,resource_replenishments:[]}:null],missions:[],damage_scenarios:[]},airportCatalog:Object.values(window.bundles).map(x=>({...x.airport,configuration_complete:true})),mode:'airport',selected:null,tempAirportIds:new Set(),dirty:false,panelDraftDirty:false});editor.initMap();editor.renderAirportCandidates();}""")
+    page.evaluate("""()=>{const inspector=document.getElementById('situationInspector'),header=inspector.querySelector('header');for(const id of ['inspectorTitle','inspectorSubtitle','panelDraftStatus'])header.append(document.getElementById(id));inspector.append(document.getElementById('inspectorBody'));Object.assign(editor.state,{me:{permissions:['situations.write']},working:{situation_id:'S1',name:'测试',airports:[window.bundles.AP002.airport?{airport:window.bundles.AP002.airport,operational_profile:window.bundles.AP002.operational_profile,resource_replenishments:[]}:null],missions:[],damage_scenarios:[{damage_scenario_id:'D1',name:'配置提示',category:'custom',events:[{event_id:'E1',sequence:0,target:{airport_id:'AP002',target_type:'airport',target_id:null},damage_type:'capacity_damage',start_slot:0,end_slot:1,effect:{closed:false,remaining_capacity_per_window:1},recovery_mode:'instant',recovery_duration_slots:null}]}]},airportCatalog:Object.values(window.bundles).map(x=>({...x.airport,configuration_complete:true})),mode:'airport',selected:null,tempAirportIds:new Set(),dirty:false,panelDraftDirty:false});editor.initMap();editor.renderAirportCandidates();}""")
     yield page
     page.close()
     assert not errors, errors
@@ -269,6 +269,10 @@ def test_candidate_click_locates_double_click_opens_and_checkbox_only_selects(pa
     page.wait_for_timeout(260)
     assert page.evaluate("editor.state.candidateFocusId") == "AP001"
     assert checkbox.is_checked()
+    marker_class = marker.get_attribute("class")
+    assert "candidate-queued" in marker_class
+    assert "map-state-focused" in marker_class
+    assert "map-state-selected" not in marker_class
 
     row.dblclick()
     page.wait_for_selector("text=全空域")
@@ -279,6 +283,10 @@ def test_candidate_click_locates_double_click_opens_and_checkbox_only_selects(pa
 def test_added_airport_double_click_opens_situation_editor_and_footer_stays_visible(page):
     page.evaluate("editor.selectObject('airport','AP002',{locate:true})")
     page.wait_for_selector("#sitEmergencyResponseLevel", state="attached")
+    current_marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert "map-state-selected" in current_marker.get_attribute("class")
+    assert "map-state-focused" not in current_marker.get_attribute("class")
+    assert "has-damage-config" in current_marker.get_attribute("class")
     assert page.locator('.airport-detail-tabs [data-airport-pane="basic"]').count() == 1
     page.locator('.airport-detail-tabs [data-airport-pane="operations"]').click()
     assert page.locator("#sitEmergencyResponseLevel").is_visible()
@@ -538,7 +546,6 @@ def test_reference_airports_exclude_current_and_visible_candidates(actual_situat
     page.locator('[data-mode="airport"]').click()
     page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 565")
     assert page.locator(".catalog-airport-marker").count() == 0
-
     page.locator("#airportCandidateSearch").fill("Candidate 00")
     page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 10")
     page.wait_for_function("document.querySelectorAll('.catalog-airport-marker').length === 555")
@@ -561,6 +568,38 @@ def test_reference_airports_exclude_current_and_visible_candidates(actual_situat
     page.locator("#layerScopeButton").click()
     page.locator("#showAllAirports").uncheck()
     assert page.locator(".catalog-airport-marker").count() == 0
+
+
+def test_current_airport_focus_and_formal_selection_are_distinct(actual_situation_page):
+    page = actual_situation_page
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap} = await import('/static/js/modules/situation-map.js');
+      state.working.damage_scenarios = [{
+        damage_scenario_id: 'D-LAYOUT', name: '地图损毁配置', category: 'custom',
+        events: [{event_id: 'E-LAYOUT', sequence: 0,
+          target: {airport_id: 'AP190', target_type: 'airport', target_id: null},
+          damage_type: 'capacity_damage', start_slot: 0, end_slot: 1,
+          effect: {closed: false, remaining_capacity_per_window: 4},
+          recovery_mode: 'instant', recovery_duration_slots: null}],
+      }];
+      drawMap();
+    }""")
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    marker.click()
+    page.wait_for_timeout(260)
+    assert "map-state-focused" in marker.get_attribute("class")
+    assert "map-state-selected" not in marker.get_attribute("class")
+    assert "has-damage-config" in marker.get_attribute("class")
+
+    marker.dblclick()
+    page.wait_for_selector("#applyAirport")
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "map-state-selected" in marker.get_attribute("class")
+    assert "map-state-focused" not in marker.get_attribute("class")
+    assert "has-damage-config" in marker.get_attribute("class")
+    label = page.locator(".situation-map-label.map-label-selected")
+    assert label.count() == 1
 
 
 def test_actual_situation_page_preserves_remove_confirmation_path(actual_situation_page):

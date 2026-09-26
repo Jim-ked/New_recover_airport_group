@@ -579,12 +579,16 @@
 .fallback-object.airport-role-military .fallback-shape { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .fallback-object.airport-role-joint .fallback-shape { clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
 .fallback-object.airport-role-unknown .fallback-shape { border-radius: 1px; background: transparent; }
-.fallback-object.candidate.selected .fallback-shape { border-color: #b9e5ff; background: #2580b5; opacity: 1; outline: 1px solid rgba(185, 229, 255, .82); outline-offset: 3px; }
-.fallback-object.focused .fallback-shape { outline: 2px solid #70b9e5; outline-offset: 3px; opacity: 1; }
+.fallback-object.candidate.candidate-queued .fallback-shape { border-color: #b9e5ff; background: #2580b5; opacity: 1; outline: 1px dashed rgba(185, 229, 255, .86); outline-offset: 3px; }
+.fallback-object.map-state-focused .fallback-shape { outline: 2px solid #70b9e5; outline-offset: 3px; opacity: 1; }
+.fallback-object.map-state-selected::before { content: ""; position: absolute; inset: -2px; border: 2px solid #d5f1ff; border-radius: 3px; box-shadow: 0 0 0 1px rgba(18, 76, 108, .72); pointer-events: none; }
+.fallback-object.has-damage-config::after { content: ""; position: absolute; width: 5px; height: 5px; right: -1px; top: -1px; border: 1px solid #ffd4d7; border-radius: 1px; background: #d94d59; box-shadow: 0 0 0 1px rgba(64, 9, 15, .72); transform: rotate(45deg); pointer-events: none; }
 .fallback-object.mission .fallback-shape { width: 8px; height: 8px; border: 0; background: #d3a95a; transform: translate(-50%, -50%) rotate(45deg); }
 .fallback-object.mission-preview .fallback-shape { width: 9px; height: 9px; transform: translate(-50%, -50%) rotate(45deg); border: 1px dashed #8ec9e8; background: #173c50; }
-.fallback-object.damage::after { content: ""; position: absolute; inset: 1px; border: 1px solid #dd6666; border-radius: 50%; }
 .fallback-label { position: absolute; left: 15px; top: 0; white-space: nowrap; color: #b9d3e2; font-size: 11px; text-shadow: 0 1px 2px #000; }
+.fallback-object.candidate .fallback-label { display: none; }
+.fallback-object.candidate.map-state-focused .fallback-label,
+.fallback-object.candidate.candidate-queued .fallback-label { display: block; }
 
 .situation-airport-marker,
 .situation-candidate-marker,
@@ -600,20 +604,26 @@
 .airport-role-military span { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .airport-role-joint span { border-radius: 0; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
 .airport-role-unknown span { border-radius: 1px; background: transparent; }
-.situation-airport-marker.selected::before,
-.situation-mission-marker.selected::before,
-.situation-candidate-marker.selected::before { content: ""; position: absolute; inset: 1px; border: 1px solid rgba(185, 229, 255, .9); border-radius: 50%; }
-.situation-airport-marker.damage::after { content: ""; position: absolute; inset: 0; border: 1px solid #e46b72; border-radius: 50%; }
-.situation-candidate-marker.selected span { border-color: #b9e5ff; background: #2580b5; opacity: 1; }
-.situation-candidate-marker.focused span { outline: 2px solid #70b9e5; outline-offset: 3px; opacity: 1; }
+.situation-airport-marker.map-state-selected::before,
+.situation-mission-marker.map-state-selected::before { content: ""; position: absolute; inset: -2px; border: 2px solid #d5f1ff; border-radius: 3px; box-shadow: 0 0 0 1px rgba(18, 76, 108, .72); pointer-events: none; }
+.situation-airport-marker.map-state-focused::before,
+.situation-mission-marker.map-state-focused::before { content: ""; position: absolute; inset: 0; border: 1px dashed #70b9e5; border-radius: 3px; pointer-events: none; }
+.situation-airport-marker.has-damage-config::after { content: ""; position: absolute; width: 5px; height: 5px; right: -1px; top: -1px; border: 1px solid #ffd4d7; border-radius: 1px; background: #d94d59; box-shadow: 0 0 0 1px rgba(64, 9, 15, .72); transform: rotate(45deg); pointer-events: none; }
+.situation-candidate-marker.candidate-queued::before { content: ""; position: absolute; inset: -1px; border: 1px dashed rgba(185, 229, 255, .9); border-radius: 3px; pointer-events: none; }
+.situation-candidate-marker.candidate-queued span { border-color: #b9e5ff; background: #2580b5; opacity: 1; }
+.situation-candidate-marker.map-state-focused span { outline: 2px solid #70b9e5; outline-offset: 3px; opacity: 1; }
 .situation-mission-marker span { display: block; width: 8px; height: 8px; background: #d6aa58; transform: rotate(45deg); }
-.situation-mission-marker.draft span { border: 1px solid #d6aa58; background: #fff; }
-.situation-mission-marker.preview span { border: 1px dashed #8ec9e8; background: #173c50; opacity: .92; }
-.situation-mission-marker.preview::before { content: ""; position: absolute; inset: -3px; border: 1px dashed rgba(142,201,232,.72); border-radius: 50%; }
+.situation-mission-marker.mission-location-draft span { border: 1px solid #d6aa58; background: #fff; }
+.situation-mission-marker.mission-source-preview span { border: 1px dashed #8ec9e8; background: #173c50; opacity: .92; }
+.situation-mission-marker.mission-source-preview::before { content: ""; position: absolute; inset: -3px; border: 1px dashed rgba(142,201,232,.72); border-radius: 3px; }
 .catalog-mission-marker span { border-radius: 0; background: #a48758; transform: rotate(45deg); }
 .leaflet-tooltip.map-object-tooltip,
 .leaflet-tooltip.situation-map-label { border: 1px solid rgba(91, 139, 168, .65); border-radius: 3px; background: rgba(5, 20, 31, .9); box-shadow: none; color: #eaf4fa; font-size: 10px; font-weight: 500; line-height: 1; padding: 2px 5px; white-space: nowrap; }
 .leaflet-tooltip.situation-map-label::before { display: none; }
+.leaflet-tooltip.situation-map-label.map-label-selected { border-color: #d5f1ff; color: #fff; font-weight: 700; }
+.leaflet-tooltip.situation-map-label.map-label-focused { border-color: #70b9e5; color: #e8f7ff; }
+.leaflet-tooltip.situation-map-label.map-label-primary { border-color: rgba(112, 185, 229, .78); }
+.leaflet-tooltip.situation-map-label.map-label-preview { border-style: dashed; color: #cbe7f6; }
 .leaflet-tooltip-top.map-object-tooltip::before { border-top-color: rgba(5, 20, 31, .9); }
 .leaflet-tooltip-bottom.map-object-tooltip::before { border-bottom-color: rgba(5, 20, 31, .9); }
 .leaflet-tooltip-left.map-object-tooltip::before { border-left-color: rgba(5, 20, 31, .9); }

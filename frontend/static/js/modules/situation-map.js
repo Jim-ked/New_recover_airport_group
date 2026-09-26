@@ -22,7 +22,7 @@ let mapReference = null;
 let missionPickHandler = null;
 let catalogInteractionEnabled = true;
 
-const LABEL_PRIORITY = { selected: 100, airport: 80, mission: 75 };
+const LABEL_PRIORITY = { selected: 100, focused: 90, preview: 88, primary: 85, airport: 80, mission: 75 };
 
 export function configureMap(nextCallbacks) {
   callbacks = { ...callbacks, ...nextCallbacks };
@@ -50,12 +50,19 @@ function visibleCandidates() {
   return callbacks.visibleCandidateAirports?.() || [];
 }
 
+function currentObjectDisplayState(type, objectId) {
+  const selected = state.selected?.type === type && state.selected.id === objectId;
+  const focused = !selected && state.mapFocus?.type === type && state.mapFocus.id === objectId;
+  const primary = (type === 'mission' && state.mode === 'mission')
+    || (type === 'airport' && state.mode === 'damage');
+  return { selected, focused, primary };
+}
+
 function markerZIndexOffset(type, objectId) {
-  if (state.selected?.type === type && state.selected.id === objectId) return 1000;
-  const focused = type === 'candidate'
-    ? state.candidateFocusId === objectId
-    : state.mapFocus?.type === type && state.mapFocus.id === objectId;
+  if (type !== 'candidate' && currentObjectDisplayState(type, objectId).selected) return 1000;
+  const focused = type === 'candidate' ? state.candidateFocusId === objectId : currentObjectDisplayState(type, objectId).focused;
   if (focused) return 700;
+  if (type === 'candidate' && state.tempAirportIds.has(objectId)) return 500;
   if (type === 'candidate' && ['airport', 'candidate-detail'].includes(state.mode)) return 300;
   if (type === 'mission' && state.mode === 'mission') return 300;
   if (type === 'airport' && state.mode === 'damage') return 300;
@@ -89,9 +96,15 @@ function addFitControl() {
 
 function airportMarkerClass(airport, damaged) {
   const airportId = airport.airport_id;
-  const selected = (state.selected?.type === 'airport' && state.selected.id === airportId)
-    || (state.mapFocus?.type === 'airport' && state.mapFocus.id === airportId);
-  return ['situation-airport-marker', airportRoleClass(airport.role), selected ? 'selected' : '', damaged ? 'damage' : '']
+  const display = currentObjectDisplayState('airport', airportId);
+  return [
+    'situation-airport-marker',
+    airportRoleClass(airport.role),
+    display.selected ? 'map-state-selected' : '',
+    display.focused ? 'map-state-focused' : '',
+    display.primary ? 'map-state-primary' : '',
+    damaged ? 'has-damage-config' : '',
+  ]
     .filter(Boolean).join(' ');
 }
 
@@ -108,22 +121,22 @@ function bindMarkerActivation(marker, singleClick, doubleClick) {
   });
 }
 
-function bindPermanentLabel(marker, text, priority, forceVisible, labels) {
+function bindPermanentLabel(marker, text, priority, forceVisible, labels, emphasis = '') {
   marker.bindTooltip(escapeHtml(text), {
     permanent: true,
     direction: 'right',
     offset: [7, 0],
-    className: 'situation-map-label',
+    className: `situation-map-label${emphasis ? ` ${emphasis}` : ''}`,
   });
   const element = marker.getTooltip()?.getElement();
   if (element) labels.push({ element, priority, forceVisible });
 }
 
 function candidateIcon(airport) {
-  const chosen = state.tempAirportIds.has(airport.airport_id);
+  const queued = state.tempAirportIds.has(airport.airport_id);
   const focused = state.candidateFocusId === airport.airport_id;
   return globalThis.L.divIcon({
-    className: `situation-candidate-marker ${airportRoleClass(airport.role)}${chosen ? ' selected' : ''}${focused ? ' focused' : ''}`,
+    className: `situation-candidate-marker ${airportRoleClass(airport.role)}${queued ? ' candidate-queued' : ''}${focused ? ' map-state-focused' : ''}`,
     html: '<span></span>',
     iconSize: [16, 16],
     iconAnchor: [8, 8],
@@ -132,6 +145,11 @@ function candidateIcon(airport) {
 
 function candidateVisualKey(airport) {
   return `${airportRoleClass(airport.role)}:${state.tempAirportIds.has(airport.airport_id)}:${state.candidateFocusId === airport.airport_id}`;
+}
+
+function syncCandidateTooltip(marker, airportId) {
+  if (state.candidateFocusId === airportId) marker.openTooltip();
+  else marker.closeTooltip();
 }
 
 function syncCandidateLeafletMarkers({ refreshCatalog = true } = {}) {
@@ -164,12 +182,14 @@ function syncCandidateLeafletMarkers({ refreshCatalog = true } = {}) {
       marker._candidateVisualKey = candidateVisualKey(airport);
       marker.addTo(map);
       annotateMarker(marker, 'candidate', airportId);
+      syncCandidateTooltip(marker, airportId);
       candidateMarkers.set(airportId, marker);
     } else if (marker._candidateVisualKey !== candidateVisualKey(airport)) {
       marker.setIcon(candidateIcon(airport));
       marker.setZIndexOffset(markerZIndexOffset('candidate', airportId));
       marker._candidateVisualKey = candidateVisualKey(airport);
       annotateMarker(marker, 'candidate', airportId);
+      syncCandidateTooltip(marker, airportId);
     }
   }
   if (refreshCatalog) refreshCatalogLayers('airports');
@@ -187,7 +207,7 @@ function drawLeaflet() {
     const latitude = Number(airport.latitude);
     const longitude = Number(airport.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-    const selected = state.selected?.type === 'airport' && state.selected.id === airport.airport_id;
+    const display = currentObjectDisplayState('airport', airport.airport_id);
     const isDamaged = damaged.has(airport.airport_id);
     const icon = L.divIcon({
       className: airportMarkerClass(airport, isDamaged),
@@ -206,9 +226,19 @@ function drawLeaflet() {
     );
     marker.addTo(map);
     annotateMarker(marker, 'airport', airport.airport_id);
+    const airportElement = marker.getElement();
+    if (airportElement) {
+      airportElement.setAttribute('aria-label', `${airportMapTooltip(airport)}${isDamaged ? '，存在损毁事件配置' : ''}`);
+      if (isDamaged) airportElement.dataset.damageConfig = 'true';
+    }
     mapLayers.push(marker);
     bindPermanentLabel(marker, airportMapLabel(airport),
-      selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.airport, selected, labels);
+      display.selected ? LABEL_PRIORITY.selected
+        : display.focused ? LABEL_PRIORITY.focused
+          : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.airport,
+      display.selected,
+      labels,
+      display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '');
   }
 
   syncCandidateLeafletMarkers({ refreshCatalog: false });
@@ -217,9 +247,9 @@ function drawLeaflet() {
     const latitude = Number(mission.latitude);
     const longitude = Number(mission.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
-    const selected = state.selected?.type === 'mission' && state.selected.id === mission.mission_id;
+    const display = currentObjectDisplayState('mission', mission.mission_id);
     const icon = L.divIcon({
-      className: `situation-mission-marker${selected ? ' selected' : ''}`,
+      className: `situation-mission-marker${display.selected ? ' map-state-selected' : ''}${display.focused ? ' map-state-focused' : ''}${display.primary ? ' map-state-primary' : ''}`,
       html: '<span></span>',
       iconSize: [14, 14],
       iconAnchor: [7, 7],
@@ -238,7 +268,12 @@ function drawLeaflet() {
     if (marker.getElement()) marker.getElement().dataset.missionId = mission.mission_id;
     mapLayers.push(marker);
     bindPermanentLabel(marker, mission.name,
-      selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.mission, selected, labels);
+      display.selected ? LABEL_PRIORITY.selected
+        : display.focused ? LABEL_PRIORITY.focused
+          : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.mission,
+      display.selected,
+      labels,
+      display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '');
   }
 
   const previewMission = state.missionSourceSelection?.mission;
@@ -247,7 +282,7 @@ function drawLeaflet() {
     const longitude = Number(previewMission.longitude);
     if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
       const icon = L.divIcon({
-        className: 'situation-mission-marker preview',
+        className: 'situation-mission-marker mission-source-preview',
         html: '<span></span>',
         iconSize: [16, 16],
         iconAnchor: [8, 8],
@@ -256,7 +291,7 @@ function drawLeaflet() {
       marker.addTo(map);
       if (marker.getElement()) marker.getElement().dataset.missionId = previewMission.mission_id;
       mapLayers.push(marker);
-      bindPermanentLabel(marker, `${previewMission.name}（预览）`, LABEL_PRIORITY.selected, true, labels);
+      bindPermanentLabel(marker, `${previewMission.name}（预览）`, LABEL_PRIORITY.preview, false, labels, 'map-label-preview');
     }
   }
 
@@ -264,7 +299,7 @@ function drawLeaflet() {
     const { lat, lon } = state.draftMissionCoord;
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
       const icon = L.divIcon({
-        className: 'situation-mission-marker draft',
+        className: 'situation-mission-marker mission-location-draft',
         html: '<span></span>',
         iconSize: [16, 16],
         iconAnchor: [8, 8],
@@ -288,7 +323,7 @@ function fallbackPoints() {
       role: item.airport.role,
       lat: Number(item.airport.latitude),
       lon: Number(item.airport.longitude),
-      focused: state.mapFocus?.type === 'airport' && state.mapFocus.id === item.airport.airport_id,
+      ...currentObjectDisplayState('airport', item.airport.airport_id),
     })),
     ...visibleCandidates().map((airport) => ({
       type: 'candidate',
@@ -297,7 +332,7 @@ function fallbackPoints() {
       role: airport.role,
       lat: Number(airport.latitude),
       lon: Number(airport.longitude),
-      chosen: state.tempAirportIds.has(airport.airport_id),
+      queued: state.tempAirportIds.has(airport.airport_id),
       focused: state.candidateFocusId === airport.airport_id,
     })),
     ...state.working.missions.map((mission) => ({
@@ -306,6 +341,7 @@ function fallbackPoints() {
       name: mission.name,
       lat: Number(mission.latitude),
       lon: Number(mission.longitude),
+      ...currentObjectDisplayState('mission', mission.mission_id),
     })),
     ...(state.missionSourceSelection?.mission ? [{
       type: 'mission-preview',
@@ -341,7 +377,8 @@ function drawFallback() {
     const top = 12 + 76 * (maxLat - point.lat) / (maxLat - minLat);
     const damage = point.type === 'airport' && damaged.has(point.id);
     const roleClass = point.type === 'airport' || point.type === 'candidate' ? ` ${airportRoleClass(point.role)}` : '';
-    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' damage' : ''}${point.chosen ? ' selected' : ''}${point.focused ? ' focused' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(point.name)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
+    const title = `${point.name}${damage ? '；存在损毁事件配置' : ''}`;
+    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' has-damage-config' : ''}${point.selected ? ' map-state-selected' : ''}${point.focused ? ' map-state-focused' : ''}${point.primary ? ' map-state-primary' : ''}${point.queued ? ' candidate-queued' : ''}" style="left:${left}%;top:${top}%" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(title)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
   }).join('');
   refs.fallbackObjects.querySelectorAll('button').forEach((button) => {
     let clickTimer = null;

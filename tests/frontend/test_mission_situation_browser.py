@@ -241,7 +241,9 @@ def test_current_list_single_double_detail_and_map_selection_are_synchronized(mi
     first.click()
     page.wait_for_timeout(260)
     assert page.locator('.mission-card[data-mission-id="M-CURRENT-1"]').get_attribute("aria-current") == "true"
-    assert page.locator('.situation-mission-marker[data-mission-id="M-CURRENT-1"]').get_attribute("class").find("selected") >= 0
+    selected_marker = page.locator('.situation-mission-marker[data-mission-id="M-CURRENT-1"]')
+    assert "map-state-selected" in selected_marker.get_attribute("class")
+    assert "map-state-focused" not in selected_marker.get_attribute("class")
     assert page.locator("#missionDetailView").count() == 0
 
     page.locator('.mission-card[data-mission-id="M-CURRENT-2"] .mission-card-main').dblclick()
@@ -272,7 +274,7 @@ def test_catalog_and_history_preview_do_not_dirty_until_explicit_add(mission_pag
     source = page.locator('.mission-source-card[data-source-kind="catalog"][data-mission-id="M-CATALOG"]')
     source.locator(".mission-card-main").click()
     page.wait_for_timeout(260)
-    assert page.locator('.situation-mission-marker.preview[data-mission-id="M-CATALOG"]').count() == 1
+    assert page.locator('.situation-mission-marker.mission-source-preview[data-mission-id="M-CATALOG"]').count() == 1
     assert page.locator("#saveSituationButton").is_disabled()
     assert store["copy_requests"] == []
 
@@ -332,6 +334,9 @@ def test_fallback_map_single_click_opens_detail_and_preserves_list_selection(fal
     page.locator('.fallback-object.mission[data-id="M-CURRENT-1"]').click()
     page.wait_for_selector("#missionDetailView")
     assert page.locator("#inspectorSubtitle").inner_text().startswith("M-CURRENT-1")
+    marker = page.locator('.fallback-object.mission[data-id="M-CURRENT-1"]')
+    assert "map-state-selected" in marker.get_attribute("class")
+    assert "map-state-focused" not in marker.get_attribute("class")
     page.locator("#backToMissionList").click()
     assert page.locator('.mission-card[data-mission-id="M-CURRENT-1"]').get_attribute("aria-current") == "true"
 

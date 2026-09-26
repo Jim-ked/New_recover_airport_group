@@ -128,8 +128,15 @@ process.stdout.write(JSON.stringify({current:view(1), three:view(3), six:view(6)
         self.assertIn("airportRoleClass(airport.role)", source)
         self.assertIn("airportRoleLabel(airport.role)", panels)
         self.assertIn("selected: 100", source)
+        self.assertIn("focused: 90", source)
+        self.assertIn("primary: 85", source)
         self.assertIn("airport: 80", source)
         self.assertIn("mission: 75", source)
+        for token in (
+            "map-state-selected", "map-state-focused", "candidate-queued",
+            "has-damage-config", "map-label-selected", "map-label-focused",
+        ):
+            self.assertIn(token, source)
         catalog = source[source.index("export async function setCatalogLayer"):source.index("export async function initMap")]
         self.assertNotIn("permanent: true", catalog)
 
