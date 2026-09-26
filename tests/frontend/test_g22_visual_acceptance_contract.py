@@ -49,8 +49,8 @@ process.stdout.write(JSON.stringify({
 
     def test_situation_and_runtime_airport_tooltips_use_shared_dark_contract(self) -> None:
         catalog = SITUATION_JS[
-            SITUATION_JS.index("export async function setCatalogLayer"):
-            SITUATION_JS.index("export async function initMap")
+            SITUATION_JS.index("function renderCatalogLayer"):
+            SITUATION_JS.index("function refreshCatalogLayers")
         ]
         self.assertNotIn("<br>${escapeHtml(id)}", catalog)
         self.assertIn("airportMapTooltip(item)", catalog)

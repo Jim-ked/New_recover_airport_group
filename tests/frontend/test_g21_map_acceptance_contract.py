@@ -18,16 +18,16 @@ PROVINCES = ROOT / "frontend/static/gis/china_provinces.geojson"
 class G21MapAcceptanceContractTests(unittest.TestCase):
     def test_catalog_airports_are_visible_but_smaller_than_current_airports(self) -> None:
         compact = "".join(SITUATION_CSS.split())
-        self.assertIn(".situation-airport-markerspan{display:block;width:9px;height:9px", compact)
+        self.assertIn(".situation-airport-markerspan{display:block;box-sizing:border-box;width:13px;height:13px", compact)
         self.assertIn(".catalog-airport-markerspan,", compact)
-        self.assertIn("width:6px;height:6px", compact)
-        self.assertIn("border:1pxsolidrgba(132,182,210,.9)", compact)
-        self.assertIn("background:rgba(82,120,141,.6)", compact)
+        self.assertIn(".catalog-airport-markerspan{box-sizing:border-box;width:8px;height:8px", compact)
+        self.assertIn("border:1pxsolidvar(--airport-border)", compact)
+        self.assertIn("background:var(--airport-fill)", compact)
 
     def test_catalog_airports_keep_role_shapes_without_permanent_labels(self) -> None:
         catalog = SITUATION_JS[
-            SITUATION_JS.index("export async function setCatalogLayer"):
-            SITUATION_JS.index("export async function initMap")
+            SITUATION_JS.index("function renderCatalogLayer"):
+            SITUATION_JS.index("function refreshCatalogLayers")
         ]
         self.assertIn("airportRoleClass(item.role)", catalog)
         self.assertNotIn("permanent: true", catalog)
