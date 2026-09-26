@@ -1,0 +1,924 @@
+{
+  "executable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "standardDpr1": {
+    "browser": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "devicePixelRatio": 1,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    "modes": {
+      "overview": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 0,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 5,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 4
+      },
+      "damage": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 0,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 5,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 12
+      },
+      "airport": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 5,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 0,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 4
+      },
+      "mission": {
+        ".situation-airport-marker": 6,
+        ".situation-candidate-marker": 0,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 2,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 25
+      }
+    },
+    "overlap": {
+      "currentAirportSameIdReferenceCount": 0,
+      "currentMissionSameIdReferenceCount": 0,
+      "differentAirportSameCoordinateHit": "leaflet-marker-icon situation-airport-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+      "differentMissionSameCoordinateHit": "leaflet-marker-icon situation-mission-marker leaflet-zoom-animated leaflet-interactive",
+      "candidateSameIdReferenceCount": 0,
+      "batchAdd": {
+        "currentAirports": 6,
+        "queuedCandidates": 0,
+        "message": "已加入 3 个机场，尚未保存。"
+      },
+      "referencePointerEventsDuringPick": "none",
+      "referencePointerEventsAfterPick": "auto"
+    },
+    "styles": {
+      "currentNormal": [
+        {
+          "id": "AP-CIV",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "520"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "1",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-MIL",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-military leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "520"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 100%, 0px 100%)",
+            "opacity": "1",
+            "background": "rgb(168, 95, 36)",
+            "border": "1px solid rgb(255, 208, 153)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-JOINT",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-joint leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "520"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "1",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        }
+      ],
+      "currentStates": [
+        {
+          "id": "AP-CIV",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-civil map-state-selected map-state-primary has-damage-config leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "1420"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "1",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "\"\"",
+            "inset": "-2px",
+            "border": "2px solid rgb(213, 241, 255)"
+          },
+          "after": {
+            "content": "\"\"",
+            "width": "5px",
+            "height": "5px",
+            "background": "rgb(217, 77, 89)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-MIL",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-military map-state-focused map-state-primary has-damage-config leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "1120"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 100%, 0px 100%)",
+            "opacity": "1",
+            "background": "rgb(168, 95, 36)",
+            "border": "1px solid rgb(255, 208, 153)"
+          },
+          "before": {
+            "content": "\"\"",
+            "inset": "0px",
+            "border": "1px dashed rgb(112, 185, 229)"
+          },
+          "after": {
+            "content": "\"\"",
+            "width": "5px",
+            "height": "5px",
+            "background": "rgb(217, 77, 89)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-JOINT",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-joint map-state-primary has-damage-config leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "720"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "1",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "\"\"",
+            "width": "5px",
+            "height": "5px",
+            "background": "rgb(217, 77, 89)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        }
+      ],
+      "candidates": [
+        {
+          "id": "CAND-CIV",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "1031"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "0.78",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "CAND-MIL",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-military candidate-queued leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "1231"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 100%, 0px 100%)",
+            "opacity": "1",
+            "background": "rgb(168, 95, 36)",
+            "border": "1px solid rgb(255, 208, 153)"
+          },
+          "before": {
+            "content": "\"\"",
+            "inset": "-1px",
+            "border": "1px dashed rgba(185, 229, 255, 0.9)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "CAND-JOINT",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-joint map-state-focused leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "1431"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "1",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-BASE",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "825"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "0.78",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-BASE-SAME",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-joint leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "720"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "0.78",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        }
+      ],
+      "references": []
+    },
+    "errors": []
+  },
+  "standardDpr2": {
+    "browser": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "devicePixelRatio": 2,
+      "viewport": [
+        1440,
+        900
+      ]
+    },
+    "modes": {
+      "overview": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 0,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 5,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 4
+      },
+      "damage": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 0,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 5,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 12
+      },
+      "airport": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 5,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 0,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 4
+      },
+      "mission": {
+        ".situation-airport-marker": 3,
+        ".situation-candidate-marker": 0,
+        ".situation-mission-marker": 1,
+        ".catalog-airport-marker": 5,
+        ".catalog-mission-marker": 2,
+        ".situation-map-label": 8
+      }
+    },
+    "overlap": {
+      "currentAirportSameIdReferenceCount": 0,
+      "currentMissionSameIdReferenceCount": 0,
+      "differentAirportSameCoordinateHit": "leaflet-marker-icon situation-airport-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+      "differentMissionSameCoordinateHit": "leaflet-marker-icon situation-mission-marker leaflet-zoom-animated leaflet-interactive",
+      "candidateSameIdReferenceCount": 0,
+      "referencePointerEventsDuringPick": "none",
+      "referencePointerEventsAfterPick": "auto"
+    },
+    "styles": {
+      "currentNormal": [
+        {
+          "id": "AP-CIV",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "520"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "1",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-MIL",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-military leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "520"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 100%, 0px 100%)",
+            "opacity": "1",
+            "background": "rgb(168, 95, 36)",
+            "border": "1px solid rgb(255, 208, 153)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-JOINT",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-joint leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "520"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "1",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        }
+      ],
+      "currentStates": [
+        {
+          "id": "AP-CIV",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-civil map-state-selected map-state-primary has-damage-config leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "1420"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "1",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "\"\"",
+            "inset": "-2px",
+            "border": "2px solid rgb(213, 241, 255)"
+          },
+          "after": {
+            "content": "\"\"",
+            "width": "5px",
+            "height": "5px",
+            "background": "rgb(217, 77, 89)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-MIL",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-military map-state-focused map-state-primary has-damage-config leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "1120"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 100%, 0px 100%)",
+            "opacity": "1",
+            "background": "rgb(168, 95, 36)",
+            "border": "1px solid rgb(255, 208, 153)"
+          },
+          "before": {
+            "content": "\"\"",
+            "inset": "0px",
+            "border": "1px dashed rgb(112, 185, 229)"
+          },
+          "after": {
+            "content": "\"\"",
+            "width": "5px",
+            "height": "5px",
+            "background": "rgb(217, 77, 89)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-JOINT",
+          "className": "leaflet-marker-icon situation-airport-marker airport-role-joint map-state-primary has-damage-config leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "24px",
+            "height": "24px",
+            "pointerEvents": "auto",
+            "zIndex": "720"
+          },
+          "body": {
+            "width": "13px",
+            "height": "13px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "1",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "\"\"",
+            "width": "5px",
+            "height": "5px",
+            "background": "rgb(217, 77, 89)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        }
+      ],
+      "candidates": [
+        {
+          "id": "CAND-CIV",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "1031"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "0.78",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "CAND-MIL",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-military candidate-queued leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "1231"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 100%, 0px 100%)",
+            "opacity": "1",
+            "background": "rgb(168, 95, 36)",
+            "border": "1px solid rgb(255, 208, 153)"
+          },
+          "before": {
+            "content": "\"\"",
+            "inset": "-1px",
+            "border": "1px dashed rgba(185, 229, 255, 0.9)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "CAND-JOINT",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-joint map-state-focused leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "1431"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "1",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-BASE",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-civil leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "825"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "50%",
+            "clipPath": "none",
+            "opacity": "0.78",
+            "background": "rgb(23, 121, 173)",
+            "border": "1px solid rgb(184, 229, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        },
+        {
+          "id": "AP-BASE-SAME",
+          "className": "leaflet-marker-icon situation-candidate-marker airport-role-joint leaflet-zoom-animated leaflet-interactive",
+          "container": {
+            "width": "20px",
+            "height": "20px",
+            "pointerEvents": "auto",
+            "zIndex": "720"
+          },
+          "body": {
+            "width": "11px",
+            "height": "11px",
+            "borderRadius": "0px",
+            "clipPath": "polygon(25% 0px, 75% 0px, 100% 50%, 75% 100%, 25% 100%, 0px 50%)",
+            "opacity": "0.78",
+            "background": "rgb(114, 86, 168)",
+            "border": "1px solid rgb(217, 199, 255)"
+          },
+          "before": {
+            "content": "none",
+            "inset": "auto",
+            "border": "0px none rgb(237, 246, 252)"
+          },
+          "after": {
+            "content": "none",
+            "width": "auto",
+            "height": "auto",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pane": "leaflet-pane leaflet-marker-pane",
+          "paneZIndex": "600"
+        }
+      ],
+      "references": []
+    },
+    "errors": []
+  },
+  "denseDpr1": {
+    "before": {
+      "created": 569,
+      "removed": 0
+    },
+    "filtered": {
+      "stats": {
+        "created": 569,
+        "removed": 555
+      },
+      "sameNode": true
+    },
+    "restored": {
+      "created": 1124,
+      "removed": 555
+    },
+    "errors": []
+  },
+  "denseDpr2": {
+    "before": {
+      "created": 569,
+      "removed": 0
+    },
+    "filtered": {
+      "stats": {
+        "created": 569,
+        "removed": 555
+      },
+      "sameNode": true
+    },
+    "restored": {
+      "created": 1124,
+      "removed": 555
+    },
+    "errors": []
+  },
+  "fallback": {
+    "classes": [
+      {
+        "id": "AP-CIV",
+        "className": "fallback-object airport airport-role-civil has-damage-config map-state-selected",
+        "title": "民用机场样本；存在损毁事件配置"
+      },
+      {
+        "id": "AP-MIL",
+        "className": "fallback-object airport airport-role-military has-damage-config map-state-focused",
+        "title": "军用机场样本；存在损毁事件配置"
+      },
+      {
+        "id": "AP-JOINT",
+        "className": "fallback-object airport airport-role-joint has-damage-config",
+        "title": "军民两用机场样本；存在损毁事件配置"
+      },
+      {
+        "id": "CAND-CIV",
+        "className": "fallback-object candidate airport-role-civil",
+        "title": "民用候选样本"
+      },
+      {
+        "id": "CAND-MIL",
+        "className": "fallback-object candidate airport-role-military candidate-queued",
+        "title": "军用候选样本"
+      },
+      {
+        "id": "CAND-JOINT",
+        "className": "fallback-object candidate airport-role-joint map-state-focused",
+        "title": "军民两用候选样本"
+      },
+      {
+        "id": "AP-BASE",
+        "className": "fallback-object candidate airport-role-civil",
+        "title": "仅基础库机场"
+      },
+      {
+        "id": "AP-BASE-SAME",
+        "className": "fallback-object candidate airport-role-joint",
+        "title": "同坐标基础机场"
+      },
+      {
+        "id": "M-OVERLAP",
+        "className": "fallback-object mission",
+        "title": "当前重叠任务"
+      }
+    ],
+    "errors": []
+  }
+}
