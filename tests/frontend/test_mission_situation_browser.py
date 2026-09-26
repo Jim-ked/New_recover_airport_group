@@ -91,7 +91,9 @@ def initial_store():
     ]
     catalog = [
         {"mission": deepcopy(current[0]), "metadata": {"revision": 3}},
-        {"mission": mission("M-CATALOG", "基础库突击", 118.3, 37.6, 8, 28),
+        {"mission": mission("M-CATALOG", "基础库突击", 116.2, 39.8, 8, 28),
+         "metadata": {"revision": 1}},
+        {"mission": mission("M-REFERENCE-PICK", "参考取点测试", 116.8, 39.35, 8, 28),
          "metadata": {"revision": 1}},
     ]
     history = [
@@ -332,6 +334,40 @@ def test_fallback_map_single_click_opens_detail_and_preserves_list_selection(fal
     assert page.locator("#inspectorSubtitle").inner_text().startswith("M-CURRENT-1")
     page.locator("#backToMissionList").click()
     assert page.locator('.mission-card[data-mission-id="M-CURRENT-1"]').get_attribute("aria-current") == "true"
+
+
+def test_reference_missions_are_lower_and_do_not_capture_location_pick(mission_page):
+    page, _ = mission_page
+    page.locator("#layerScopeButton").click()
+    page.locator("#showAllMissions").check()
+    page.wait_for_function("document.querySelectorAll('.catalog-mission-marker').length === 2")
+    assert page.locator('.catalog-mission-marker[data-object-id="M-CURRENT-1"]').count() == 0
+
+    current = page.locator('.situation-mission-marker[data-mission-id="M-CURRENT-1"]')
+    hit_class = current.evaluate("""element => {
+      const rect = element.getBoundingClientRect();
+      return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+        ?.closest('.leaflet-marker-icon')?.className || '';
+    }""")
+    assert "situation-mission-marker" in hit_class
+
+    open_missions(page)
+    page.locator('.mission-card[data-mission-id="M-CURRENT-1"] .mission-card-details').click()
+    page.locator("#editMission").click()
+    page.locator("#pickMissionLocation").click()
+    reference = page.locator('.catalog-mission-marker[data-object-id="M-REFERENCE-PICK"]')
+    assert reference.evaluate("element => getComputedStyle(element).pointerEvents") == "none"
+    box = reference.bounding_box()
+    assert box
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.wait_for_function("document.getElementById('pickMissionLocation').textContent === '从地图取点'")
+    assert page.locator("#sitMissionLon").input_value() != "116.2"
+    assert reference.evaluate("element => getComputedStyle(element).pointerEvents") != "none"
+
+    page.locator("#pickMissionLocation").click()
+    assert reference.evaluate("element => getComputedStyle(element).pointerEvents") == "none"
+    page.locator("#cancelMissionEdit").click()
+    assert reference.evaluate("element => getComputedStyle(element).pointerEvents") != "none"
 
 
 def test_edit_cancel_apply_save_reopen_and_draft_switch_confirmation(mission_page):

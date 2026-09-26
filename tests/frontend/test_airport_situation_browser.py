@@ -157,8 +157,10 @@ def serve_layout_api(route, situation):
         items.extend({
             **airport(f"APX{index:03d}", f"Candidate {index:03d}")["airport"],
             "configuration_complete": True,
-            "longitude": 100 + (index % 30) * 0.2,
-            "latitude": 20 + (index // 30) * 0.2,
+            "longitude": situation["airports"][0]["airport"]["longitude"]
+            if index == 0 else 100 + (index % 30) * 0.2,
+            "latitude": situation["airports"][0]["airport"]["latitude"]
+            if index == 0 else 20 + (index // 30) * 0.2,
         } for index in range(565))
         offset = int(request.url.split("offset=", 1)[1].split("&", 1)[0]) if "offset=" in request.url else 0
         limit = int(request.url.split("limit=", 1)[1].split("&", 1)[0]) if "limit=" in request.url else 500
@@ -510,6 +512,55 @@ def test_candidate_map_reuses_current_objects_and_diffs_debounced_search(actual_
     assert page.locator(".situation-candidate-marker").count() == 564
     print(json.dumps({"open_ms": opened_ms, "opened": opened, "narrow": narrow,
                       "expanded": expanded, "cleared": cleared}, ensure_ascii=False))
+
+
+def test_reference_airports_exclude_current_and_visible_candidates(actual_situation_page):
+    page = actual_situation_page
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.locator("#layerScopeButton").click()
+    page.locator("#showAllAirports").check()
+    page.wait_for_function("document.querySelectorAll('.catalog-airport-marker').length === 565")
+
+    current = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert current.count() == 1
+    hit_class = current.evaluate("""element => {
+      const rect = element.getBoundingClientRect();
+      return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+        ?.closest('.leaflet-marker-icon')?.className || '';
+    }""")
+    assert "situation-airport-marker" in hit_class
+    pane_levels = page.evaluate("""() => ({
+      current: Number(getComputedStyle(document.querySelector('.situation-airport-marker').parentElement).zIndex),
+      catalog: Number(getComputedStyle(document.querySelector('.catalog-airport-marker').parentElement).zIndex),
+    })""")
+    assert pane_levels["catalog"] < pane_levels["current"], pane_levels
+
+    page.locator('[data-mode="airport"]').click()
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 565")
+    assert page.locator(".catalog-airport-marker").count() == 0
+
+    page.locator("#airportCandidateSearch").fill("Candidate 00")
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 10")
+    page.wait_for_function("document.querySelectorAll('.catalog-airport-marker').length === 555")
+    assert page.locator('.catalog-airport-marker[data-object-id="APX000"]').count() == 0
+
+    page.locator("#airportCandidateSearch").fill("")
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 565")
+    page.wait_for_function("document.querySelectorAll('.catalog-airport-marker').length === 0")
+
+    page.locator('.candidate-row[data-airport-id="APX000"] input').check()
+    page.locator("#addAirportsToSituation").click()
+    page.wait_for_function("document.querySelectorAll('.situation-airport-marker').length === 2")
+    page.wait_for_function("document.querySelectorAll('.situation-candidate-marker').length === 564")
+    assert page.locator(".catalog-airport-marker").count() == 0
+
+    page.locator('[data-mode="mission"]').click()
+    page.wait_for_function("document.querySelectorAll('.catalog-airport-marker').length === 564")
+    assert page.locator('.catalog-airport-marker[data-object-id="APX000"]').count() == 0
+
+    page.locator("#layerScopeButton").click()
+    page.locator("#showAllAirports").uncheck()
+    assert page.locator(".catalog-airport-marker").count() == 0
 
 
 def test_actual_situation_page_preserves_remove_confirmation_path(actual_situation_page):

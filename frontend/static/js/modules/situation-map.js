@@ -6,10 +6,12 @@ import { createMapReference, destroyMapReference } from './map-reference.js';
 import { escapeHtml, page, refs, state } from './situation-state.js';
 
 const WORLD_BOUNDS = [[-85.05112878, -180], [85.05112878, 180]];
+const CATALOG_MARKER_PANE = 'catalogMarkerPane';
 const mapLayers = [];
 const candidateMarkers = new Map();
 const externalLayers = { airports: null, missions: null };
 const externalCache = { airports: null, missions: null };
+const externalEnabled = { airports: false, missions: false };
 let map = null;
 let basemapLayers = [];
 let fallback = false;
@@ -18,6 +20,7 @@ let requestSignal = null;
 let labelLayout = null;
 let mapReference = null;
 let missionPickHandler = null;
+let catalogInteractionEnabled = true;
 
 const LABEL_PRIORITY = { selected: 100, airport: 80, mission: 75 };
 
@@ -45,6 +48,25 @@ function damagedAirportIds() {
 
 function visibleCandidates() {
   return callbacks.visibleCandidateAirports?.() || [];
+}
+
+function markerZIndexOffset(type, objectId) {
+  if (state.selected?.type === type && state.selected.id === objectId) return 1000;
+  const focused = type === 'candidate'
+    ? state.candidateFocusId === objectId
+    : state.mapFocus?.type === type && state.mapFocus.id === objectId;
+  if (focused) return 700;
+  if (type === 'candidate' && ['airport', 'candidate-detail'].includes(state.mode)) return 300;
+  if (type === 'mission' && state.mode === 'mission') return 300;
+  if (type === 'airport' && state.mode === 'damage') return 300;
+  return 100;
+}
+
+function annotateMarker(marker, type, objectId) {
+  const element = marker.getElement?.();
+  if (!element) return;
+  element.dataset.objectType = type;
+  element.dataset.objectId = objectId;
 }
 
 function addFitControl() {
@@ -112,7 +134,7 @@ function candidateVisualKey(airport) {
   return `${airportRoleClass(airport.role)}:${state.tempAirportIds.has(airport.airport_id)}:${state.candidateFocusId === airport.airport_id}`;
 }
 
-function syncCandidateLeafletMarkers() {
+function syncCandidateLeafletMarkers({ refreshCatalog = true } = {}) {
   if (!map || !state.working) return;
   const visible = new Map(visibleCandidates().map((airport) => [airport.airport_id, airport]));
   for (const [airportId, marker] of candidateMarkers) {
@@ -126,7 +148,10 @@ function syncCandidateLeafletMarkers() {
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
     let marker = candidateMarkers.get(airportId);
     if (!marker) {
-      marker = globalThis.L.marker([latitude, longitude], { icon: candidateIcon(airport) });
+      marker = globalThis.L.marker([latitude, longitude], {
+        icon: candidateIcon(airport),
+        zIndexOffset: markerZIndexOffset('candidate', airportId),
+      });
       marker.bindTooltip(escapeHtml(airportMapTooltip(airport)), {
         direction: 'top',
         className: 'map-object-tooltip',
@@ -138,12 +163,16 @@ function syncCandidateLeafletMarkers() {
       );
       marker._candidateVisualKey = candidateVisualKey(airport);
       marker.addTo(map);
+      annotateMarker(marker, 'candidate', airportId);
       candidateMarkers.set(airportId, marker);
     } else if (marker._candidateVisualKey !== candidateVisualKey(airport)) {
       marker.setIcon(candidateIcon(airport));
+      marker.setZIndexOffset(markerZIndexOffset('candidate', airportId));
       marker._candidateVisualKey = candidateVisualKey(airport);
+      annotateMarker(marker, 'candidate', airportId);
     }
   }
+  if (refreshCatalog) refreshCatalogLayers('airports');
 }
 
 function drawLeaflet() {
@@ -166,19 +195,23 @@ function drawLeaflet() {
       iconSize: [16, 16],
       iconAnchor: [8, 8],
     });
-    const marker = L.marker([latitude, longitude], { icon });
+    const marker = L.marker([latitude, longitude], {
+      icon,
+      zIndexOffset: markerZIndexOffset('airport', airport.airport_id),
+    });
     bindMarkerActivation(
       marker,
       () => callbacks.highlightObject?.('airport', airport.airport_id),
       () => callbacks.selectObject?.('airport', airport.airport_id, { locate: true }),
     );
     marker.addTo(map);
+    annotateMarker(marker, 'airport', airport.airport_id);
     mapLayers.push(marker);
     bindPermanentLabel(marker, airportMapLabel(airport),
       selected ? LABEL_PRIORITY.selected : LABEL_PRIORITY.airport, selected, labels);
   }
 
-  syncCandidateLeafletMarkers();
+  syncCandidateLeafletMarkers({ refreshCatalog: false });
 
   for (const mission of state.working.missions) {
     const latitude = Number(mission.latitude);
@@ -191,13 +224,17 @@ function drawLeaflet() {
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     });
-    const marker = L.marker([latitude, longitude], { icon });
+    const marker = L.marker([latitude, longitude], {
+      icon,
+      zIndexOffset: markerZIndexOffset('mission', mission.mission_id),
+    });
     bindMarkerActivation(
       marker,
       () => callbacks.selectObject?.('mission', mission.mission_id, { locate: true }),
       () => callbacks.selectObject?.('mission', mission.mission_id, { locate: true }),
     );
     marker.addTo(map);
+    annotateMarker(marker, 'mission', mission.mission_id);
     if (marker.getElement()) marker.getElement().dataset.missionId = mission.mission_id;
     mapLayers.push(marker);
     bindPermanentLabel(marker, mission.name,
@@ -238,6 +275,7 @@ function drawLeaflet() {
     }
   }
   labelLayout?.setItems(labels);
+  refreshCatalogLayers();
 }
 
 function fallbackPoints() {
@@ -364,17 +402,22 @@ export function beginMissionLocationPick() {
     return;
   }
   cancelMissionLocationPick();
+  setCatalogInteractivity(false);
   button.textContent = '请在地图点击位置…';
   missionPickHandler = (event) => {
     const longitude = document.getElementById('sitMissionLon');
     const latitude = document.getElementById('sitMissionLat');
-    if (!longitude || !latitude) return;
+    if (!longitude || !latitude) {
+      cancelMissionLocationPick();
+      return;
+    }
     longitude.value = event.latlng.lng.toFixed(6);
     latitude.value = event.latlng.lat.toFixed(6);
     state.draftMissionCoord = { lon: event.latlng.lng, lat: event.latlng.lat };
     callbacks.markPanelDraft?.();
     button.textContent = '从地图取点';
     missionPickHandler = null;
+    setCatalogInteractivity(true);
     drawMap();
   };
   map.once('click', missionPickHandler);
@@ -383,6 +426,7 @@ export function beginMissionLocationPick() {
 export function cancelMissionLocationPick() {
   if (map && missionPickHandler) map.off('click', missionPickHandler);
   missionPickHandler = null;
+  setCatalogInteractivity(true);
   const button = document.getElementById('pickMissionLocation');
   if (button) button.textContent = '从地图取点';
 }
@@ -406,15 +450,34 @@ function clearExternalLayer(kind) {
   externalLayers[kind] = null;
 }
 
-export async function setCatalogLayer(kind, enabled) {
+function catalogExcludedIds(kind) {
+  if (!state.working) return new Set();
+  if (kind === 'missions') return new Set(state.working.missions.map((item) => item.mission_id));
+  const ids = new Set(state.working.airports.map((item) => item.airport.airport_id));
+  for (const airport of visibleCandidates()) ids.add(airport.airport_id);
+  return ids;
+}
+
+function setCatalogInteractivity(enabled) {
+  catalogInteractionEnabled = enabled;
+  for (const group of Object.values(externalLayers)) {
+    group?.eachLayer?.((marker) => {
+      const element = marker.getElement?.();
+      if (element) element.style.pointerEvents = enabled ? '' : 'none';
+    });
+  }
+}
+
+function renderCatalogLayer(kind) {
   clearExternalLayer(kind);
-  if (!enabled || !map || !globalThis.L) return 0;
-  const path = kind === 'airports' ? '/api/airports' : '/api/missions';
-  externalCache[kind] ||= await fetchPaged(path);
+  if (!externalEnabled[kind] || !map || !globalThis.L || !externalCache[kind]) return 0;
+  const excluded = catalogExcludedIds(kind);
   const group = globalThis.L.layerGroup();
   let count = 0;
   for (const row of externalCache[kind]) {
     const item = kind === 'missions' ? (row.mission || row) : row;
+    const objectId = kind === 'missions' ? item.mission_id : item.airport_id;
+    if (excluded.has(objectId)) continue;
     const latitude = Number(item.latitude);
     const longitude = Number(item.longitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
@@ -422,6 +485,7 @@ export async function setCatalogLayer(kind, enabled) {
       ? `catalog-airport-marker ${airportRoleClass(item.role)}`
       : 'catalog-mission-marker';
     const marker = globalThis.L.marker([latitude, longitude], {
+      pane: CATALOG_MARKER_PANE,
       icon: globalThis.L.divIcon({
         className: markerClass,
         html: '<span></span>',
@@ -431,12 +495,34 @@ export async function setCatalogLayer(kind, enabled) {
     });
     const tooltip = kind === 'airports' ? airportMapTooltip(item) : item.name;
     marker.bindTooltip(escapeHtml(tooltip), { direction: 'top', className: 'map-object-tooltip' });
+    marker.on('add', () => {
+      annotateMarker(marker, kind === 'airports' ? 'airport-reference' : 'mission-reference', objectId);
+      const element = marker.getElement();
+      if (element && !catalogInteractionEnabled) element.style.pointerEvents = 'none';
+    });
     group.addLayer(marker);
     count += 1;
   }
   group.addTo(map);
   externalLayers[kind] = group;
   return count;
+}
+
+function refreshCatalogLayers(kind = null) {
+  if (kind) return renderCatalogLayer(kind);
+  renderCatalogLayer('airports');
+  renderCatalogLayer('missions');
+  return 0;
+}
+
+export async function setCatalogLayer(kind, enabled) {
+  externalEnabled[kind] = enabled;
+  clearExternalLayer(kind);
+  if (!enabled || !map || !globalThis.L) return 0;
+  const path = kind === 'airports' ? '/api/airports' : '/api/missions';
+  externalCache[kind] ||= await fetchPaged(path);
+  if (!externalEnabled[kind]) return 0;
+  return renderCatalogLayer(kind);
 }
 
 export async function initMap() {
@@ -458,6 +544,8 @@ export async function initMap() {
     inertia: true,
     preferCanvas: true,
   });
+  const catalogPane = map.createPane(CATALOG_MARKER_PANE);
+  catalogPane.style.zIndex = '580';
   globalThis.L.control.zoom({ position: 'bottomleft' }).addTo(map);
   addFitControl();
   basemapLayers = createLocalBasemap(map, page.dataset.tileTemplate);
@@ -472,6 +560,8 @@ export function destroyMap() {
   clearMapLayers();
   clearExternalLayer('airports');
   clearExternalLayer('missions');
+  externalEnabled.airports = false;
+  externalEnabled.missions = false;
   destroyLocalBasemap(basemapLayers);
   basemapLayers = [];
   destroyMapReference(mapReference);

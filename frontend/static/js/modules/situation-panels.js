@@ -166,5 +166,14 @@ export function initPanels({ signal }) {
 }
 
 export function destroyPanels() {
+  for (const id of ['showAllAirports', 'showAllMissions']) {
+    const input = document.getElementById(id);
+    if (input) input.checked = false;
+  }
+  const status = document.getElementById('layerScopeStatus');
+  if (status) status.textContent = '';
+  const panel = document.getElementById('layerScopePanel');
+  panel?.classList.add('hidden');
+  document.getElementById('layerScopeButton')?.setAttribute('aria-expanded', 'false');
   callbacks = {};
 }
