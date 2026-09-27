@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
+from math import ceil, isfinite
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from backend.algorithm.snapshot_adapter import DELTA_MIN, build_algorithm_comparison_facts
 from backend.domain.run_snapshot import RunSnapshot
 
 COMPARISON_SCHEMA_VERSION = "comparison.v1"
+MAX_ANALYSIS_RUNS = 50
 OBJECTIVE_DEFINITION_FIELDS = (
     "preference_mode",
     "alpha",
@@ -27,6 +31,7 @@ class ComparisonError(ValueError):
 class ComparabilityCheck:
     comparable: bool
     reasons: Tuple[str, ...] = ()
+    differences: Tuple[str, ...] = ()
 
     def require(self) -> None:
         if not self.comparable:
@@ -50,17 +55,265 @@ def _config(payload: Mapping[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
-def _same_frozen_problem(a: Mapping[str, Any], b: Mapping[str, Any]) -> List[str]:
+def _archived_v5_selected_scenario(payload: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
+    situation = payload.get("situation") or {}
+    selected_id = (payload.get("run_config") or {}).get("damage_scenario_id")
+    if selected_id is None:
+        return None
+    for row in situation.get("damage_scenarios") or []:
+        if isinstance(row, Mapping) and row.get("damage_scenario_id") == selected_id:
+            return row
+    raise ComparisonError(f"selected damage scenario is absent from archived v5 snapshot: {selected_id}")
+
+
+def _archived_v5_effective_range(payload: Mapping[str, Any]) -> List[int]:
+    """Reproduce the frozen v5 loose-horizon policy without invoking the current solver."""
+
+    situation = payload.get("situation") or {}
+    missions = [row for row in situation.get("missions") or [] if isinstance(row, Mapping)]
+    scenario = _archived_v5_selected_scenario(payload)
+    starts = [int(row["window_start_slot"]) for row in missions]
+    ends = [int(row["window_end_slot"]) - 1 for row in missions]
+    events = [row for row in (scenario or {}).get("events") or [] if isinstance(row, Mapping)]
+    starts.extend(int(row["start_slot"]) for row in events)
+    ends.extend(int(row["end_slot"]) - 1 for row in events)
+    t_min = min(starts) if starts else 0
+    base_end = max(ends) if ends else t_min
+
+    mission_types = {
+        str(req["aircraft_type_id"])
+        for mission in missions
+        for req in mission.get("aircraft_requirements") or []
+        if isinstance(req, Mapping)
+    }
+    aircraft_rows = {
+        str(row.get("aircraft_type_id")): row
+        for row in (payload.get("catalogs") or {}).get("aircraft_types") or []
+        if isinstance(row, Mapping)
+    }
+    try:
+        speeds = [float(aircraft_rows[type_id]["speed_kmh"]) for type_id in mission_types]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ComparisonError("archived v5 aircraft speed facts are incomplete") from exc
+    if any(value <= 0 for value in speeds):
+        raise ComparisonError("archived v5 aircraft speed facts must be positive")
+
+    distances = [
+        float(row["distance_km"])
+        for row in payload.get("od_distances") or []
+        if isinstance(row, Mapping)
+    ]
+    max_dist = max(distances, default=0.0)
+    min_speed = min(speeds, default=1.0)
+    max_fly_windows = int(ceil((max_dist / min_speed) * (60.0 / DELTA_MIN))) if max_dist else 0
+    max_tau_work = max(
+        (
+            int(req["tau_work_windows"])
+            for mission in missions
+            for req in mission.get("aircraft_requirements") or []
+            if isinstance(req, Mapping)
+        ),
+        default=0,
+    )
+    max_delay = max(
+        (
+            max(
+                int((event.get("effect") or {}).get("departure_delay_slots") or 0),
+                int((event.get("effect") or {}).get("return_delay_slots") or 0),
+            )
+            for event in events
+            if event.get("damage_type") == "navigation_delay"
+        ),
+        default=0,
+    )
+    return [int(t_min), int(max(t_min, base_end + 2 * max_fly_windows + max_tau_work + 2 * max_delay))]
+
+
+def _archived_v5_comparison_facts(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Project immutable v5 inputs for read-only comparison; never adapts them for solving."""
+
+    situation = payload.get("situation") or {}
+    catalogs = payload.get("catalogs") or {}
+    airport_rows = []
+    airport_resources = []
+    airport_ids = []
+    for item in situation.get("airports") or []:
+        if not isinstance(item, Mapping):
+            continue
+        airport = item.get("airport") or {}
+        profile = item.get("operational_profile") or {}
+        airport_id = str(airport.get("airport_id") or profile.get("airport_id") or "")
+        airport_ids.append(airport_id)
+        support = [row for row in profile.get("aircraft_support") or [] if isinstance(row, Mapping)]
+        airport_rows.append({
+            "airport_id": airport_id,
+            "lon": float(airport["longitude"]),
+            "lat": float(airport["latitude"]),
+            "capacity": int(profile.get("capacity_per_window") or 0),
+            "supported_aircraft": {
+                str(row["aircraft_type_id"]): int(row.get("initial_quantity") or 0)
+                for row in support
+            },
+            "tau_reset": {
+                str(row["aircraft_type_id"]): int(row.get("tau_reset_windows") or 0)
+                for row in support
+            },
+        })
+        airport_resources.append({
+            "airport_id": airport_id,
+            "resource_stocks": sorted(
+                (
+                    {
+                        "resource_type_id": row.get("resource_type_id"),
+                        "initial_quantity": row.get("initial_quantity"),
+                        "storage_capacity": row.get("storage_capacity"),
+                    }
+                    for row in profile.get("resource_stocks") or []
+                    if isinstance(row, Mapping)
+                ),
+                key=lambda row: str(row["resource_type_id"]),
+            ),
+            "resource_replenishments": sorted(
+                (dict(row) for row in item.get("resource_replenishments") or [] if isinstance(row, Mapping)),
+                key=lambda row: (
+                    str(row.get("resource_type_id")),
+                    int(row.get("start_slot") or 0),
+                    int(row.get("end_slot") or 0),
+                ),
+            ),
+        })
+
+    mission_rows = []
+    mission_ids = []
+    for mission in situation.get("missions") or []:
+        if not isinstance(mission, Mapping):
+            continue
+        mission_id = str(mission.get("mission_id") or "")
+        mission_ids.append(mission_id)
+        requirements = [
+            row for row in mission.get("aircraft_requirements") or [] if isinstance(row, Mapping)
+        ]
+        mission_rows.append({
+            "mission_id": mission_id,
+            "lon": float(mission["longitude"]),
+            "lat": float(mission["latitude"]),
+            "_duty_window": [int(mission["window_start_slot"]), int(mission["window_end_slot"])],
+            "required_sorties": {
+                str(row["aircraft_type_id"]): int(row["required_sorties"])
+                for row in requirements
+            },
+            "tau_work": {
+                str(row["aircraft_type_id"]): int(row["tau_work_windows"])
+                for row in requirements
+            },
+        })
+
+    od = {
+        (str(row["airport_id"]), str(row["mission_id"])): float(row["distance_km"])
+        for row in payload.get("od_distances") or []
+        if isinstance(row, Mapping)
+    }
+    resource_types = {
+        str(row["resource_type_id"]): row
+        for row in catalogs.get("resource_types") or []
+        if isinstance(row, Mapping)
+    }
+    requirements_by_aircraft: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for row in catalogs.get("aircraft_resource_requirements") or []:
+        if not isinstance(row, Mapping):
+            continue
+        requirements_by_aircraft.setdefault(str(row["aircraft_type_id"]), {})[
+            str(row["resource_type_id"])
+        ] = {"basis": row.get("basis"), "quantity": float(row["quantity"])}
+
+    aircraft_parameters = {}
+    for row in catalogs.get("aircraft_types") or []:
+        if not isinstance(row, Mapping):
+            continue
+        type_id = str(row["aircraft_type_id"])
+        uses = requirements_by_aircraft.get(type_id, {})
+        aircraft_parameters[type_id] = {
+            "speed": float(row["speed_kmh"]),
+            "max_range": float(row["max_range_km"]),
+            "reserve_ratio": float(row["reserve_ratio"]),
+            "capacity_factor": float(row["departure_capacity_occupancy_factor"]),
+            "arrival_capacity_factor": float(row["arrival_capacity_occupancy_factor"]),
+            "resource_requirements": uses,
+        }
+
+    selected = _archived_v5_selected_scenario(payload)
+    return {
+        "schema": payload.get("schema"),
+        "base_problem": {
+            "airports": airport_rows,
+            "missions": mission_rows,
+            "distance": {
+                "airports": airport_ids,
+                "missions": mission_ids,
+                "matrix": [[od[(aid, mid)] for mid in mission_ids] for aid in airport_ids],
+            },
+            "aircraft_parameters": aircraft_parameters,
+            "resource_types": sorted(
+                (
+                    {
+                        "resource_type_id": resource_id,
+                        "category": row.get("category"),
+                        "unit": row.get("unit"),
+                    }
+                    for resource_id, row in resource_types.items()
+                ),
+                key=lambda row: row["resource_type_id"],
+            ),
+            "airport_resources": airport_resources,
+            "dynamic_inventory": payload.get("dynamic_inventory"),
+        },
+        "effective_range": _archived_v5_effective_range(payload),
+        "effective_timeview": {
+            "selected_damage_scenario": selected,
+            "resource_inventory_model": (payload.get("run_config") or {}).get("resource_inventory_model"),
+            "dynamic_inventory": payload.get("dynamic_inventory"),
+        },
+    }
+
+
+def _effective_input_differences(base: RunSnapshot, other: RunSnapshot) -> List[str]:
+    a = _comparison_facts(base)
+    b = _comparison_facts(other)
     reasons: List[str] = []
     if a.get("schema") != b.get("schema"):
         reasons.append("snapshot schema differs")
-    if a.get("situation_content_hash") != b.get("situation_content_hash"):
-        reasons.append("Situation content differs")
-    if _canon(a.get("catalogs")) != _canon(b.get("catalogs")):
-        reasons.append("catalog closure differs")
-    if _canon(a.get("od_distances")) != _canon(b.get("od_distances")):
-        reasons.append("OD distance closure differs")
+    pa = a.get("base_problem") or {}
+    pb = b.get("base_problem") or {}
+    for field, label in (
+        ("airports", "base airport inputs differ"),
+        ("missions", "base mission inputs differ"),
+        ("distance", "OD distance inputs differ"),
+        ("aircraft_parameters", "aircraft type/requirement inputs differ"),
+        ("resource_types", "resource type inputs differ"),
+        ("airport_resources", "airport resource/replenishment inputs differ"),
+    ):
+        if _canon(pa.get(field)) != _canon(pb.get(field)):
+            reasons.append(label)
+    if _canon(a.get("effective_range")) != _canon(b.get("effective_range")):
+        reasons.append("effective time range differs")
     return reasons
+
+
+def _effective_state_differs(base: RunSnapshot, other: RunSnapshot) -> bool:
+    a = _comparison_facts(base)
+    b = _comparison_facts(other)
+    return _canon(a.get("effective_timeview")) != _canon(b.get("effective_timeview"))
+
+
+@lru_cache(maxsize=64)
+def _comparison_facts(snapshot: RunSnapshot) -> Dict[str, Any]:
+    # RunSnapshot is immutable and hashable; the returned projection stays private and
+    # is never mutated.  Candidate scans otherwise rematerialize the same base Run many
+    # times while checking different comparison modes.
+    payload = snapshot.to_dict()
+    if payload.get("schema") == "run_input_snapshot_v5":
+        return _archived_v5_comparison_facts(payload)
+    return build_algorithm_comparison_facts(snapshot)
 
 
 def _same_fields(configs: Sequence[Mapping[str, Any]], fields: Iterable[str]) -> List[str]:
@@ -78,7 +331,7 @@ def _same_fields(configs: Sequence[Mapping[str, Any]], fields: Iterable[str]) ->
 def check_multi_scenario_comparable(base: RunSnapshot, other: RunSnapshot) -> ComparabilityCheck:
     """Same plan/configuration; only the selected damage scenario may differ."""
     a, b = _payload(base), _payload(other)
-    reasons = _same_frozen_problem(a, b)
+    reasons = _effective_input_differences(base, other)
     ca, cb = _config(a), _config(b)
     for field in sorted(set(ca) | set(cb)):
         if field == "damage_scenario_id":
@@ -96,12 +349,28 @@ def check_configuration_comparable(base: RunSnapshot, other: RunSnapshot) -> Com
     business configuration changes with a different search budget/random stream.
     """
     a, b = _payload(base), _payload(other)
-    reasons = _same_frozen_problem(a, b)
+    reasons = _effective_input_differences(base, other)
     ca, cb = _config(a), _config(b)
     if ca.get("damage_scenario_id") != cb.get("damage_scenario_id"):
         reasons.append("damage_scenario_id differs")
+    elif _effective_state_differs(base, other):
+        reasons.append("selected damage effective input differs")
     reasons.extend(_same_fields([ca, cb], ("mip_time_limit_s", "algorithm_seed")))
     return ComparabilityCheck(not reasons, tuple(reasons))
+
+
+def check_exploratory_comparable(base: RunSnapshot, other: RunSnapshot) -> ComparabilityCheck:
+    """Describe cross-condition input differences without claiming strict comparability."""
+
+    a, b = _payload(base), _payload(other)
+    differences = _effective_input_differences(base, other)
+    ca, cb = _config(a), _config(b)
+    for field in sorted(set(ca) | set(cb)):
+        if _canon(ca.get(field)) != _canon(cb.get(field)):
+            differences.append(f"run_config.{field} differs")
+    if _effective_state_differs(base, other):
+        differences.append("effective damage/state input differs")
+    return ComparabilityCheck(True, (), tuple(dict.fromkeys(differences)))
 
 
 def check_objective_comparable(*snapshots: RunSnapshot) -> ComparabilityCheck:
@@ -126,7 +395,7 @@ def check_r0_r1_r2(r0: RunSnapshot, r1: RunSnapshot, r2: RunSnapshot) -> Compara
     R2 = same target damage / cluster enabled
     """
     p0, p1, p2 = _payload(r0), _payload(r1), _payload(r2)
-    reasons = _same_frozen_problem(p0, p1) + _same_frozen_problem(p0, p2)
+    reasons = _effective_input_differences(r0, r1) + _effective_input_differences(r0, r2)
     if len({r0.run_id, r1.run_id, r2.run_id}) != 3:
         reasons.append("R0/R1/R2 must be three distinct Run IDs")
     c0, c1, c2 = _config(p0), _config(p1), _config(p2)
@@ -141,6 +410,8 @@ def check_r0_r1_r2(r0: RunSnapshot, r1: RunSnapshot, r2: RunSnapshot) -> Compara
         reasons.append("R1 must have clustering disabled")
     if c2.get("damage_scenario_id") != c1.get("damage_scenario_id"):
         reasons.append("R2 must use the same damage scenario as R1")
+    elif _effective_state_differs(r1, r2):
+        reasons.append("R1/R2 selected damage effective input differs")
     if not bool(c2.get("cluster_enabled")):
         reasons.append("R2 must have clustering enabled")
 
@@ -373,6 +644,15 @@ def build_r0_r1_r2_comparison(
         },
         "objective_comparable": objective_check.comparable,
         "objective_comparability_reasons": list(objective_check.reasons),
+        "solver_comparison": _solver_comparison(
+            [
+                (r0_snapshot, r0_metrics),
+                (r1_snapshot, r1_metrics),
+                (r2_snapshot, r2_metrics),
+            ],
+            baseline_run_id=r0_snapshot.run_id,
+            objective_check=objective_check,
+        ),
         "run_summaries": run_summaries,
         "labels": _frozen_labels(r0_snapshot),
         "comparison_summary": role_summaries,
@@ -497,6 +777,9 @@ def _run_summary_projection(metrics: Mapping[str, Any]) -> Dict[str, Any]:
     return {
         "mission_count": summary.get("mission_count"),
         "required_sorties_total": summary.get("required_sorties_total"),
+        "fulfilled_sorties_total": summary.get("fulfilled_sorties_total"),
+        "unmet_sorties_total": summary.get("unmet_sorties_total"),
+        "additional_sorties_total": summary.get("additional_sorties_total"),
         "scheduled_sorties_total": summary.get("scheduled_sorties_total"),
         "returned_sorties_total": summary.get("returned_sorties_total"),
         "selected_cluster_count": summary.get("selected_cluster_count"),
@@ -569,7 +852,458 @@ def _comparison_summary(metrics: Mapping[str, Any]) -> Dict[str, Any]:
 def _numeric(value: Any) -> Optional[float]:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return float(value)
+    number = float(value)
+    return number if isfinite(number) else None
+
+
+_SOLVER_FACT_FIELDS = (
+    "solver_status",
+    "objective",
+    "best_bound",
+    "gap",
+    "solve_time_s",
+    "cluster_lp_objective",
+    "f1",
+    "f2",
+    "f3",
+)
+
+
+def _solver_comparison(
+    rows: Sequence[Tuple[RunSnapshot, Mapping[str, Any]]],
+    *,
+    baseline_run_id: str,
+    objective_check: ComparabilityCheck,
+) -> Dict[str, Any]:
+    by_run: Dict[str, Any] = {}
+    for snapshot, metrics in rows:
+        technical = metrics.get("technical") or {}
+        projected = {field: technical.get(field) for field in _SOLVER_FACT_FIELDS}
+        projected["missing_fields"] = [
+            field
+            for field in _SOLVER_FACT_FIELDS
+            if field not in technical or technical.get(field) is None
+        ]
+        by_run[snapshot.run_id] = projected
+
+    baseline_objective = _numeric(by_run[baseline_run_id].get("objective"))
+    for run_id, projected in by_run.items():
+        objective = _numeric(projected.get("objective"))
+        projected["objective_delta_vs_baseline"] = (
+            objective - baseline_objective
+            if objective_check.comparable
+            and objective is not None
+            and baseline_objective is not None
+            else None
+        )
+
+    proven: List[Dict[str, Any]] = []
+    if objective_check.comparable:
+        run_ids = [snapshot.run_id for snapshot, _metrics in rows]
+        for higher_run_id in run_ids:
+            higher_lower_bound = _numeric(by_run[higher_run_id].get("objective"))
+            if higher_lower_bound is None:
+                continue
+            for lower_run_id in run_ids:
+                if lower_run_id == higher_run_id:
+                    continue
+                lower_upper_bound = _numeric(by_run[lower_run_id].get("best_bound"))
+                if lower_upper_bound is None or higher_lower_bound <= lower_upper_bound:
+                    continue
+                proven.append({
+                    "higher_run_id": higher_run_id,
+                    "lower_run_id": lower_run_id,
+                    "higher_lower_bound": higher_lower_bound,
+                    "lower_upper_bound": lower_upper_bound,
+                })
+
+    return {
+        "objective_definition_comparable": objective_check.comparable,
+        "objective_comparability_reasons": list(objective_check.reasons),
+        "objective_direction": "maximize",
+        "bound_semantics": {
+            "objective": "feasible_lower_bound",
+            "best_bound": "dual_upper_bound",
+            "gap": "relative_ratio",
+        },
+        "by_run": by_run,
+        "proven_strict_orderings": proven,
+        "physical_minimum_shortfall": {
+            "available": False,
+            "reason": "independent verification result is not stored in ordinary Metrics",
+        },
+    }
+
+
+def _numeric_delta_tree(value: Any, baseline: Any) -> Any:
+    current_number = _numeric(value)
+    baseline_number = _numeric(baseline)
+    if current_number is not None and baseline_number is not None:
+        return current_number - baseline_number
+    if isinstance(value, Mapping) and isinstance(baseline, Mapping):
+        return {
+            key: _numeric_delta_tree(value.get(key), baseline.get(key))
+            for key in sorted(set(value) | set(baseline))
+        }
+    if isinstance(value, list) and isinstance(baseline, list):
+        if len(value) != len(baseline):
+            return None
+        return [
+            _numeric_delta_tree(item, base)
+            for item, base in zip(value, baseline)
+        ]
+    return None
+
+
+def _task_projection(metrics: Mapping[str, Any], mission_id: str) -> Dict[str, Any]:
+    row = (metrics.get("tasks") or {}).get(mission_id)
+    if not isinstance(row, Mapping):
+        raise ComparisonError(f"task is absent from Metrics: {mission_id}")
+    sources = {
+        "required": row.get("required_by_aircraft") or {},
+        "scheduled": row.get("scheduled_by_aircraft") or {},
+        "fulfilled": row.get("fulfilled_by_aircraft") or {},
+        "unmet": row.get("unmet_by_aircraft") or {},
+        "additional": row.get("additional_by_aircraft") or {},
+    }
+    aircraft_types = sorted({
+        str(aircraft_type)
+        for source in sources.values()
+        for aircraft_type in source
+    })
+    return {
+        "mission_id": mission_id,
+        "required_total": row.get("required_total"),
+        "scheduled_total": row.get("scheduled_total"),
+        "fulfilled_total": row.get("fulfilled_total"),
+        "unmet_total": row.get("unmet_total"),
+        "additional_total": row.get("additional_total"),
+        "completion_ratio": row.get("completion_ratio"),
+        "by_aircraft": {
+            aircraft_type: {
+                field: source.get(aircraft_type, 0)
+                for field, source in sources.items()
+            }
+            for aircraft_type in aircraft_types
+        },
+        "by_origin_airport": dict(row.get("by_origin_airport") or {}),
+        "departures_timeline": list(row.get("departures_timeline") or []),
+        "returns_timeline": list(row.get("returns_timeline") or []),
+    }
+
+
+def _airport_projection(metrics: Mapping[str, Any], airport_id: str) -> Dict[str, Any]:
+    row = (metrics.get("airports") or {}).get(airport_id)
+    if not isinstance(row, Mapping):
+        raise ComparisonError(f"airport is absent from Metrics: {airport_id}")
+    capacity = row.get("capacity") or {}
+    returned_total = _numeric((metrics.get("summary") or {}).get("returned_sorties_total"))
+    airport_returns = _numeric(row.get("returns_total"))
+    return {
+        "airport_id": airport_id,
+        "departures_total": row.get("departures_total"),
+        "returns_total": row.get("returns_total"),
+        "departure_share": row.get("departure_share"),
+        "return_share": (
+            airport_returns / returned_total
+            if airport_returns is not None and returned_total not in (None, 0.0)
+            else None
+        ),
+        "is_selected_cluster": row.get("is_selected_cluster"),
+        "is_core": row.get("is_core"),
+        "is_participating": row.get("is_participating"),
+        "departures_timeline": list(row.get("departures_timeline") or []),
+        "returns_timeline": list(row.get("returns_timeline") or []),
+        "capacity": {
+            field: list(capacity.get(field) or [])
+            for field in (
+                "available", "used_departure", "used_arrival", "used_total", "utilization"
+            )
+        },
+    }
+
+
+def _resource_projection(
+    metrics: Mapping[str, Any], airport_id: str, resource_type_id: str
+) -> Dict[str, Any]:
+    resources = metrics.get("resources") or {}
+    row = ((resources.get("by_airport") or {}).get(airport_id) or {}).get(resource_type_id)
+    if not isinstance(row, Mapping):
+        raise ComparisonError(
+            f"resource is absent from Metrics: {airport_id}/{resource_type_id}"
+        )
+    initial = _numeric(row.get("initial"))
+    boundary = list(row.get("damage_adjusted_base_boundary") or [])
+    damage_adjusted_loss = [
+        max(0.0, initial - float(value)) if initial is not None else None
+        for value in boundary
+    ]
+    permanent_loss = (
+        list(row.get("permanent_loss") or [])
+        if "permanent_loss" in row
+        else None
+    )
+    metadata = (resources.get("resource_types") or {}).get(resource_type_id) or {}
+    return {
+        "airport_id": airport_id,
+        "resource_type_id": resource_type_id,
+        "metadata": dict(metadata),
+        "initial": row.get("initial"),
+        "damage_adjusted_loss": damage_adjusted_loss,
+        "permanent_loss": permanent_loss,
+        "permanent_loss_recorded": "permanent_loss" in row,
+        **{
+            field: list(row.get(field) or [])
+            for field in (
+                "replenishment_actual",
+                "replenishment_cumulative",
+                "damage_adjusted_base_boundary",
+                "available_before_consumption",
+                "consumed_increment",
+                "consumed_cumulative",
+                "remaining",
+                "remaining_ratio_initial",
+            )
+        },
+    }
+
+
+def _aircraft_projection(
+    metrics: Mapping[str, Any], airport_id: str, aircraft_type_id: str
+) -> Dict[str, Any]:
+    inventory = metrics.get("aircraft_inventory") or {}
+    row = ((inventory.get("by_airport") or {}).get(airport_id) or {}).get(aircraft_type_id)
+    if not isinstance(row, Mapping):
+        raise ComparisonError(
+            f"aircraft inventory is absent from Metrics: {airport_id}/{aircraft_type_id}"
+        )
+    return {
+        "airport_id": airport_id,
+        "aircraft_type_id": aircraft_type_id,
+        "baseline_initial_quantity": row.get("baseline_initial_quantity"),
+        **{
+            field: list(row.get(field) or [])
+            for field in (
+                "available_before_departure",
+                "departures",
+                "ready_releases",
+                "available_after_departure",
+                "in_use",
+                "available_ratio_initial",
+            )
+        },
+    }
+
+
+def _collaboration_projection(metrics: Mapping[str, Any]) -> Dict[str, Any]:
+    row = metrics.get("collaboration") or {}
+    return {
+        "selected_cluster": list(row.get("selected_cluster") or []),
+        "core_airports": list(row.get("core_airports") or []),
+        "participating_airports": list(row.get("participating_airports") or []),
+        "origin_airports": list(row.get("origin_airports") or []),
+        "return_airports": list(row.get("return_airports") or []),
+        "cross_return_sorties": row.get("cross_return_sorties"),
+        "cross_return_ratio": row.get("cross_return_ratio"),
+        "departure_hhi": row.get("departure_hhi"),
+    }
+
+
+_CHAIN_FIELDS = (
+    "origin_airport_id",
+    "mission_id",
+    "return_airport_id",
+    "aircraft_type",
+    "depart_window",
+    "return_window",
+    "ready_window",
+)
+
+
+def _chain_quantities(
+    solution: Mapping[str, Any],
+    *,
+    mission_id: Optional[str] = None,
+    airport_id: Optional[str] = None,
+    aircraft_type_id: Optional[str] = None,
+) -> Dict[Tuple[Any, ...], float]:
+    quantities: Dict[Tuple[Any, ...], float] = {}
+    for row in solution.get("sortie_chains") or []:
+        if not isinstance(row, Mapping):
+            raise ComparisonError("Solution sortie_chains must contain objects")
+        if mission_id is not None and row.get("mission_id") != mission_id:
+            continue
+        if aircraft_type_id is not None and row.get("aircraft_type") != aircraft_type_id:
+            continue
+        if airport_id is not None and airport_id not in {
+            row.get("origin_airport_id"), row.get("return_airport_id")
+        }:
+            continue
+        key = tuple(row.get(field) for field in _CHAIN_FIELDS)
+        value = _numeric(row.get("sorties"))
+        if value is None or value < 0:
+            raise ComparisonError("Solution chain sorties must be nonnegative numeric values")
+        quantities[key] = quantities.get(key, 0.0) + value
+    return quantities
+
+
+def build_object_comparison(
+    runs: Sequence[Tuple[RunSnapshot, Mapping[str, Any], Mapping[str, Any]]],
+    *,
+    comparison_type: str,
+    baseline_run_id: str,
+    object_type: str,
+    object_id: Optional[str] = None,
+    airport_id: Optional[str] = None,
+    resource_type_id: Optional[str] = None,
+    aircraft_type_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return one selected object's absolute facts and deltas across Runs."""
+
+    rows = list(runs)
+    if not 2 <= len(rows) <= MAX_ANALYSIS_RUNS:
+        raise ComparisonError(
+            f"object comparison requires 2 to {MAX_ANALYSIS_RUNS} Runs"
+        )
+    run_ids = [snapshot.run_id for snapshot, _solution, _metrics in rows]
+    if len(set(run_ids)) != len(run_ids):
+        raise ComparisonError("object comparison requires distinct Run IDs")
+    if baseline_run_id not in run_ids:
+        raise ComparisonError("baseline_run_id must be one of run_ids")
+    if comparison_type not in {"damage", "configuration", "exploratory"}:
+        raise ComparisonError("comparison_type must be damage, configuration or exploratory")
+    if object_type not in {"task", "airport", "resource", "aircraft", "collaboration"}:
+        raise ComparisonError("unsupported object_type")
+
+    by_id = {
+        snapshot.run_id: (snapshot, solution, metrics)
+        for snapshot, solution, metrics in rows
+    }
+    baseline_snapshot = by_id[baseline_run_id][0]
+    comparability: Dict[str, Any] = {}
+    for snapshot, solution, metrics in rows:
+        _ensure_metrics(snapshot, metrics)
+        if solution.get("run_id") != snapshot.run_id:
+            raise ComparisonError(f"Solution run_id does not match snapshot: {snapshot.run_id}")
+        if comparison_type == "damage":
+            check = check_multi_scenario_comparable(baseline_snapshot, snapshot)
+        elif comparison_type == "configuration":
+            check = check_configuration_comparable(baseline_snapshot, snapshot)
+        else:
+            check = check_exploratory_comparable(baseline_snapshot, snapshot)
+        if comparison_type != "exploratory":
+            check.require()
+        strict_modes = []
+        if check_multi_scenario_comparable(baseline_snapshot, snapshot).comparable:
+            strict_modes.append("damage")
+        if check_configuration_comparable(baseline_snapshot, snapshot).comparable:
+            strict_modes.append("configuration")
+        comparability[snapshot.run_id] = {
+            "strict_comparable": bool(strict_modes),
+            "strict_modes": strict_modes,
+            "reasons": list(check.reasons),
+            "differences": list(check.differences),
+        }
+
+    if comparison_type != "exploratory":
+        _require_common_metrics_contract([
+            (snapshot, metrics) for snapshot, _solution, metrics in rows
+        ])
+
+    def project(metrics: Mapping[str, Any]) -> Dict[str, Any]:
+        if object_type == "task":
+            if not object_id:
+                raise ComparisonError("task object_id is required")
+            return _task_projection(metrics, object_id)
+        if object_type == "airport":
+            if not object_id:
+                raise ComparisonError("airport object_id is required")
+            return _airport_projection(metrics, object_id)
+        if object_type == "resource":
+            if not airport_id or not resource_type_id:
+                raise ComparisonError("resource airport_id and resource_type_id are required")
+            return _resource_projection(metrics, airport_id, resource_type_id)
+        if object_type == "aircraft":
+            if not airport_id or not aircraft_type_id:
+                raise ComparisonError("aircraft airport_id and aircraft_type_id are required")
+            return _aircraft_projection(metrics, airport_id, aircraft_type_id)
+        return _collaboration_projection(metrics)
+
+    absolute = {
+        snapshot.run_id: project(metrics)
+        for snapshot, _solution, metrics in rows
+    }
+    baseline = absolute[baseline_run_id]
+    objective_check = check_objective_comparable(
+        *(snapshot for snapshot, _solution, _metrics in rows)
+    )
+    out = {
+        "schema_version": "comparison-object.v1",
+        "comparison_type": comparison_type,
+        "descriptive_only": comparison_type == "exploratory",
+        "baseline_run_id": baseline_run_id,
+        "run_ids": run_ids,
+        "comparability": comparability,
+        "time_axes": {
+            snapshot.run_id: dict(metrics.get("time_axis") or {})
+            for snapshot, _solution, metrics in rows
+        },
+        "labels_by_run": {
+            snapshot.run_id: _frozen_labels(snapshot)
+            for snapshot, _solution, _metrics in rows
+        },
+        "object": {
+            "type": object_type,
+            "object_id": object_id,
+            "airport_id": airport_id,
+            "resource_type_id": resource_type_id,
+            "aircraft_type_id": aircraft_type_id,
+        },
+        "baseline": {"run_id": baseline_run_id, "absolute": baseline},
+        "runs": {
+            run_id: {
+                "absolute": value,
+                "delta_vs_baseline": _numeric_delta_tree(value, baseline),
+            }
+            for run_id, value in absolute.items()
+        },
+        "solver_comparison": _solver_comparison(
+            [(snapshot, metrics) for snapshot, _solution, metrics in rows],
+            baseline_run_id=baseline_run_id,
+            objective_check=objective_check,
+        ),
+    }
+
+    if object_type == "collaboration":
+        quantities = {
+            snapshot.run_id: _chain_quantities(
+                solution,
+                mission_id=object_id,
+                airport_id=airport_id,
+                aircraft_type_id=aircraft_type_id,
+            )
+            for snapshot, solution, _metrics in rows
+        }
+        keys = sorted({key for by_run in quantities.values() for key in by_run})
+        chain_changes = []
+        for key in keys:
+            chain = dict(zip(_CHAIN_FIELDS, key))
+            chain["cross_airport_return"] = (
+                chain["origin_airport_id"] != chain["return_airport_id"]
+            )
+            baseline_value = quantities[baseline_run_id].get(key, 0.0)
+            chain_changes.append({
+                "chain": chain,
+                "by_run": {
+                    run_id: {
+                        "sorties": by_run.get(key, 0.0),
+                        "delta_vs_baseline": by_run.get(key, 0.0) - baseline_value,
+                    }
+                    for run_id, by_run in quantities.items()
+                },
+            })
+        out["chain_changes"] = chain_changes
+    return out
 
 
 def _extrema(values: Mapping[str, Any], *, low_name: str, high_name: str) -> Dict[str, Any]:
@@ -720,6 +1454,11 @@ def build_multi_scenario_comparison(
         "configurations": configurations,
         "objective_comparable": objective_check.comparable,
         "objective_comparability_reasons": list(objective_check.reasons),
+        "solver_comparison": _solver_comparison(
+            rows,
+            baseline_run_id=rows[0][0].run_id,
+            objective_check=objective_check,
+        ),
         "run_summaries": run_summaries,
         "labels": _frozen_labels(rows[0][0]),
         "summary": summaries,
@@ -932,6 +1671,11 @@ def build_configuration_comparison(
         },
         "objective_comparable": objective_check.comparable,
         "objective_comparability_reasons": list(objective_check.reasons),
+        "solver_comparison": _solver_comparison(
+            rows,
+            baseline_run_id=baseline_run_id,
+            objective_check=objective_check,
+        ),
         "run_summaries": run_summaries,
         "labels": _frozen_labels(rows[0][0]),
         "summary": summaries,
@@ -953,15 +1697,149 @@ def build_configuration_comparison(
     }
 
 
+def build_exploratory_comparison(
+    runs: Sequence[Tuple[RunSnapshot, Mapping[str, Any]]],
+    *,
+    baseline_run_id: str,
+) -> Dict[str, Any]:
+    """Build a summary-only cross-condition comparison.
+
+    Different horizons, demand levels and configurations are accepted deliberately.
+    The response labels every difference and leaves object timelines to the dedicated
+    object query instead of returning every Run's full arrays here.
+    """
+
+    rows = list(runs)
+    if not 2 <= len(rows) <= MAX_ANALYSIS_RUNS:
+        raise ComparisonError(
+            f"exploratory comparison requires 2 to {MAX_ANALYSIS_RUNS} Runs"
+        )
+    run_ids = [snapshot.run_id for snapshot, _metrics in rows]
+    if len(set(run_ids)) != len(run_ids):
+        raise ComparisonError("exploratory comparison requires distinct Run IDs")
+    if baseline_run_id not in run_ids:
+        raise ComparisonError("baseline_run_id must be one of run_ids")
+    for snapshot, metrics in rows:
+        _ensure_metrics(snapshot, metrics)
+
+    by_id = {snapshot.run_id: (snapshot, metrics) for snapshot, metrics in rows}
+    baseline_snapshot, baseline_metrics = by_id[baseline_run_id]
+    summaries = {
+        snapshot.run_id: _comparison_summary(metrics)
+        for snapshot, metrics in rows
+    }
+    baseline_summary = summaries[baseline_run_id]
+    scalar_fields = (
+        "required_sorties_total",
+        "fulfilled_sorties_total",
+        "unmet_sorties_total",
+        "additional_sorties_total",
+        "scheduled_sorties_total",
+        "completion_ratio",
+        "participating_airport_count",
+        "selected_cluster_count",
+        "departure_hhi",
+        "cross_return_ratio",
+    )
+    descriptive_deltas = {
+        run_id: {
+            f"{field}_delta_vs_baseline": _delta_from_baseline(
+                summary.get(field), baseline_summary.get(field)
+            )
+            for field in scalar_fields
+        }
+        for run_id, summary in summaries.items()
+    }
+    comparability: Dict[str, Any] = {}
+    for snapshot, _metrics in rows:
+        exploratory = check_exploratory_comparable(baseline_snapshot, snapshot)
+        damage = check_multi_scenario_comparable(baseline_snapshot, snapshot)
+        configuration = check_configuration_comparable(baseline_snapshot, snapshot)
+        strict_modes = []
+        if damage.comparable:
+            strict_modes.append("damage")
+        if configuration.comparable:
+            strict_modes.append("configuration")
+        comparability[snapshot.run_id] = {
+            "strict_comparable": bool(strict_modes),
+            "strict_modes": strict_modes,
+            "differences": list(exploratory.differences),
+        }
+
+    return {
+        "schema_version": COMPARISON_SCHEMA_VERSION,
+        "mode": "exploratory",
+        "descriptive_only": True,
+        "baseline_run_id": baseline_run_id,
+        "run_ids": run_ids,
+        "comparability": comparability,
+        "configurations": {
+            snapshot.run_id: _config(snapshot.to_dict())
+            for snapshot, _metrics in rows
+        },
+        "time_axes": {
+            snapshot.run_id: dict(metrics.get("time_axis") or {})
+            for snapshot, metrics in rows
+        },
+        "labels_by_run": {
+            snapshot.run_id: _frozen_labels(snapshot)
+            for snapshot, _metrics in rows
+        },
+        "run_summaries": {
+            snapshot.run_id: _run_summary_projection(metrics)
+            for snapshot, metrics in rows
+        },
+        "summary": summaries,
+        "descriptive_deltas_vs_baseline": descriptive_deltas,
+        "objective_comparable": check_objective_comparable(
+            *(snapshot for snapshot, _metrics in rows)
+        ).comparable,
+        "solver_comparison": _solver_comparison(
+            rows,
+            baseline_run_id=baseline_run_id,
+            objective_check=check_objective_comparable(
+                *(snapshot for snapshot, _metrics in rows)
+            ),
+        ),
+        "scheme": {
+            snapshot.run_id: {
+                "selected_cluster": list(
+                    (metrics.get("collaboration") or {}).get("selected_cluster") or []
+                ),
+                "participating_airports": list(
+                    (metrics.get("collaboration") or {}).get("participating_airports") or []
+                ),
+                "departure_hhi": (metrics.get("collaboration") or {}).get(
+                    "departure_hhi"
+                ),
+                "cross_return_ratio": (metrics.get("collaboration") or {}).get(
+                    "cross_return_ratio"
+                ),
+            }
+            for snapshot, metrics in rows
+        },
+        "object_query": {
+            "required_for_timelines": True,
+            "supported_types": [
+                "task", "airport", "resource", "aircraft", "collaboration"
+            ],
+        },
+    }
+
+
 __all__ = [
     "COMPARISON_SCHEMA_VERSION",
+    "MAX_ANALYSIS_RUNS",
     "ComparisonError",
     "ComparabilityCheck",
     "check_multi_scenario_comparable",
     "check_configuration_comparable",
+    "check_exploratory_comparable",
     "check_objective_comparable",
     "check_r0_r1_r2",
     "build_r0_r1_r2_comparison",
     "build_multi_scenario_comparison",
     "build_configuration_comparison",
+    "build_exploratory_comparison",
+    "build_object_comparison",
 ]

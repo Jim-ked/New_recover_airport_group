@@ -82,12 +82,15 @@ def make_snapshot(
     situation_id: str = "S1",
     airport_ids: tuple[str, str] = ("A1", "A2"),
     core_airport_reward_weight: float = 0.25,
+    mission_required_sorties: int = 2,
 ) -> RunSnapshot:
     first_airport_id, second_airport_id = airport_ids
     mission = Mission(
         mission_id="M1", name="Mission", longitude=120.0, latitude=32.0,
         window_start_slot=4, window_end_slot=8,
-        aircraft_requirements=(MissionAircraftRequirement("fighter", 2, 1),),
+        aircraft_requirements=(
+            MissionAircraftRequirement("fighter", mission_required_sorties, 1),
+        ),
     )
     situation = Situation.create(situation_id=situation_id, name="S").with_airport(
         airport(

@@ -65,6 +65,9 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual({"R0", "R1", "R2"}, set(response.body["run_summaries"]))
         self.assertIn("mission_count", response.body["run_summaries"]["R0"])
         self.assertIn("returned_sorties_total", response.body["run_summaries"]["R0"])
+        self.assertIn("fulfilled_sorties_total", response.body["run_summaries"]["R0"])
+        self.assertIn("unmet_sorties_total", response.body["run_summaries"]["R0"])
+        self.assertIn("additional_sorties_total", response.body["run_summaries"]["R0"])
         self.assertIn("required_total", response.body["tasks"]["M1"])
         self.assertIn("scheduled_total", response.body["tasks"]["M1"])
         self.assertEqual("Mission", response.body["labels"]["missions"]["M1"])
@@ -156,7 +159,8 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual({"SCENE1", "SCENE2"}, set(multi.body["run_summaries"]))
         self.assertIn("required_total", multi.body["tasks"]["M1"]["SCENE1"])
         self.assertIn("scheduled_total", multi.body["tasks"]["M1"]["SCENE1"])
-        self.assertNotIn("best", str(multi.body).lower())
+        self.assertNotIn("best_run_id", multi.body)
+        self.assertNotIn("recommendation", multi.body)
 
         cfg = self.api.configuration_comparison(
             {"run_ids": ["SCENE1", "CONFIG"], "baseline_run_id": "SCENE1"},
@@ -172,6 +176,51 @@ class ResultsApiTests(unittest.TestCase):
             0.0,
             cfg.body["summary_deltas_vs_baseline"]["SCENE1"]["participating_airport_count_delta"],
         )
+
+    def test_exploratory_and_object_comparison_endpoints_are_additive(self):
+        base = make_snapshot(
+            run_id="EXP-BASE",
+            cluster_enabled=False,
+            mission_required_sorties=2,
+        )
+        pressure = make_snapshot(
+            run_id="EXP-PRESSURE",
+            cluster_enabled=False,
+            mission_required_sorties=3,
+        )
+        self._persist(base)
+        self._persist(pressure)
+
+        candidates = self.api.comparable_runs(
+            principal=self.u1,
+            base_run_id="EXP-BASE",
+            mode="exploratory",
+        )
+        self.assertEqual(200, candidates.status)
+        self.assertEqual(["EXP-PRESSURE"], [row["run_id"] for row in candidates.body["items"]])
+
+        summary = self.api.exploratory_comparison(
+            {
+                "run_ids": ["EXP-BASE", "EXP-PRESSURE"],
+                "baseline_run_id": "EXP-BASE",
+            },
+            principal=self.u1,
+        )
+        self.assertEqual(200, summary.status)
+        self.assertTrue(summary.body["descriptive_only"])
+
+        detail = self.api.object_comparison(
+            {
+                "run_ids": ["EXP-BASE", "EXP-PRESSURE"],
+                "comparison_type": "exploratory",
+                "baseline_run_id": "EXP-BASE",
+                "object_type": "task",
+                "object_id": "M1",
+            },
+            principal=self.u1,
+        )
+        self.assertEqual(200, detail.status)
+        self.assertEqual("comparison-object.v1", detail.body["schema_version"])
 
     def test_comparison_request_cardinality_and_baseline_are_strict(self):
         one = self.api.scenario_comparison({"run_ids": ["ONE"]}, principal=self.u1)

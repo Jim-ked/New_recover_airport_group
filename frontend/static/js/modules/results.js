@@ -20,11 +20,18 @@ const createWorkspaceState = () => ({
   seriesKind: 'departures',
   bottomMode: 'airports',
   airportValue: 'sorties',
+  objectType: 'task',
+  objectId: null,
+  objectAirportId: null,
+  objectResourceId: null,
+  objectAircraftId: null,
+  objectPayload: null,
+  objectCatalog: null,
 });
 const state = {
   workspace: 'damage', runs: [], runById: new Map(), damageCandidates: [], payload: null,
   runsStatus: 'loading', runsError: null,
-  candidates: { damage: createCandidateState(), multi: createCandidateState(), configuration: createCandidateState() },
+  candidates: { damage: createCandidateState(), multi: createCandidateState(), configuration: createCandidateState(), exploratory: createCandidateState() },
   chartMode: 'all', chartObjectId: null, seriesKind: 'departures', bottomMode: 'airports', airportValue: 'sorties',
   draft: createDraft(),
   selection: null,
@@ -32,6 +39,7 @@ const state = {
     damage: createWorkspaceState(),
     multi: createWorkspaceState(),
     configuration: createWorkspaceState(),
+    exploratory: createWorkspaceState(),
   },
   userId: null,
   canExport: false,
@@ -45,6 +53,11 @@ const refs = {
   overlay: $('resultsOverlay'), overlayTitle: $('resultsOverlayTitle'), overlayBody: $('resultsOverlayBody'), overlaySearch: $('resultsOverlaySearch'), overlayFooter: $('resultsOverlayFooter'), runSearch: $('resultsRunSearch'), apply: $('applyResultsComparison'), error: $('resultsError'), scopeError: $('resultsScopeError'),
   changeCondition: $('changeConditionButton'), rulesButton: $('resultsRulesButton'), runLink: $('resultsRunLink'), retryButton: $('resultsRetryButton'),
   exportWrap: $('resultsExport'), exportButton: $('resultsExportButton'), exportMenu: $('resultsExportMenu'),
+  conditionMatrix: $('resultsConditionMatrix'), solverComparison: $('resultsSolverComparison'),
+  objectDrilldown: $('resultsObjectDrilldown'), objectType: $('resultsObjectType'), objectId: $('resultsObjectId'),
+  objectIdWrap: $('resultsObjectIdWrap'), objectAirport: $('resultsObjectAirport'), objectAirportWrap: $('resultsObjectAirportWrap'),
+  objectResource: $('resultsObjectResource'), objectResourceWrap: $('resultsObjectResourceWrap'), objectAircraft: $('resultsObjectAircraft'),
+  objectAircraftWrap: $('resultsObjectAircraftWrap'), objectDetail: $('resultsObjectDetail'),
 };
 const workspaceButtons = [...document.querySelectorAll('[data-workspace]')];
 const bottomButtons = [...document.querySelectorAll('[data-bottom-mode]')];
@@ -89,7 +102,7 @@ function hydrateDraftFromSelection(workspace,view){
     if(view.draft.damageTriple<0)view.draft.damageTriple=null;
     return;
   }
-  view.draft.baseRunId=workspace==='configuration'?selection.baseline_run_id:selection.run_ids[0];
+  view.draft.baseRunId=workspace==='configuration'||workspace==='exploratory'?selection.baseline_run_id:selection.run_ids[0];
   view.draft.selectedRunIds=new Set(selection.run_ids);
 }
 function buildSessionState(){
@@ -118,8 +131,8 @@ function restoreSessionState(){
   try{
     const saved=JSON.parse(sessionStorage.getItem(key)||'null');
     if(!saved||typeof saved!=='object')return;
-    if(['damage','multi','configuration'].includes(saved.activeWorkspace))state.workspace=saved.activeWorkspace;
-    for(const workspace of ['damage','multi','configuration']){
+    if(['damage','multi','configuration','exploratory'].includes(saved.activeWorkspace))state.workspace=saved.activeWorkspace;
+    for(const workspace of ['damage','multi','configuration','exploratory']){
       const source=saved.workspaces?.[workspace];if(!source||typeof source!=='object')continue;
       const view=state.workspaceStates[workspace];
       view.selection=normalizeSelection(workspace,source.selection);
@@ -134,6 +147,12 @@ function restoreSessionState(){
   }catch(error){console.warn('Results UI state could not be restored',error);}
 }
 function esc(v){return String(v ?? '—').replace(/[&<>'"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function displayValue(value,options){
+  const {formatter=(item)=>String(item),notApplicable=false}=options||{};
+  if(notApplicable)return '不适用';
+  if(value===null||value===undefined||(typeof value==='number'&&!Number.isFinite(value)))return '未记录';
+  return formatter(value);
+}
 function pct(v){return formatPercent(v,{digits:1});}
 function number(v,d=0){return d===0?formatInteger(v):formatDecimal(v,{minimumFractionDigits:d,maximumFractionDigits:d});}
 function signed(v,{percent=false,unit=''}={}){if(typeof v!=='number'||!Number.isFinite(v))return '—';const absolute=Math.abs(v);const x=percent?formatPercent(absolute,{digits:1}):`${Number.isInteger(absolute)?formatInteger(absolute):formatDecimal(absolute)}${unit}`;return `${v>0?'+':v<0?'−':''}${x}`;}
@@ -148,7 +167,7 @@ function runMatchesSearch(row,query){const q=String(query||'').trim().toLocaleLo
 function runHref(id){return `/runs/${encodeURIComponent(id)}`;}
 function roleLabel(role){return ({R0:'基准',R1:'损毁',R2:'组选'})[role]||role;}
 function labelFor(kind,id){
-  const labels=state.payload.labels||{};
+  const labels=state.payload.labels||Object.values(state.payload.labels_by_run||{})[0]||{};
   const group=({airport:'airports',mission:'missions',aircraft:'aircraft'})[kind];
   const label=group?labels[group]?.[id]:null;
   if(kind==='airport')return airportDisplayLabel(id,label);
@@ -180,6 +199,13 @@ function viewCapabilities(viewState,canExport=false){
   };
 }
 function workspaceRuleSummary(){
+  const summaries={
+    damage:'<strong>严格损毁对照</strong><ul><li>R0：无损毁、未开启选组</li><li>R1：同一问题、目标损毁、未开启选组</li><li>R2：与 R1 相同损毁，并开启选组</li></ul><p>组合由系统自动校验可比性。</p>',
+    multi:'<strong>严格多损毁对照</strong><ul><li>有效基础问题和运行配置一致</li><li>仅选定损毁条件可变</li></ul>',
+    configuration:'<strong>严格配置对照</strong><ul><li>基础情境和选定损毁一致</li><li>允许选组或目标偏好变化，目标可比性单独标明</li></ul>',
+    exploratory:'<strong>跨条件描述性探索</strong><ul><li>允许任务压力、情境、时间范围或配置不同</li><li>必须显式列出条件差异</li></ul><p>仅描述，不作因果归因。</p>',
+  };
+  if(summaries[state.workspace])return summaries[state.workspace];
   if(state.workspace==='damage')return '<strong>损毁影响与优化效果</strong><ul><li>R0：无损毁、未开启组选</li><li>R1：同一问题、目标损毁、未开启组选</li><li>R2：与 R1 相同损毁，并开启组选</li></ul><p>组合由系统自动校验可比性。</p>';
   if(state.workspace==='multi')return '<strong>多场景比较</strong><ul><li>使用同一问题</li><li>保持一致的运行配置</li><li>选择不同损毁场景</li></ul><p>组合由系统自动校验可比性。</p>';
   return '<strong>方案配置比较</strong><ul><li>使用同一情境和损毁条件</li><li>保持公平一致的求解条件</li><li>比较不同方案配置</li></ul><p>组合由系统自动校验可比性。</p>';
@@ -209,9 +235,12 @@ function renderWorkbenchState(viewState){
 }
 function renderViewState(){
   const viewState=deriveViewState();
-  const capabilities=viewCapabilities(viewState,state.canExport);
+  const capabilities=viewCapabilities(viewState,state.canExport&&state.workspace!=='exploratory');
   refs.page.dataset.viewState=viewState;
   refs.metrics.classList.toggle('hidden',!capabilities.chart);
+  refs.conditionMatrix.classList.toggle('hidden',!capabilities.chart);
+  refs.solverComparison.classList.toggle('hidden',!capabilities.chart);
+  refs.objectDrilldown.classList.toggle('hidden',!capabilities.chart);
   refs.chartControls.classList.toggle('hidden',!capabilities.chart);
   refs.changeCondition.classList.toggle('hidden',!capabilities.select&&!capabilities.change);
   refs.rulesButton.classList.toggle('hidden',!capabilities.rules);
@@ -230,7 +259,7 @@ function runSituationId(run){return run?.situation?.situation_id||run?.situation
 function runCreatedAt(run){return Date.parse(run?.created_at||'')||0;}
 function rankedBaseRuns(workspace){
   const damageView=state.workspaceStates.damage;
-  const preferredRunId=workspace==='multi'
+  const preferredRunId=workspace==='multi'||workspace==='exploratory'
     ? damageView.selection?.r0_run_id
     : damageView.selection?.r1_run_id;
   const preferredSituationId=runSituationId(state.runById.get(preferredRunId));
@@ -255,7 +284,7 @@ function rankedBaseRuns(workspace){
   });
 }
 async function discoverComparableCandidates(workspace){
-  const mode=workspace==='multi'?'multi_scenario':'configuration';
+  const mode=workspace==='multi'?'multi_scenario':workspace==='exploratory'?'exploratory':'configuration';
   const damageView=state.workspaceStates.damage;
   const preferredOtherId=workspace==='configuration'?damageView.selection?.r2_run_id:null;
   let best=null;
@@ -301,7 +330,7 @@ async function loadInitial(){
   try{
     const runs=await apiFetch('/api/runs?status=succeeded&limit=500');
     state.runs=runs.items||[];state.runById=new Map(state.runs.map((x)=>[x.run_id,x]));state.runsStatus='ready';
-    state.candidates={damage:createCandidateState(),multi:createCandidateState(),configuration:createCandidateState()};
+    state.candidates={damage:createCandidateState(),multi:createCandidateState(),configuration:createCandidateState(),exploratory:createCandidateState()};
     if(state.runs.length === 0){renderViewState();return;}
     renderViewState();
     await ensureWorkspaceCandidates(state.workspace);
@@ -338,7 +367,7 @@ async function openOverlay(){
   const requestDraft=state.draft;const baseRunId=state.draft.baseRunId;
   state.draft.comparableLoading=true;renderOverlay();
   try{
-    const mode=state.workspace==='multi'?'multi_scenario':'configuration';
+    const mode=state.workspace==='multi'?'multi_scenario':state.workspace==='exploratory'?'exploratory':'configuration';
     const items=await loadComparable(baseRunId,mode);
     if(state.draft===requestDraft&&state.draft.baseRunId===baseRunId)state.draft.comparableRuns=items;
   }catch(error){if(state.draft===requestDraft)showComparisonError(error);}
@@ -347,7 +376,7 @@ async function openOverlay(){
 function closeOverlay(){refs.overlay.classList.remove('open');refs.overlay.setAttribute('aria-hidden','true');}
 function renderOverlay(){
   if(state.workspace==='damage')renderDamageOverlay();
-  else renderComparableOverlay(state.workspace==='multi'?'multi_scenario':'configuration');
+  else renderComparableOverlay(state.workspace==='multi'?'multi_scenario':state.workspace==='exploratory'?'exploratory':'configuration');
 }
 function renderDamageOverlay(){
   const rows=state.damageCandidates.map((row,index)=>({row,index})).filter(({row})=>[row.r0_run_id,row.r1_run_id,row.r2_run_id].some((id)=>runMatchesSearch(state.runById.get(id)||{run_id:id},state.draft.searchText)));
@@ -364,13 +393,14 @@ function renderComparableOverlay(mode){
   const base=state.draft.baseRunId;
   const baseRows=state.runs.filter((row)=>row.run_id===base||runMatchesSearch(row,state.draft.searchText));
   const all=[state.runById.get(base),...state.draft.comparableRuns].filter((row,index,items)=>row&&items.findIndex((item)=>item.run_id===row.run_id)===index).filter((row)=>row.run_id===base||runMatchesSearch(state.runById.get(row.run_id)||row,state.draft.searchText));
-  const comparableContent=!base?'先选择基准 Run':state.draft.comparableLoading?'正在读取可比 Run…':all.length?all.map((r)=>{const id=r.run_id;const checked=state.draft.selectedRunIds.has(id);return `<label class="candidate-row${checked?' selected':''}"><input type="checkbox" data-run-id="${esc(id)}" ${checked?'checked':''} ${id===base?'disabled':''}><span><b>${esc(runLabel(id))}</b><small>${id===base?(mode==='configuration'?'基准方案':'比较基准'):'系统确认可比'}</small></span></label>`}).join(''):'没有匹配的可比 Run。';
-  const rule=mode==='multi_scenario'?'使用同一问题和运行配置，对比不同损毁场景；组合由系统自动校验可比性。':'使用同一情境和损毁条件，在公平一致的求解条件下比较不同方案配置；组合由系统自动校验可比性。';
-  refs.overlayBody.innerHTML=`<div class="overlay-section"><label>${mode==='multi_scenario'?'比较基准 Run':'基准方案 Run'}</label><select id="comparisonBaseRun" class="overlay-select"><option value="">请选择成功 Run</option>${baseRows.map((r)=>`<option value="${esc(r.run_id)}" ${base===r.run_id?'selected':''}>${esc(runLabel(r.run_id))}</option>`).join('')}</select></div><div id="comparableRunArea" class="overlay-section"><span class="overlay-title">可比成功 Run（${mode==='multi_scenario'?'选择 2–6 个':'选择 2–5 个'}）</span><div class="candidate-list">${all.length&&!state.draft.comparableLoading?comparableContent:`<div class="candidate-row"><span></span><span>${comparableContent}</span></div>`}</div></div><div class="candidate-check">${rule}</div>`;
+  const comparableContent=!base?'先选择基准 Run':state.draft.comparableLoading?'正在读取可比 Run…':all.length?all.map((r)=>{const id=r.run_id;const checked=state.draft.selectedRunIds.has(id);const relation=r.comparability?.strict_comparable?`严格可比：${(r.comparability.strict_modes||[]).join(' / ')}`:mode==='exploratory'?'跨条件候选':'系统确认可比';return `<label class="candidate-row${checked?' selected':''}"><input type="checkbox" data-run-id="${esc(id)}" ${checked?'checked':''} ${id===base?'disabled':''}><span><b>${esc(runLabel(id))}</b><small>${id===base?(mode==='configuration'?'基准方案':'比较基准'):esc(relation)}</small></span></label>`}).join(''):'没有匹配的可比 Run。';
+  const rule=mode==='multi_scenario'?'有效基础问题和配置一致，仅选定损毁可变。':mode==='exploratory'?'允许条件不同；结果仅用于描述性探索，不作因果归因。':'基础情境和选定损毁一致，允许指定配置变化。';
+  const limitText=mode==='multi_scenario'?'选择 2–6 个':mode==='exploratory'?'选择 2–50 个':'选择 2–5 个';
+  refs.overlayBody.innerHTML=`<div class="overlay-section"><label>${mode==='configuration'?'基准方案 Run':'比较基准 Run'}</label><select id="comparisonBaseRun" class="overlay-select"><option value="">请选择成功 Run</option>${baseRows.map((r)=>`<option value="${esc(r.run_id)}" ${base===r.run_id?'selected':''}>${esc(runLabel(r.run_id))}</option>`).join('')}</select></div><div id="comparableRunArea" class="overlay-section"><span class="overlay-title">成功 Run（${limitText}）</span><div class="candidate-list">${all.length&&!state.draft.comparableLoading?comparableContent:`<div class="candidate-row"><span></span><span>${comparableContent}</span></div>`}</div></div><div class="candidate-check">${rule}</div>`;
   $('comparisonBaseRun').addEventListener('change',async(e)=>{const next=e.target.value||null;const requestDraft=state.draft;state.draft.baseRunId=next;state.draft.selectedRunIds=new Set(next?[next]:[]);state.draft.comparableRuns=[];state.draft.comparableLoading=Boolean(next);clearScopeError();renderComparableOverlay(mode);if(!next)return;try{const items=await loadComparable(next,mode);if(state.draft!==requestDraft||state.draft.baseRunId!==next)return;state.draft.comparableRuns=items;}catch(err){if(state.draft!==requestDraft||state.draft.baseRunId!==next)return;showComparisonError(err);}finally{if(state.draft===requestDraft&&state.draft.baseRunId===next){state.draft.comparableLoading=false;renderComparableOverlay(mode);}}});
   refs.overlayBody.querySelectorAll('input[type="checkbox"]').forEach((el)=>el.addEventListener('change',()=>{const id=el.dataset.runId;if(el.checked)state.draft.selectedRunIds.add(id);else state.draft.selectedRunIds.delete(id);renderComparableOverlay(mode);}));
   const count=state.draft.selectedRunIds.size;
-  const maximum=mode==='multi_scenario'?6:5;
+  const maximum=mode==='multi_scenario'?6:mode==='exploratory'?50:5;
   refs.apply.disabled=state.draft.comparableLoading||count<2||count>maximum;
 }
 
@@ -386,10 +416,11 @@ function selectionFromDraft(workspace){
 async function requestComparison(workspace,selection){
   if(workspace==='damage')return apiFetch('/api/results/damage-comparison',{method:'POST',body:selection});
   if(workspace==='multi')return apiFetch('/api/results/scenario-comparison',{method:'POST',body:selection});
+  if(workspace==='exploratory')return apiFetch('/api/results/exploratory-comparison',{method:'POST',body:selection});
   return apiFetch('/api/results/config-comparison',{method:'POST',body:selection});
 }
 async function restoreSavedComparisons(){
-  for(const workspace of ['damage','multi','configuration']){
+  for(const workspace of ['damage','multi','configuration','exploratory']){
     const view=state.workspaceStates[workspace];
     if(!view.selection)continue;
     try{
@@ -436,13 +467,18 @@ async function autoApplyWorkspaceDefault(workspace){
       selection={run_ids:uniqueRunIds};
       if(selection.run_ids.length<2)return false;
       view.payload=await requestComparison('multi',selection);
-    }else{
+    }else if(workspace==='configuration'){
       const damageView=state.workspaceStates.damage;
       const preferred=damageView.selection?.r2_run_id;
       const other=candidate.items.find((item)=>item.run_id===preferred)||candidate.items[0];
       if(!other)return false;
       selection={run_ids:[candidate.baseRunId,other.run_id],baseline_run_id:candidate.baseRunId};
       view.payload=await requestComparison('configuration',selection);
+    }else{
+      const runIds=[candidate.baseRunId,...candidate.items.filter((_item,index)=>index<5).map((item)=>item.run_id)];
+      selection={run_ids:[...new Set(runIds)],baseline_run_id:candidate.baseRunId};
+      if(selection.run_ids.length<2)return false;
+      view.payload=await requestComparison('exploratory',selection);
     }
   }
   view.selection=selection;
@@ -454,7 +490,8 @@ async function autoApplyDefaultComparison(){
   const damageApplied=await autoApplyWorkspaceDefault('damage');
   const multiApplied=await autoApplyWorkspaceDefault('multi');
   const configurationApplied=await autoApplyWorkspaceDefault('configuration');
-  const applied=damageApplied||multiApplied||configurationApplied;
+  const exploratoryApplied=await autoApplyWorkspaceDefault('exploratory');
+  const applied=damageApplied||multiApplied||configurationApplied||exploratoryApplied;
   activateWorkspaceState(state.workspace);
   if(state.payload)renderComparison();else renderViewState();
   if(applied)persistSessionState();
@@ -502,14 +539,50 @@ async function exportResults(format){
   finally{ refs.exportButton.textContent='导出'; updateExportState(); }
 }
 
-function renderComparison(){clearScopeError();renderViewState();updateTitles();renderConditions();renderMetrics();renderChartControls();renderChart();renderDiff();renderBottom();}
+function renderConditionMatrix(){
+  const ids=currentRunIds();
+  const comparability=state.payload.comparability||{};
+  const configurations=state.payload.configurations||{};
+  const timeAxes=state.payload.time_axes||{};
+  const descriptiveOnly=Boolean(state.payload.descriptive_only);
+  const rows=ids.map((id)=>{
+    const relation=comparability[id]||{};
+    const strictModes=relation.strict_modes||[];
+    const differences=relation.differences||relation.reasons||[];
+    const configEntry=configurations[id]||state.runById.get(id)?.run_config||{};
+    const config=configEntry.run_config||configEntry;
+    const axis=timeAxes[id]||state.payload.timeline||{};
+    const windows=axis.windows||[];
+    const timeLabel=windows.length?`T${windows[0]} – T${windows[windows.length-1]} · ${windows.length} 窗`:'未记录';
+    const scope=descriptiveOnly
+      ? (strictModes.length?`同时满足严格 ${strictModes.join(' / ')}`:'跨条件描述')
+      : '严格条件对照';
+    return `<tr><th><a href="${esc(runHref(id))}">${esc(seriesLabel(id))}</a></th><td>${esc(scope)}</td><td>${config.damage_scenario_id?esc(config.damage_scenario_id):'无选定损毁'}</td><td>${config.cluster_enabled?'选组开启':'选组关闭'}</td><td>${esc(timeLabel)}</td><td>${esc(differences.join('；')||'无已记录条件差异')}</td></tr>`;
+  }).join('');
+  const warning=descriptiveOnly?'<p class="comparison-scope-note warning"><strong>跨条件探索：</strong>仅描述，不作因果归因。任务需求、时间范围或目标定义不同时，差值只表示历史结果差异。</p>':'<p class="comparison-scope-note">当前组合已按对应的严格规则校验。</p>';
+  refs.conditionMatrix.innerHTML=`<header class="results-box-head"><div><strong>比较条件矩阵</strong><small>先确认条件，再解读结果差异</small></div></header>${warning}<div class="results-table-wrap"><table class="results-table"><thead><tr><th>Run</th><th>比较资格</th><th>选定损毁</th><th>选组</th><th>有效时间轴</th><th>相对基准的条件差异</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function renderSolverComparison(){
+  const missingLabel='未记录';
+  const solver=state.payload.solver_comparison||{};
+  const byRun=solver.by_run||{};
+  const ids=currentRunIds();
+  const fact=(row,key,formatter)=>displayValue(row?.[key],{formatter})||missingLabel;
+  const rows=ids.map((id)=>{const row=byRun[id]||{};return `<tr><th>${esc(seriesLabel(id))}</th><td>${esc(fact(row,'solver_status'))}</td><td>${esc(fact(row,'objective',(v)=>number(v,4)))}</td><td>${esc(fact(row,'best_bound',(v)=>number(v,4)))}</td><td>${esc(fact(row,'gap',(v)=>pct(v)))}</td><td>${esc(fact(row,'solve_time_s',(v)=>`${number(v,2)} s`))}</td><td>${esc(fact(row,'cluster_lp_objective',(v)=>number(v,4)))}</td><td>${esc(fact(row,'f1',(v)=>number(v,4)))}</td><td>${esc(fact(row,'f2',(v)=>number(v,4)))}</td><td>${esc(fact(row,'f3',(v)=>number(v,4)))}</td></tr>`;}).join('');
+  const proven=solver.proven_strict_orderings||[];
+  const objectiveNote=solver.objective_definition_comparable
+    ? (proven.length?proven.map((row)=>`有界限证据：${esc(row.higher_run_id)} 的可行下界 ${esc(number(row.higher_lower_bound,4))} 严格高于 ${esc(row.lower_run_id)} 的对偶上界 ${esc(number(row.lower_upper_bound,4))}。`).join('<br>'):'目标定义一致，但当前界限不足以证明最优目标存在严格差异。')
+    : '目标定义不一致，不直接比较 objective。';
+  refs.solverComparison.innerHTML=`<header class="results-box-head"><div><strong>求解事实与目标区间</strong><small>最大化问题：objective 为当前可行下界，best bound 为对偶上界</small></div></header><div class="results-table-wrap"><table class="results-table solver-table"><thead><tr><th>Run</th><th>终止状态</th><th>可行下界</th><th>对偶上界</th><th>Gap</th><th>求解时间</th><th>选组 LP</th><th>F1</th><th>F2</th><th>F3</th></tr></thead><tbody>${rows}</tbody></table></div><p class="comparison-scope-note">${objectiveNote}<br>F1/F2/F3 是优化目标分项，不是五维综合评价；普通 unmet 也不是独立复核的物理最小缺口。</p>`;
+}
+function renderComparison(){clearScopeError();renderViewState();updateTitles();renderConditions();renderConditionMatrix();renderMetrics();renderSolverComparison();renderChartControls();renderChart();renderDiff();renderBottom();prepareObjectDrilldown();}
 function renderConditions(){
   if(state.workspace==='damage'){
     const roles=state.payload.roles||{};
     refs.conditionFacts.innerHTML=['R0','R1','R2'].map((role)=>`<a href="${esc(runHref(roles[role]))}" title="${esc(runLabel(roles[role]))}" aria-label="查看单次结果 ${role}">${role} ${roleLabel(role)}</a>`).join('<span>·</span>');
   }else{
     const ids=state.payload.run_ids||[];
-    refs.conditionFacts.innerHTML=ids.map((id,index)=>`<a href="${esc(runHref(id))}" title="${esc(runLabel(id))}" aria-label="查看单次结果 ${esc(id)}">${state.workspace==='configuration'&&id===state.payload.baseline_run_id?'基准方案':state.workspace==='multi'?`场景 ${index+1}`:`方案 ${index+1}`}</a>`).join('<span>·</span>');
+    refs.conditionFacts.innerHTML=ids.map((id,index)=>`<a href="${esc(runHref(id))}" title="${esc(runLabel(id))}" aria-label="查看单次结果 ${esc(id)}">${id===state.payload.baseline_run_id?'基准':state.workspace==='multi'?`损毁条件 ${index+1}`:state.workspace==='exploratory'?`历史 Run ${index+1}`:`方案 ${index+1}`}</a>`).join('<span>·</span>');
   }
   refs.changeCondition.textContent='修改条件';
 }
@@ -517,23 +590,26 @@ function summaryFor(id){
   return state.payload.run_summaries?.[id]||{};
 }
 function metricValue(summary,key){
-  if(key==='missions')return number(summary.mission_count,0);
   if(key==='required')return number(summary.required_sorties_total,0);
-  if(key==='scheduled')return number(summary.scheduled_sorties_total,0);
+  if(key==='fulfilled')return number(summary.fulfilled_sorties_total,0);
+  if(key==='unmet')return number(summary.unmet_sorties_total,0);
+  if(key==='additional')return number(summary.additional_sorties_total,0);
   if(key==='participants')return number(summary.participating_airport_count,0);
-  if(key==='resource')return pct(summary.minimum_resource_remaining?.ratio);
+  if(key==='solver')return displayValue(state.payload.solver_comparison?.by_run?.[summary.run_id]?.solver_status);
   return '—';
 }
 function renderMetrics(){
   const ids=currentRunIds();const cards=[
-    ['任务数','missions'],['需求架次','required'],['已调度架次','scheduled'],['参与机场','participants'],['资源最低余量','resource'],
+    ['需求','required'],['实际履行','fulfilled'],['当前缺口','unmet'],['额外调度','additional'],['参与机场','participants'],['求解状态','solver'],
   ];
-  refs.metrics.innerHTML=cards.map(([title,key])=>`<article class="results-metric"><h4>${title}</h4>${ids.map((id)=>`<div class="metric-line"><span>${esc(seriesLabel(id))}</span><b>${esc(metricValue(summaryFor(id),key))}</b></div>`).join('')}</article>`).join('');
+  refs.metrics.innerHTML=cards.map(([title,key])=>`<article class="results-metric"><h4>${title}</h4>${ids.map((id)=>{const summary={...summaryFor(id),run_id:id};return `<div class="metric-line"><span>${esc(seriesLabel(id))}</span><b>${esc(metricValue(summary,key))}</b></div>`;}).join('')}</article>`).join('');
 }
 function timelineObjectBlock(){
   const t=state.payload.timeline||{};if(state.chartMode==='airport')return t.by_airport||{};if(state.chartMode==='mission')return t.by_mission||{};if(state.chartMode==='aircraft')return t.by_aircraft||{};return null;
 }
 function renderChartControls(){
+  if(state.workspace==='exploratory'){refs.chartControls.classList.add('hidden');return;}
+  refs.chartControls.classList.remove('hidden');
   [...refs.chartModes.querySelectorAll('button')].forEach((b)=>b.classList.toggle('active',b.dataset.chartMode===state.chartMode));
   [...refs.seriesKinds.querySelectorAll('button')].forEach((b)=>b.classList.toggle('active',b.dataset.seriesKind===state.seriesKind));
   if(state.chartMode==='all'){refs.objectSelect.classList.add('hidden');return;}
@@ -585,6 +661,7 @@ function validateChartData(windows,series,context){
 }
 function renderChart(){
   if(!state.payload){refs.chart.innerHTML='<div class="results-placeholder">暂无比较数据</div>';return;}
+  if(state.workspace==='exploratory'){refs.chartTitle.textContent='总体差异与对象下钻';refs.chart.innerHTML='<div class="results-placeholder"><strong>跨条件集合不共用单一时间轴</strong><span>请先查看条件矩阵，再在下方选择同一任务、机场、资源、机型或完整航链。</span></div>';refs.legend.innerHTML='';return;}
   refs.chartTitle.textContent=chartTitleText();
   if(state.chartMode!=='all'&&!state.chartObjectId){refs.chart.innerHTML=`<div class="results-placeholder">当前比较无可用${objectModeLabel()}时序</div>`;refs.legend.innerHTML='';return;}
   const checked=validateChartData(state.payload.timeline?.windows,comparisonSeries(),{workspace:state.workspace,series:state.seriesKind,chart_mode:state.chartMode,object_id:state.chartObjectId});
@@ -647,6 +724,12 @@ function renderDiff(){
     const rows=[['已调度架次',...ex(d.scheduled_sorties_total,'lowest','highest',number)],['峰值出动量',...ex(d.peak_sorties,'lowest','highest',number)],['最大机场承接占比',...ex(d.max_airport_departure_share,'lowest','highest',pct)],['资源最低余量',...ex(d.minimum_resource_remaining_ratio,'lowest','highest',pct)],['参与机场数量',...ex(d.participating_airport_count,'lowest','highest',number)]];
     refs.diff.innerHTML='<div class="diff-row"><span></span><span>低/早</span><span>高/晚</span></div>'+rows.map((r)=>`<div class="diff-row"><span>${r[0]}</span><span>${esc(r[1])}</span><span>${esc(r[2])}</span></div>`).join('')+'<div class="diff-note">极值用于描述场景差异，不代表场景优劣排序。</div>';return;
   }
+  if(state.workspace==='exploratory'){
+    const deltas=state.payload.descriptive_deltas_vs_baseline||{},base=state.payload.baseline_run_id;
+    const ids=(state.payload.run_ids||[]).filter((id)=>id!==base);
+    const rows=[['需求','required_sorties_total_delta_vs_baseline'],['实际履行','fulfilled_sorties_total_delta_vs_baseline'],['当前缺口','unmet_sorties_total_delta_vs_baseline'],['额外调度','additional_sorties_total_delta_vs_baseline'],['参与机场','participating_airport_count_delta_vs_baseline']];
+    refs.diff.innerHTML=`<div class="diff-note"><b>相对基准 ${esc(base)} 的描述性差值</b></div>${rows.map(([label,key])=>`<div class="diff-row compact"><span>${label}</span><span>${ids.map((id)=>`${esc(shortRunId(id))} ${signed(deltas[id]?.[key])}`).join('<br>')||'—'}</span></div>`).join('')}<div class="diff-note">仅描述，不作因果归因；需求或时间轴不同时，数值差不表示单一因素效应。</div>`;return;
+  }
   const deltas=state.payload.summary_deltas_vs_baseline||{},base=state.payload.baseline_run_id;const ids=(state.payload.run_ids||[]).filter((id)=>id!==base);
   const objectiveNote=state.payload.objective_comparable?'Raw objective 使用同一目标定义。':'Raw objective 的系数定义不同，不作直接方案优劣比较。';
   const rows=[
@@ -690,6 +773,59 @@ function renderBottom(){
   refs.table.innerHTML=`<table class="results-table"><thead><tr><th>方案结构</th>${ids.map((id)=>`<th>${esc(seriesLabel(id))}</th>`).join('')}</tr></thead><tbody><tr><td>组选机场</td>${ids.map((id)=>`<td>${esc((rowFor(id).selected_cluster||[]).map((aid)=>labelFor('airport',aid)).join('、')||'—')}</td>`).join('')}</tr><tr><td>实际参与机场</td>${ids.map((id)=>`<td>${esc((rowFor(id).participating_airports||[]).map((aid)=>labelFor('airport',aid)).join('、')||'—')}</td>`).join('')}</tr><tr><td>出动集中度 HHI</td>${ids.map((id)=>`<td>${formatHhi(rowFor(id).departure_hhi)}</td>`).join('')}</tr><tr><td>跨场返航比例</td>${ids.map((id)=>`<td>${pct(rowFor(id).cross_return_ratio)}</td>`).join('')}</tr></tbody></table>`;
 }
 
+function comparisonType(){
+  if(state.workspace==='multi')return 'damage';
+  if(state.workspace==='configuration')return 'configuration';
+  // The R0/R1/R2 workspace contains both a damage step and a configuration step;
+  // no single strict object-comparison mode can validly cover all three at once.
+  return 'exploratory';
+}
+function catalogLabels(){return state.payload.labels||Object.values(state.payload.labels_by_run||{})[0]||{};}
+async function loadObjectCatalog(){
+  const baseline=state.payload.baseline_run_id||currentRunIds()[0];
+  if(!baseline)return null;
+  const [metrics,situation]=await Promise.all([apiFetch(`/api/runs/${encodeURIComponent(baseline)}/metrics`),apiFetch(`/api/runs/${encodeURIComponent(baseline)}/situation`)]);
+  return {metrics,situation};
+}
+function fillSelect(select,items,selected){
+  select.innerHTML=items.map(([value,label])=>`<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(label)}</option>`).join('');
+  return items.some(([value])=>value===selected)?selected:items[0]?.[0]||null;
+}
+async function prepareObjectDrilldown(){
+  const workspace=state.workspace;const view=state.workspaceStates[workspace];
+  refs.objectType.value=view.objectType;refs.objectDetail.innerHTML='<div class="results-placeholder">正在读取对象目录…</div>';
+  try{if(!view.objectCatalog)view.objectCatalog=await loadObjectCatalog();if(state.workspace!==workspace)return;renderObjectControls(view);await requestObjectComparison();}
+  catch(error){showComparisonError(error);refs.objectDetail.innerHTML='<div class="results-placeholder chart-error">对象结果读取失败</div>';}
+}
+function renderObjectControls(view=state.workspaceStates[state.workspace]){
+  const metrics=view.objectCatalog?.metrics||{};const labels=catalogLabels();const type=view.objectType;
+  refs.objectType.value=type;const needsId=type==='task'||type==='airport'||type==='collaboration';
+  refs.objectIdWrap.classList.toggle('hidden',!needsId);refs.objectAirportWrap.classList.toggle('hidden',!['resource','aircraft','collaboration'].includes(type));refs.objectResourceWrap.classList.toggle('hidden',type!=='resource');refs.objectAircraftWrap.classList.toggle('hidden',type!=='aircraft');
+  if(needsId){const raw=type==='task'?Object.keys(metrics.tasks||{}):type==='airport'?Object.keys(metrics.airports||{}):Object.keys(metrics.tasks||{});const items=(type==='collaboration'?[['','全部任务']]:[]).concat(raw.sort().map((id)=>[id,type==='airport'?airportDisplayLabel(id,labels.airports?.[id]):labels.missions?.[id]||id]));view.objectId=fillSelect(refs.objectId,items,view.objectId);}
+  if(['resource','aircraft','collaboration'].includes(type)){const airportIds=Object.keys(metrics.airports||{}).sort();const items=(type==='collaboration'?[['','所有机场']]:[]).concat(airportIds.map((id)=>[id,airportDisplayLabel(id,labels.airports?.[id])]));view.objectAirportId=fillSelect(refs.objectAirport,items,view.objectAirportId);}
+  if(type==='resource'){const resourceRows=metrics.resources?.by_airport?.[view.objectAirportId]||{},meta=metrics.resources?.resource_types||{};view.objectResourceId=fillSelect(refs.objectResource,Object.keys(resourceRows).sort().map((id)=>[id,`${meta[id]?.name||id}${meta[id]?.unit?` (${meta[id].unit})`:''}`]),view.objectResourceId);}
+  if(type==='aircraft'){const aircraftRows=metrics.aircraft_inventory?.by_airport?.[view.objectAirportId]||{};view.objectAircraftId=fillSelect(refs.objectAircraft,Object.keys(aircraftRows).sort().map((id)=>[id,labels.aircraft?.[id]||id]),view.objectAircraftId);}
+}
+async function requestObjectComparison(){
+  const view=state.workspaceStates[state.workspace],runIds=currentRunIds(),baseline=state.payload.baseline_run_id||runIds[0];const body={run_ids:runIds,comparison_type:comparisonType(),baseline_run_id:baseline,object_type:view.objectType};
+  if(view.objectType==='task'||view.objectType==='airport')body.object_id=view.objectId;
+  if(view.objectType==='resource'){body.airport_id=view.objectAirportId;body.resource_type_id=view.objectResourceId;}
+  if(view.objectType==='aircraft'){body.airport_id=view.objectAirportId;body.aircraft_type_id=view.objectAircraftId;}
+  if(view.objectType==='collaboration'){if(view.objectId)body.object_id=view.objectId;if(view.objectAirportId)body.airport_id=view.objectAirportId;}
+  const requiredMissing=view.objectType!=='collaboration'&&Object.entries(body).some(([key,value])=>key!=='object_id'&&key!=='airport_id'&&key!=='resource_type_id'&&key!=='aircraft_type_id'?false:value===null||value===undefined||value==='');
+  if(requiredMissing||runIds.length<2){refs.objectDetail.innerHTML='<div class="results-placeholder">当前基准 Run 没有该类对象</div>';return;}
+  refs.objectDetail.innerHTML='<div class="results-placeholder">正在读取对象级差异…</div>';const payload=await apiFetch('/api/results/object-comparison',{method:'POST',body});if(state.workspaceStates[state.workspace]!==view)return;view.objectPayload=payload;renderObjectDetail(payload);
+}
+function objectMetricRows(payload){const type=payload.object?.type;if(type==='task')return [['需求','required_total'],['实际履行','fulfilled_total'],['缺口','unmet_total'],['额外调度','additional_total']];if(type==='airport')return [['出动','departures_total'],['返航','returns_total'],['承接占比','departure_share']];if(type==='resource')return [['初始库存','initial']];if(type==='aircraft')return [['初始可用','baseline_initial_quantity']];return [['跨机场返航','cross_return_sorties'],['跨机场返航比例','cross_return_ratio'],['出动集中度 HHI','departure_hhi']];}
+function renderObjectDetail(payload){
+  const ids=payload.run_ids||[],type=payload.object?.type,rows=objectMetricRows(payload);const scalar=`<table class="results-table object-summary"><thead><tr><th>指标</th>${ids.map((id)=>`<th>${esc(seriesLabel(id))}<small>绝对值 / 相对基准</small></th>`).join('')}</tr></thead><tbody>${rows.map(([label,key])=>`<tr><th>${label}</th>${ids.map((id)=>{const item=payload.runs?.[id]||{},value=item.absolute?.[key],delta=item.delta_vs_baseline?.[key],isRatio=key.includes('ratio')||key==='departure_share';return `<td>${esc(displayValue(value,{formatter:(v)=>isRatio?pct(v):number(v)}))}<small>${id===payload.baseline_run_id?'基准':`Δ ${signed(delta,{percent:isRatio})}`}</small></td>`;}).join('')}</tr>`).join('')}</tbody></table>`;
+  const timelineFields=type==='airport'?['capacity.available','capacity.used_total','capacity.utilization']:type==='resource'?['remaining','replenishment_actual','consumed_increment','permanent_loss']:type==='aircraft'?['available_before_departure','in_use','departures','ready_releases']:type==='task'?['departures_timeline','returns_timeline']:[];
+  const timeline=timelineFields.map((path)=>{const parts=path.split('.'),values=(id)=>parts.reduce((value,key)=>value?.[key],payload.runs?.[id]?.absolute);return `<table class="results-table compact-series"><thead><tr><th>${esc(path)}</th>${ids.map((id)=>`<th>${esc(shortRunId(id))}</th>`).join('')}</tr></thead><tbody><tr><td>逐窗绝对值</td>${ids.map((id)=>`<td>${Array.isArray(values(id))?esc(values(id).map((v)=>displayValue(v,{formatter:(x)=>number(x,2)})).join(' · ')):'未记录'}</td>`).join('')}</tr></tbody></table>`;}).join('');
+  const permanentNote=type==='resource'&&Object.values(payload.runs||{}).some((run)=>run.absolute?.permanent_loss_recorded===false)?'<p class="comparison-scope-note warning">当前正式结果未记录实际 permanent_loss；不以 damage_adjusted_loss 代替。</p>':'';const chains=type==='collaboration'?renderChainChanges(payload.chain_changes||[],ids):'';
+  refs.objectDetail.innerHTML=`${scalar}${timeline}${permanentNote}${chains}<p class="comparison-scope-note">表格保留全部 Run；交互图表仅显示前 6 个 Run，不限制历史比较集合规模。</p>`;
+}
+function renderChainChanges(changes,ids){if(!changes.length)return '<div class="results-placeholder">当前条件没有完整航链变化</div>';return `<div class="results-table-wrap"><table class="results-table chain-change-table"><thead><tr><th>出发机场</th><th>任务</th><th>返航机场</th><th>机型</th><th>出动/返航/再可用窗</th>${ids.map((id)=>`<th>${esc(shortRunId(id))}</th>`).join('')}</tr></thead><tbody>${changes.map((row)=>{const chain=row.chain||{};return `<tr><td>${esc(chain.origin_airport_id)}</td><td>${esc(chain.mission_id)}</td><td>${esc(chain.return_airport_id)}</td><td>${esc(chain.aircraft_type)}</td><td>T${esc(chain.depart_window)} / T${esc(chain.return_window)} / T${esc(chain.ready_window)}</td>${ids.map((id)=>`<td>${esc(number(row.by_run?.[id]?.sorties))}<small>Δ ${esc(signed(row.by_run?.[id]?.delta_vs_baseline))}</small></td>`).join('')}</tr>`;}).join('')}</tbody></table></div>`;}
+
 workspaceButtons.forEach((b)=>b.addEventListener('click',()=>setWorkspace(b.dataset.workspace)));
 refs.changeCondition.addEventListener('click',openOverlay);$('closeResultsOverlay').addEventListener('click',closeOverlay);$('cancelResultsOverlay').addEventListener('click',closeOverlay);refs.apply.addEventListener('click',applyComparison);
 refs.rulesButton.addEventListener('click',openRules);
@@ -698,6 +834,11 @@ refs.runSearch.addEventListener('input',()=>{state.draft.searchText=refs.runSear
 refs.chartModes.addEventListener('click',(e)=>{const b=e.target.closest('[data-chart-mode]');if(!b||!state.payload)return;state.chartMode=b.dataset.chartMode;state.chartObjectId=null;renderChartControls();renderChart();captureWorkspaceState();persistSessionState();});
 refs.seriesKinds.addEventListener('click',(e)=>{const b=e.target.closest('[data-series-kind]');if(!b||!state.payload||b.dataset.seriesKind===state.seriesKind)return;state.seriesKind=b.dataset.seriesKind;renderChartControls();renderChart();captureWorkspaceState();persistSessionState();});
 refs.objectSelect.addEventListener('change',()=>{state.chartObjectId=refs.objectSelect.value||null;renderChart();captureWorkspaceState();persistSessionState();});
+refs.objectType.addEventListener('change',async()=>{const view=state.workspaceStates[state.workspace];view.objectType=refs.objectType.value;view.objectId=null;view.objectAirportId=null;view.objectResourceId=null;view.objectAircraftId=null;renderObjectControls(view);try{await requestObjectComparison();}catch(error){showComparisonError(error);}});
+refs.objectId.addEventListener('change',async()=>{state.workspaceStates[state.workspace].objectId=refs.objectId.value||null;try{await requestObjectComparison();}catch(error){showComparisonError(error);}});
+refs.objectAirport.addEventListener('change',async()=>{const view=state.workspaceStates[state.workspace];view.objectAirportId=refs.objectAirport.value||null;view.objectResourceId=null;view.objectAircraftId=null;renderObjectControls(view);try{await requestObjectComparison();}catch(error){showComparisonError(error);}});
+refs.objectResource.addEventListener('change',async()=>{state.workspaceStates[state.workspace].objectResourceId=refs.objectResource.value||null;try{await requestObjectComparison();}catch(error){showComparisonError(error);}});
+refs.objectAircraft.addEventListener('change',async()=>{state.workspaceStates[state.workspace].objectAircraftId=refs.objectAircraft.value||null;try{await requestObjectComparison();}catch(error){showComparisonError(error);}});
 bottomButtons.forEach((b)=>b.addEventListener('click',()=>{state.bottomMode=b.dataset.bottomMode;renderBottom();captureWorkspaceState();persistSessionState();}));airportValueButtons.forEach((b)=>b.addEventListener('click',()=>{if(!state.payload)return;state.airportValue=b.dataset.airportValue;renderBottom();captureWorkspaceState();persistSessionState();}));
 
 

@@ -13,6 +13,7 @@ from backend.domain.situation import Situation
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 SNAPSHOT_SCHEMA = "run_input_snapshot_v4"
+READABLE_SNAPSHOT_SCHEMAS = frozenset({SNAPSHOT_SCHEMA, "run_input_snapshot_v5"})
 
 
 class RunSnapshotValidationError(ValueError):
@@ -97,8 +98,11 @@ class RunSnapshot:
             _fail("payload_json", f"invalid snapshot JSON: {exc}")
         if not isinstance(payload, dict):
             _fail("payload_json", "snapshot payload must be an object")
-        if payload.get("schema") != SNAPSHOT_SCHEMA:
-            _fail("payload_json.schema", f"snapshot schema must be {SNAPSHOT_SCHEMA}")
+        if payload.get("schema") not in READABLE_SNAPSHOT_SCHEMAS:
+            _fail(
+                "payload_json.schema",
+                f"snapshot schema must be one of {sorted(READABLE_SNAPSHOT_SCHEMAS)}",
+            )
         if payload.get("run_id") != self.run_id:
             _fail("payload_json.run_id", "payload run_id must match snapshot run_id")
         situation = payload.get("situation") or {}
@@ -250,6 +254,12 @@ class RunSnapshot:
         changed here is ``run_id``; every business input remains byte-for-byte equivalent
         after canonical JSON normalization.
         """
+        schema = self.to_dict().get("schema")
+        if schema != SNAPSHOT_SCHEMA:
+            _fail(
+                "payload_json.schema",
+                f"historical snapshot schema {schema!r} cannot be cloned for retry",
+            )
         new_run_id = _id(new_run_id, "run_id")
         payload = self.to_dict()
         payload["run_id"] = new_run_id

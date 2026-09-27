@@ -35,6 +35,13 @@ class PathObjectiveCoefficient:
 
 
 @dataclass(frozen=True)
+class ObjectiveComponentTotals:
+    f1: float
+    f2: float
+    f3: float
+
+
+@dataclass(frozen=True)
 class ResourceUse:
     airport_id: str
     resource_type_id: str
@@ -273,6 +280,26 @@ def objective_coefficients(
     return out
 
 
+def objective_component_totals(
+    coefficients: Mapping[PathKey, PathObjectiveCoefficient],
+    quantities: Mapping[PathKey, float],
+) -> ObjectiveComponentTotals:
+    """Aggregate F1/F2/F3 from the exact path coefficients used by the model."""
+    unknown = sorted(set(quantities) - set(coefficients))
+    if unknown:
+        raise ModelFactError(f"objective quantity references unknown path: {unknown[0]}")
+    f1 = f2 = f3 = 0.0
+    for path_id, raw_quantity in quantities.items():
+        quantity = float(raw_quantity)
+        if not isfinite(quantity) or quantity < 0:
+            raise ModelFactError(f"objective quantity must be finite and nonnegative: {path_id}")
+        row = coefficients[path_id]
+        f1 += float(row.f1) * quantity
+        f2 += float(row.f2) * quantity
+        f3 += float(row.f3) * quantity
+    return ObjectiveComponentTotals(f1=f1, f2=f2, f3=f3)
+
+
 def demand_rows(ds: Mapping[str, Any], maps: PathMaps) -> Dict[Tuple[str, str], Tuple[int, Tuple[PathKey, ...]]]:
     """Baseline demand rows used by the soft-demand penalty model.
 
@@ -306,6 +333,7 @@ __all__ = [
     "ModelFactError",
     "ObjectiveWeights",
     "PathObjectiveCoefficient",
+    "ObjectiveComponentTotals",
     "ResourceUse",
     "validate_hard_demand_paths",
     "resolved_alpha",
@@ -313,6 +341,7 @@ __all__ = [
     "resource_use_by_path",
     "capacity_coefficients",
     "objective_coefficients",
+    "objective_component_totals",
     "demand_rows",
     "aircraft_events",
     "validate_schedule_base",

@@ -20,7 +20,12 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .decision_vars import build_base_path_map, build_path_map_from_base, build_var_index
 from .model_builder import build_model
-from .model_facts import ModelFactError, objective_coefficients, resolved_alpha
+from .model_facts import (
+    ModelFactError,
+    objective_coefficients,
+    objective_component_totals,
+    resolved_alpha,
+)
 
 CLUSTER_LP_TIME_LIMIT_S: float = 10.0
 _OBJECTIVE_EQ_TOL = 1e-6
@@ -182,25 +187,23 @@ def _solution_components(model, pack: Mapping[str, Any], coeffs: Mapping[Tuple, 
     x_path = pack.get("x_path")
     if not isinstance(x_path, dict):
         raise ClusterEvalError("cluster LP pack must expose canonical x_path variables")
-    f1 = f2 = f3 = 0.0
     quantities: Dict[Tuple, float] = {}
     for pid, var in x_path.items():
         value = float(model.getVal(var))
         if value <= 1e-12:
             continue
-        row = coeffs.get(pid)
-        if row is None:
-            raise ClusterEvalError(f"objective coefficient missing for path: {pid}")
         quantities[pid] = value
-        f1 += float(row.f1) * value
-        f2 += float(row.f2) * value
-        f3 += float(row.f3) * value
+
+    try:
+        components = objective_component_totals(coeffs, quantities)
+    except ModelFactError as exc:
+        raise ClusterEvalError(str(exc)) from exc
 
     unmet = pack.get("unmet_demand") or {}
     if not isinstance(unmet, dict):
         raise ClusterEvalError("cluster LP pack.unmet_demand must be a mapping")
     unmet_total = sum(max(0.0, float(model.getVal(var))) for var in unmet.values())
-    return f1, f2, f3, quantities, unmet_total
+    return components.f1, components.f2, components.f3, quantities, unmet_total
 
 
 def _eval_cluster_lp(

@@ -5,15 +5,23 @@ import unittest
 from pathlib import Path
 
 from backend.algorithm.runner import run_once
+from backend.analysis.metrics import build_metrics_core
 from backend.domain.damage import DamageScenario
 from backend.services.run_result_service import (
     RunResultAccessError,
     RunResultNotReadyError,
     RunResultService,
+    RunResultServiceError,
 )
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
-from tests.algorithm.test_runner import RunnerFakeModel, fixed_cluster_selector
+from tests.algorithm.test_runner import (
+    GapLimitFakeModel,
+    RunnerFakeModel,
+    SolverFactsFakeModel,
+    TimeLimitFakeModel,
+    fixed_cluster_selector,
+)
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
 
@@ -32,10 +40,10 @@ class RunResultServiceTests(unittest.TestCase):
     def tearDown(self):
         self._td.cleanup()
 
-    def _execute_and_persist(self, snapshot, *, owner="U1"):
+    def _execute_and_persist(self, snapshot, *, owner="U1", model_factory=RunnerFakeModel):
         self.runs.create_queued(snapshot=snapshot, owner_user_id=owner)
         self.runs.claim_running(snapshot.run_id)
-        kwargs = {"model_factory": RunnerFakeModel}
+        kwargs = {"model_factory": model_factory}
         if snapshot.to_dict()["run_config"]["cluster_enabled"]:
             kwargs["cluster_selector_fn"] = fixed_cluster_selector
         result = run_once(snapshot, **kwargs)
@@ -53,6 +61,95 @@ class RunResultServiceTests(unittest.TestCase):
         self.assertEqual(result.solution.to_dict(), solution)
         self.assertEqual("metrics.v1", metrics["schema_version"])
         self.assertEqual("optimal", metrics["technical"]["solver_status"])
+        self.assertIsNone(metrics["technical"]["best_bound"])
+        self.assertIsNone(metrics["technical"]["gap"])
+        self.assertIsNone(metrics["technical"]["solve_time_s"])
+
+    def test_solver_facts_and_objective_components_survive_persistence_and_query(self):
+        snapshot = make_snapshot(run_id="R-FACTS")
+        result = self._execute_and_persist(
+            snapshot, model_factory=SolverFactsFakeModel
+        )
+
+        metrics = self.service.get_metrics("R-FACTS", actor_user_id="U1")
+        technical = metrics["technical"]
+        self.assertEqual(result.objective, technical["objective"])
+        self.assertEqual(result.best_bound, technical["best_bound"])
+        self.assertEqual(0.0041, technical["gap"])
+        self.assertEqual(12.5, technical["solve_time_s"])
+        self.assertEqual(1.0, technical["cluster_lp_objective"])
+        self.assertEqual(result.f1, technical["f1"])
+        self.assertEqual(result.f2, technical["f2"])
+        self.assertEqual(result.f3, technical["f3"])
+        self.assertEqual(result.unmet_demand_total, technical["unmet_demand_total"])
+        self.assertEqual(result.unmet_demand_penalty, technical["unmet_demand_penalty"])
+
+        single = self.service.get_single_run("R-FACTS", actor_user_id="U1")
+        self.assertEqual(technical, single["metrics"]["technical"])
+
+    def test_executor_metadata_cannot_override_algorithm_solver_facts(self):
+        snapshot = make_snapshot(run_id="R-CONFLICT")
+        self.runs.create_queued(snapshot=snapshot, owner_user_id="U1")
+        self.runs.claim_running(snapshot.run_id)
+        result = run_once(
+            snapshot,
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=SolverFactsFakeModel,
+        )
+
+        with self.assertRaisesRegex(RunResultServiceError, "objective"):
+            self.service.persist_success(
+                result=result,
+                technical={"objective": result.objective + 1.0},
+            )
+
+        self.assertEqual("running", self.runs.get(snapshot.run_id).status)
+        self.assertIsNone(self.runs.get_result_payloads(snapshot.run_id))
+
+    def test_feasible_limit_statuses_are_persisted_without_coercion(self):
+        for index, (model_factory, status, gap) in enumerate((
+            (GapLimitFakeModel, "gaplimit", 0.0041),
+            (TimeLimitFakeModel, "timelimit", 0.125),
+        )):
+            run_id = f"R-LIMIT-{index}"
+            self._execute_and_persist(
+                make_snapshot(run_id=run_id), model_factory=model_factory
+            )
+            technical = self.service.get_metrics(
+                run_id, actor_user_id="U1"
+            )["technical"]
+            self.assertEqual(status, technical["solver_status"])
+            self.assertEqual(gap, technical["gap"])
+            self.assertIsNotNone(technical["objective"])
+
+    def test_old_metrics_without_new_technical_fields_remain_unchanged_on_read(self):
+        snapshot = make_snapshot(run_id="R-OLD")
+        self.runs.create_queued(snapshot=snapshot, owner_user_id="U1")
+        self.runs.claim_running("R-OLD")
+        result = run_once(
+            snapshot,
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=RunnerFakeModel,
+        )
+        old_metrics = build_metrics_core(
+            snapshot,
+            result.solution,
+            technical={"solver_status": result.solver_status, "objective": result.objective},
+        )
+        self.runs.save_success(
+            "R-OLD", solution=result.solution.to_dict(), metrics=old_metrics
+        )
+        before_hash = self.runs.get("R-OLD").metrics_hash
+
+        loaded = self.service.get_metrics("R-OLD", actor_user_id="U1")
+
+        self.assertEqual(old_metrics, loaded)
+        for key in (
+            "best_bound", "gap", "solve_time_s", "cluster_lp_objective",
+            "f1", "f2", "f3", "unmet_demand_total", "unmet_demand_penalty",
+        ):
+            self.assertNotIn(key, loaded["technical"])
+        self.assertEqual(before_hash, self.runs.get("R-OLD").metrics_hash)
 
     def test_non_succeeded_run_has_no_canonical_result_surface(self):
         snapshot = make_snapshot(run_id="R1")
@@ -158,6 +255,71 @@ class RunResultServiceTests(unittest.TestCase):
         self.assertEqual("configuration", configuration["mode"])
         self.assertEqual("S1", configuration["baseline_run_id"])
         self.assertEqual(0.0, configuration["summary_deltas_vs_baseline"]["S1"]["peak_sorties_delta"])
+
+    def test_exploratory_summary_and_object_detail_are_service_derived(self):
+        base = make_snapshot(
+            run_id="EXP-BASE",
+            cluster_enabled=False,
+            mission_required_sorties=2,
+        )
+        pressure = make_snapshot(
+            run_id="EXP-PRESSURE",
+            cluster_enabled=False,
+            mission_required_sorties=3,
+        )
+        self._execute_and_persist(base)
+        self._execute_and_persist(pressure)
+
+        summary = self.service.compare_exploratory(
+            run_ids=("EXP-BASE", "EXP-PRESSURE"),
+            baseline_run_id="EXP-BASE",
+            actor_user_id="U1",
+        )
+        self.assertEqual("exploratory", summary["mode"])
+        self.assertIn(
+            "base mission inputs differ",
+            summary["comparability"]["EXP-PRESSURE"]["differences"],
+        )
+
+        detail = self.service.compare_object(
+            run_ids=("EXP-BASE", "EXP-PRESSURE"),
+            comparison_type="exploratory",
+            baseline_run_id="EXP-BASE",
+            object_type="task",
+            object_id="M1",
+            actor_user_id="U1",
+        )
+        self.assertEqual("comparison-object.v1", detail["schema_version"])
+        self.assertEqual(2, detail["baseline"]["absolute"]["required_total"])
+        self.assertEqual(3, detail["runs"]["EXP-PRESSURE"]["absolute"]["required_total"])
+
+    def test_candidate_query_exposes_cross_condition_runs_only_in_exploratory_mode(self):
+        base = make_snapshot(
+            run_id="CAND-BASE",
+            cluster_enabled=False,
+            mission_required_sorties=2,
+        )
+        pressure = make_snapshot(
+            run_id="CAND-PRESSURE",
+            cluster_enabled=False,
+            mission_required_sorties=3,
+        )
+        self._execute_and_persist(base)
+        self._execute_and_persist(pressure)
+
+        strict = self.service.list_comparable_successful(
+            "CAND-BASE", mode="multi_scenario", actor_user_id="U1"
+        )
+        exploratory = self.service.list_comparable_successful(
+            "CAND-BASE", mode="exploratory", actor_user_id="U1"
+        )
+
+        self.assertEqual([], strict["items"])
+        self.assertEqual(["CAND-PRESSURE"], [row["run_id"] for row in exploratory["items"]])
+        self.assertIn(
+            "base mission inputs differ",
+            exploratory["items"][0]["comparability"]["differences"],
+        )
 
 
 if __name__ == "__main__":

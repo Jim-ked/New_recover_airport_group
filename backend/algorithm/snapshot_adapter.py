@@ -556,3 +556,95 @@ def build_algorithm_input(snapshot: RunSnapshot) -> AlgorithmInputBundle:
     runtime["core_airports"] = list(runtime_obj.core_airports)
     run_params = _build_run_params(aircraft_types, resource_types, requirements)
     return AlgorithmInputBundle(ds=ds, run_params=run_params, runtime=runtime)
+
+
+def build_algorithm_comparison_facts(snapshot: RunSnapshot) -> Dict[str, Any]:
+    """Project only frozen facts that affect solving or result interpretation.
+
+    The full RunSnapshot hash remains the historical identity.  This projection is an
+    on-demand comparison aid, not a second persisted fingerprint.  Unselected damage
+    scenarios and display-only names are deliberately absent because the algorithm does
+    not consume them; a selected scenario is represented by the effective range and
+    timeview produced by :func:`build_algorithm_input`.
+    """
+
+    bundle = build_algorithm_input(snapshot)
+    payload = snapshot.to_dict()
+    t_min, t_max = bundle.ds["range"]
+
+    airports = []
+    for row in bundle.ds["static"]["airports"]:
+        airports.append({key: value for key, value in row.items() if key != "name"})
+
+    missions = []
+    for row in bundle.ds["static"]["missions"]:
+        projected = {key: value for key, value in row.items() if key != "name"}
+        start, end = projected["_duty_window"]
+        projected["_duty_window"] = (int(start) + int(t_min), int(end) + int(t_min))
+        missions.append(projected)
+
+    airport_resources = []
+    for item in (payload.get("situation") or {}).get("airports") or []:
+        if not isinstance(item, Mapping):
+            continue
+        airport = item.get("airport") or {}
+        profile = item.get("operational_profile") or {}
+        airport_resources.append({
+            "airport_id": airport.get("airport_id") or profile.get("airport_id"),
+            "resource_stocks": sorted(
+                (
+                    {
+                        "resource_type_id": row.get("resource_type_id"),
+                        "initial_quantity": row.get("initial_quantity"),
+                    }
+                    for row in profile.get("resource_stocks") or []
+                    if isinstance(row, Mapping)
+                ),
+                key=lambda row: str(row["resource_type_id"]),
+            ),
+            "resource_replenishments": sorted(
+                (
+                    {
+                        "resource_type_id": row.get("resource_type_id"),
+                        "start_slot": row.get("start_slot"),
+                        "end_slot": row.get("end_slot"),
+                        "quantity": row.get("quantity"),
+                    }
+                    for row in item.get("resource_replenishments") or []
+                    if isinstance(row, Mapping)
+                ),
+                key=lambda row: (
+                    str(row["resource_type_id"]),
+                    int(row["start_slot"] or 0),
+                    int(row["end_slot"] or 0),
+                ),
+            ),
+        })
+
+    resource_types = [
+        {
+            "resource_type_id": row.get("resource_type_id"),
+            "category": row.get("category"),
+            "unit": row.get("unit"),
+        }
+        for row in (payload.get("catalogs") or {}).get("resource_types") or []
+        if isinstance(row, Mapping)
+    ]
+    resource_types.sort(key=lambda row: str(row["resource_type_id"]))
+
+    return {
+        "schema": payload.get("schema"),
+        "base_problem": {
+            "airports": airports,
+            "missions": missions,
+            "distance": bundle.ds["distance"],
+            "aircraft_parameters": bundle.run_params.get("aircrafts") or {},
+            "resource_types": resource_types,
+            "airport_resources": sorted(
+                airport_resources, key=lambda row: str(row["airport_id"])
+            ),
+        },
+        "effective_range": [int(t_min), int(t_max)],
+        "effective_timeview": bundle.ds["timeview"],
+        "runtime": bundle.runtime,
+    }

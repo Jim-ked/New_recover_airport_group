@@ -740,7 +740,20 @@ def build_metrics_core(
     if technical is not None:
         # Only copy solver/execution facts supplied by the Run executor. Metrics does not
         # infer them from strings or files.
-        for key in ("solver_status", "objective", "gap", "solve_time_s", "algorithm_version"):
+        for key in (
+            "solver_status",
+            "objective",
+            "best_bound",
+            "gap",
+            "solve_time_s",
+            "cluster_lp_objective",
+            "f1",
+            "f2",
+            "f3",
+            "unmet_demand_total",
+            "unmet_demand_penalty",
+            "algorithm_version",
+        ):
             if key in technical:
                 technical_block[key] = technical[key]
 

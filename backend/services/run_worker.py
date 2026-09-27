@@ -168,6 +168,9 @@ class RunWorker:
                 payload={
                     "solver_status": result.solver_status,
                     "objective": result.objective,
+                    "best_bound": result.best_bound,
+                    "gap": result.gap,
+                    "solve_time_s": result.solve_time_s,
                 },
             )
             return record
@@ -193,8 +196,13 @@ class RunWorker:
                     message="Run cancelled after solver returned",
                 )
                 return record
+            failure_code = (
+                "INFEASIBLE"
+                if "infeasible" in exc.solver_status.lower()
+                else "NO_FEASIBLE_SOLUTION"
+            )
             record = self.run_service.mark_failed_by_worker(
-                run_id, message=str(exc), code="INFEASIBLE"
+                run_id, message=str(exc), code=failure_code
             )
             self._append(
                 run_id,
@@ -202,7 +210,14 @@ class RunWorker:
                 stage="exact_optimization",
                 event="run_failed",
                 message=str(exc),
-                payload={"failure_code": "INFEASIBLE"},
+                payload={
+                    "failure_code": failure_code,
+                    "solver_status": exc.solver_status,
+                    "objective": None,
+                    "best_bound": exc.best_bound,
+                    "gap": exc.gap,
+                    "solve_time_s": exc.solve_time_s,
+                },
             )
             return record
 

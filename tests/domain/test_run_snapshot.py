@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import unittest
 
 from backend.domain.airport import AirportBase
@@ -72,6 +74,34 @@ class RunSnapshotTests(unittest.TestCase):
         self.assertEqual(0.9, payload["catalogs"]["aircraft_types"][0]["arrival_capacity_occupancy_factor"])
         payload["situation"]["name"] = "changed"
         self.assertEqual("S", snap.to_dict()["situation"]["name"])
+
+    def test_persisted_v5_snapshot_is_readable_but_cannot_be_cloned_for_retry(self) -> None:
+        aircraft, resources, reqs = self._catalogs()
+        current = RunSnapshot.build(
+            run_id="R-V5", situation=self._situation(), aircraft_types=aircraft,
+            resource_types=resources, aircraft_resource_requirements=reqs,
+            od_distances=[ODDistance("A1", "M1", 321.5)], run_config=self._config(),
+        )
+        payload = current.to_dict()
+        payload["schema"] = "run_input_snapshot_v5"
+        payload["dynamic_inventory"] = {
+            "semantics": "physical_inventory_v1",
+            "storage_capacity": {"A1": {"FUEL-1": 60.0}},
+        }
+        payload_json = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+
+        historical = RunSnapshot(
+            run_id="R-V5",
+            situation_id="S1",
+            content_hash=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            payload_json=payload_json,
+        )
+
+        self.assertEqual("run_input_snapshot_v5", historical.to_dict()["schema"])
+        with self.assertRaisesRegex(RunSnapshotValidationError, "historical snapshot schema"):
+            historical.clone_for_run("R-V5-RETRY")
 
     def test_snapshot_requires_complete_airport_configuration(self) -> None:
         aircraft, resources, reqs = self._catalogs()

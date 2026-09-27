@@ -10,7 +10,13 @@ from backend.services.run_service import RunService
 from backend.services.run_worker import RunWorker
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
-from tests.algorithm.test_runner import InfeasibleFakeModel, RunnerFakeModel, fixed_cluster_selector
+from tests.algorithm.test_runner import (
+    InfeasibleFakeModel,
+    RunnerFakeModel,
+    SolverFactsFakeModel,
+    TimeLimitNoSolutionFakeModel,
+    fixed_cluster_selector,
+)
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
 
@@ -68,6 +74,22 @@ class RunWorkerTests(unittest.TestCase):
         self.assertEqual("persistence", events[-1].stage)
         self.assertEqual(list(range(1, len(events) + 1)), [e.seq for e in events])
 
+    def test_worker_persists_solver_facts_from_algorithm_result(self):
+        self._queue()
+        record = self._worker().execute(
+            "R1",
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=SolverFactsFakeModel,
+        )
+        self.assertEqual("succeeded", record.status)
+        _solution, metrics = self.runs.get_result_payloads("R1")
+        technical = metrics["technical"]
+        self.assertEqual("optimal", technical["solver_status"])
+        self.assertEqual(0.0041, technical["gap"])
+        self.assertEqual(12.5, technical["solve_time_s"])
+        self.assertGreater(technical["best_bound"], technical["objective"])
+        self.assertGreater(technical["f2"], 0.0)
+
     def test_public_events_preserve_interleaved_cluster_semantics_without_fake_quick_stage(self):
         self._queue()
         self._worker().execute(
@@ -101,6 +123,22 @@ class RunWorkerTests(unittest.TestCase):
         self.assertEqual("INFEASIBLE", record.failure_code)
         self.assertIsNone(self.runs.get_result_payloads("R1"))
         self.assertEqual("run_failed", self.runs.list_events("R1")[-1].event)
+
+    def test_timelimit_without_solution_is_not_misreported_as_infeasible(self):
+        self._queue()
+        record = self._worker().execute(
+            "R1",
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=TimeLimitNoSolutionFakeModel,
+        )
+        self.assertEqual("failed", record.status)
+        self.assertEqual("NO_FEASIBLE_SOLUTION", record.failure_code)
+        self.assertIsNone(self.runs.get_result_payloads("R1"))
+        event = self.runs.list_events("R1")[-1]
+        self.assertEqual("timelimit", event.payload["solver_status"])
+        self.assertEqual(7.5, event.payload["best_bound"])
+        self.assertIsNone(event.payload["gap"])
+        self.assertEqual(12.5, event.payload["solve_time_s"])
 
     def test_cancel_request_during_blocking_algorithm_wins_over_success_publication(self):
         self._queue()

@@ -97,6 +97,26 @@ def create_results_blueprint(*, api: ResultsApi, principal_resolver: PrincipalRe
             return render(api.configuration_comparison(body, principal=principal))
         return invoke(action)
 
+    @bp.post("/results/exploratory-comparison")
+    def exploratory_comparison():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            body = request.get_json(force=False, silent=False)
+            return render(api.exploratory_comparison(body, principal=principal))
+        return invoke(action)
+
+    @bp.post("/results/object-comparison")
+    def object_comparison():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            body = request.get_json(force=False, silent=False)
+            return render(api.object_comparison(body, principal=principal))
+        return invoke(action)
+
     @bp.post("/results/export-data")
     def export_data():
         def action():

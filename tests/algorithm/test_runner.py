@@ -10,8 +10,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from backend.algorithm.runner import AlgorithmInfeasibleError, run_once
+from backend.algorithm.snapshot_adapter import build_algorithm_input
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 from tests.algorithm.test_model_builder_overlay import FakeModel
+from original_algorithm_overlay.model.model_facts import resolved_alpha
 
 
 class RunnerFakeModel(FakeModel):
@@ -65,6 +67,57 @@ class InfeasibleFakeModel(RunnerFakeModel):
         self._nsols = 0
 
 
+class SolverFactsFakeModel(RunnerFakeModel):
+    solver_status = "optimal"
+    gap_value = 0.0041
+    solve_time_value = 12.5
+
+    def __init__(self, name):
+        super().__init__(name)
+        self._status = self.solver_status
+
+    def getDualbound(self):
+        # This is a maximization model: SCIP's raw dual bound is an upper bound and
+        # must remain above the incumbent objective rather than being sign-flipped.
+        return self.getObjVal() + 3.25
+
+    def getGap(self):
+        return self.gap_value
+
+    def getSolvingTime(self):
+        return self.solve_time_value
+
+    def isInfinity(self, value):
+        return abs(float(value)) >= 1e20
+
+
+class GapLimitFakeModel(SolverFactsFakeModel):
+    solver_status = "gaplimit"
+
+
+class TimeLimitFakeModel(SolverFactsFakeModel):
+    solver_status = "timelimit"
+    gap_value = 0.125
+
+
+class TimeLimitNoSolutionFakeModel(SolverFactsFakeModel):
+    solver_status = "timelimit"
+
+    def optimize(self):
+        for var, _lb, _vtype in self.vars:
+            self.values[var.name] = 0.0
+        self._nsols = 0
+
+    def getBestSol(self):
+        return None
+
+    def getDualbound(self):
+        return 7.5
+
+    def getGap(self):
+        return 1e20
+
+
 
 def fixed_cluster_selector(**_kwargs):
     return {
@@ -92,6 +145,76 @@ class SnapshotOnlyRunnerTests(unittest.TestCase):
         self.assertEqual(2, result.solution.sortie_chains[0].sorties)
         self.assertEqual("complete", events[-1]["stage"])
         self.assertTrue(all("stage" in e and "progress" in e and "message" in e for e in events))
+
+    def test_solver_facts_preserve_raw_maximization_bound_gap_and_seconds(self):
+        result = run_once(
+            make_snapshot(),
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=SolverFactsFakeModel,
+        )
+        self.assertGreater(result.best_bound, result.objective)
+        self.assertAlmostEqual(result.objective + 3.25, result.best_bound)
+        self.assertEqual(0.0041, result.gap)
+        self.assertEqual(12.5, result.solve_time_s)
+
+    def test_feasible_gaplimit_and_timelimit_keep_distinct_solver_statuses(self):
+        for model_factory, status, gap in (
+            (GapLimitFakeModel, "gaplimit", 0.0041),
+            (TimeLimitFakeModel, "timelimit", 0.125),
+        ):
+            with self.subTest(status=status):
+                result = run_once(
+                    make_snapshot(),
+                    cluster_selector_fn=fixed_cluster_selector,
+                    model_factory=model_factory,
+                )
+                self.assertEqual(status, result.solver_status)
+                self.assertEqual(gap, result.gap)
+                self.assertIsNotNone(result.objective)
+
+    def test_no_feasible_solution_keeps_status_bound_and_time_without_fake_gap(self):
+        with self.assertRaises(AlgorithmInfeasibleError) as raised:
+            run_once(
+                make_snapshot(),
+                cluster_selector_fn=fixed_cluster_selector,
+                model_factory=TimeLimitNoSolutionFakeModel,
+            )
+        error = raised.exception
+        self.assertEqual("timelimit", error.solver_status)
+        self.assertEqual(7.5, error.best_bound)
+        self.assertIsNone(error.gap)
+        self.assertEqual(12.5, error.solve_time_s)
+
+    def test_final_solution_components_reuse_model_coefficients_and_explain_objective(self):
+        snapshot = make_snapshot()
+        result = run_once(
+            snapshot,
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=SolverFactsFakeModel,
+        )
+        runtime = build_algorithm_input(snapshot).runtime
+        weights = resolved_alpha(runtime)
+        reconstructed = (
+            weights.sortie * result.f1
+            - weights.resource * result.f2
+            - weights.time * result.f3
+            - result.unmet_demand_penalty * result.unmet_demand_total
+        )
+        self.assertAlmostEqual(result.objective, reconstructed)
+        self.assertGreater(result.f1, 0.0)
+        # This fixture has no selected damage scenario or permanent resource loss, yet
+        # F2 is positive because it is weighted actual consumption/reference quantity.
+        self.assertIsNone(snapshot.to_dict()["run_config"]["damage_scenario_id"])
+        self.assertGreater(result.f2, 0.0)
+        self.assertGreater(result.f3, 0.0)
+        self.assertEqual(1.0, result.cluster_lp_objective)
+
+    def test_noncluster_run_has_no_invented_cluster_lp_objective(self):
+        result = run_once(
+            make_snapshot(cluster_enabled=False),
+            model_factory=SolverFactsFakeModel,
+        )
+        self.assertIsNone(result.cluster_lp_objective)
 
     def test_runner_uses_algorithm_seed_frozen_in_snapshot(self):
         snapshot = make_snapshot()

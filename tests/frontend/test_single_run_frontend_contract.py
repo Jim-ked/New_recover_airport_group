@@ -28,6 +28,52 @@ def extract_function(source: str, name: str) -> str:
 
 
 class SingleRunFrontendContractTests(unittest.TestCase):
+    def test_explainability_layout_has_three_levels_without_duplicate_sortie_cards(self):
+        for label in ("结果概览", "任务与调度", "保障状态"):
+            self.assertIn(label, HTML)
+        for field in (
+            "required_sorties_total", "fulfilled_sorties_total", "unmet_sorties_total",
+            "additional_sorties_total", "participating_airport_count",
+        ):
+            self.assertIn(field, JS)
+        self.assertNotIn("出动情况", HTML)
+
+    def test_task_aircraft_matrix_exposes_fulfilled_shortfall_and_additional(self):
+        for token in (
+            'id="taskFulfillmentMatrix"', "renderTaskFulfillmentMatrix",
+            "required_by_aircraft", "fulfilled_by_aircraft", "unmet_by_aircraft",
+            "additional_by_aircraft", "by_origin_airport",
+        ):
+            self.assertIn(token, HTML + JS)
+
+    def test_support_drilldown_uses_specific_airport_resource_and_aircraft(self):
+        for token in (
+            'id="supportAirportSelect"', 'id="supportResourceSelect"',
+            'id="supportAircraftSelect"', 'id="capacityHeatmap"',
+            'id="resourceInventoryChart"', 'id="aircraftTurnaroundChart"',
+            "damage_adjusted_base_boundary", "permanent_loss", "replenishment_actual",
+            "consumed_increment", "available_before_departure", "ready_releases", "in_use",
+        ):
+            self.assertIn(token, HTML + JS)
+        self.assertIn("动态最低包络", HTML + JS)
+
+    def test_complete_chain_table_keeps_real_business_tuple(self):
+        for token in (
+            'id="chainTableBody"', "renderChainTable", "origin_airport_id", "mission_id",
+            "return_airport_id", "aircraft_type", "depart_window", "return_window",
+            "ready_window", "sorties",
+        ):
+            self.assertIn(token, HTML + JS)
+        self.assertNotIn("aggregateTaskFlows", JS)
+
+    def test_solver_quality_distinguishes_recorded_bounds_and_objective_components(self):
+        for token in (
+            'id="solverFacts"', "best_bound", "gap", "solve_time_s", "cluster_lp_objective",
+            "f1", "f2", "f3", "未记录", "可行目标（下界）", "对偶界（上界）",
+            "不是五维综合评价", "当前调度结果缺口，并非独立证明的物理最小缺口",
+        ):
+            self.assertIn(token, HTML + JS)
+
     def test_page_reads_only_canonical_run_facts(self):
         required = (
             "/api/runs/${encodeURIComponent(state.runId)}",
@@ -44,10 +90,11 @@ class SingleRunFrontendContractTests(unittest.TestCase):
         self.assertIn("run.status !== 'succeeded'", JS)
         self.assertIn("单次运行仪表盘仅支持成功 Run", JS)
 
-    def test_five_summary_cards_and_frozen_body_structure_exist(self):
-        for label in ("最终组群", "任务规模", "出动情况", "机场协同", "资源保障"):
-            self.assertIn(label, HTML)
-        for label in ("任务调度时序", "组群任务流结构", "资源余量时序", "全机场承接", "任务调度结构", "机型投入结构", "技术信息"):
+    def test_three_level_body_uses_distinct_business_questions(self):
+        for label in (
+            "结果概览", "组群与参与机场", "求解事实", "任务×机型需求满足",
+            "出动与返航时序", "完整航链", "逐窗容量利用率", "库存阶梯与事件", "航空器周转",
+        ):
             self.assertIn(label, HTML)
 
     def test_timeline_modes_do_not_use_top_n(self):
@@ -59,19 +106,19 @@ class SingleRunFrontendContractTests(unittest.TestCase):
         self.assertNotIn("TopN", JS)
         self.assertNotRegex(JS, r"\.slice\(\s*0\s*,\s*\d+")
 
-    def test_resource_timeline_consumes_backend_category_series(self):
-        self.assertIn("category_min_remaining_ratio_timeline", JS)
-        self.assertIn("category_min_remaining_ratio", JS)
-        self.assertNotIn("remaining_ratio_initial.reduce", JS)
-        self.assertNotIn("resource_types.reduce", JS)
-
-    def test_single_run_uses_only_canonical_task_count_required_and_scheduled_facts(self):
-        for label in ("`任务 ${integer", "`需求 ${integer", "调度 ${integer"):
-            self.assertIn(label, JS + HTML)
-        for field in ("mission_count", "required_sorties_total", "scheduled_sorties_total"):
+    def test_resource_chart_uses_specific_resource_series_not_category_envelope(self):
+        for field in ("remaining", "replenishment_actual", "consumed_increment", "permanent_loss"):
             self.assertIn(field, JS)
-        for forbidden in ("需求内已执行", "未执行", "额外出动", "任务完成率"):
-            self.assertNotIn(forbidden, JS + HTML)
+        self.assertNotIn("category_min_remaining_ratio_timeline", JS)
+        self.assertIn("动态最低包络", HTML)
+
+    def test_single_run_uses_canonical_fulfilled_unmet_and_additional_facts(self):
+        for field in (
+            "required_sorties_total", "fulfilled_sorties_total", "unmet_sorties_total",
+            "additional_sorties_total", "required_by_aircraft", "fulfilled_by_aircraft",
+            "unmet_by_aircraft", "additional_by_aircraft",
+        ):
+            self.assertIn(field, JS)
         for token in ("best_run", "R1-R0", "R2-R1"):
             self.assertNotIn(token, JS)
             self.assertNotIn(token, HTML)
@@ -109,54 +156,26 @@ process.stdout.write(JSON.stringify({{valid, mismatch}}));
         for token in ("<20%", "threshold", "告警阈值"):
             self.assertNotIn(token, JS)
 
-    def test_all_airports_tasks_and_aircraft_have_scrollable_full_tables(self):
-        self.assertIn("Object.entries(state.metrics.airports", JS)
-        self.assertIn("Object.entries(state.metrics.tasks", JS)
-        self.assertIn("Object.entries(state.metrics.aircraft", JS)
+    def test_object_views_keep_full_scrollable_data_without_topn(self):
+        self.assertIn("Object.entries(tasks)", JS)
+        self.assertIn("Object.keys(state.metrics.airports", JS)
+        self.assertIn("Object.keys(state.metrics.aircraft_inventory", JS)
         self.assertIn("overflow:auto", CSS)
 
-    def test_structure_flow_uses_three_columns_aggregated_sorties_and_hover(self):
-        self.assertIn("组群任务流结构", HTML)
+    def test_chain_matrix_uses_complete_solution_rows_without_false_aggregation(self):
+        self.assertIn("完整航链", HTML)
         self.assertIn("state.solution.sortie_chains", JS)
-        for field in ("origin_airport_id", "mission_id", "return_airport_id", "sorties"):
-            self.assertIn(field, JS)
-        for token in (
-            "aggregateTaskFlows",
-            "flow-edge",
-            "flow-node flow-${kind}",
-            "appendNode('origin'",
-            "appendNode('mission'",
-            "appendNode('return'",
-            "Math.sqrt",
-            "pointerenter",
-            "pointermove",
-            "click",
+        for field in (
+            "origin_airport_id", "mission_id", "return_airport_id", "aircraft_type",
+            "depart_window", "return_window", "ready_window", "sorties",
         ):
-            self.assertIn(token, JS)
-        structure = extract_function(JS, "renderSpatial")
-        self.assertNotIn("longitude", structure)
-        self.assertNotIn("latitude", structure)
+            self.assertIn(field, JS)
+        self.assertIn("renderChainTable", JS)
+        self.assertNotIn("aggregateTaskFlows", JS)
         self.assertNotIn("operations", JS)
-        aggregate = extract_function(JS, "aggregateTaskFlows")
-        script = f"""
-{aggregate}
-const flows=aggregateTaskFlows([
-  {{origin_airport_id:'AP001',mission_id:'M1',return_airport_id:'AP002',aircraft_type:'fighter',sorties:2}},
-  {{origin_airport_id:'AP001',mission_id:'M1',return_airport_id:'AP002',aircraft_type:'bomber',sorties:3}},
-]);
-process.stdout.write(JSON.stringify({{outbound:flows.outbound[0].sorties,inbound:flows.inbound[0].sorties,aircraft:[...flows.outbound[0].aircraft]}}));
-"""
-        completed = subprocess.run(
-            ["node", "--input-type=module", "--eval", script], cwd=ROOT,
-            check=True, capture_output=True, text=True, encoding="utf-8",
-        )
-        result = json.loads(completed.stdout)
-        self.assertEqual(5, result["outbound"])
-        self.assertEqual(5, result["inbound"])
-        self.assertEqual([["fighter", 2], ["bomber", 3]], result["aircraft"])
 
-    def test_timeline_has_nearest_window_guide_points_and_tooltip(self):
-        for token in ("nearestWindowIndex", "chart-hover-line", "chart-hover-point", "pointermove", "出动", "返航"):
+    def test_timeline_has_nearest_window_guide_and_tooltip(self):
+        for token in ("nearestWindowIndex", "chart-hover-line", "chart-hover-tooltip", "pointermove", "出动", "返航"):
             self.assertIn(token, JS + CSS)
         nearest = extract_function(JS, "nearestWindowIndex")
         script = f"""
@@ -177,24 +196,18 @@ process.stdout.write(JSON.stringify([
         )
         self.assertEqual([0, 2, 4], json.loads(completed.stdout))
 
-    def test_unified_detail_dock_has_all_frozen_tabs(self):
-        for label in ("机场承接", "任务调度", "机型投入", "资源保障", "技术信息"):
-            self.assertIn(label, HTML)
-        self.assertIn("detail-dock", HTML)
-        self.assertIn("position:fixed", CSS)
+    def test_linked_support_selectors_replace_the_old_generic_detail_dock(self):
+        for element_id in ("supportAirportSelect", "supportResourceSelect", "supportAircraftSelect"):
+            self.assertIn(f'id="{element_id}"', HTML)
+        self.assertNotIn("detail-dock", HTML)
 
-    def test_auxiliary_and_bottom_workspaces_show_one_panel_at_a_time(self):
+    def test_scheduling_and_support_panels_have_stable_regions(self):
         for token in (
-            'id="singleAuxTabs"', 'data-aux-mode="spatial"', 'data-aux-mode="resource"',
-            'id="singleBottomTabs"', 'data-bottom-mode="airports"',
-            'data-bottom-mode="missions"', 'data-bottom-mode="aircraft"',
-            'data-bottom-mode="technical"',
+            'id="taskFulfillmentMatrix"', 'id="timelineChart"', 'id="chainTableBody"',
+            'id="capacityHeatmap"', 'id="resourceInventoryChart"', 'id="aircraftTurnaroundChart"',
         ):
             self.assertIn(token, HTML)
-        self.assertIn("singleAuxMode", JS)
-        self.assertIn("singleBottomMode", JS)
         self.assertIn("overflow:hidden", CSS)
-        self.assertIn("single-bottom-view", CSS)
 
     def test_ui_route_is_run_id_addressable(self):
         self.assertIn('@bp.get("/runs/<run_id>")', UI)

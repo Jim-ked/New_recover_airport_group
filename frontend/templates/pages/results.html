@@ -4,9 +4,10 @@
 {% block content %}
 <main class="results-page" id="resultsPage">
   <nav class="results-tabs" aria-label="结果分析工作区">
-    <button type="button" class="active" data-workspace="damage">损毁影响与优化效果</button>
-    <button type="button" data-workspace="multi">多场景比较</button>
-    <button type="button" data-workspace="configuration">方案配置比较</button>
+    <button type="button" class="active" data-workspace="damage">严格损毁对照</button>
+    <button type="button" data-workspace="multi">严格多损毁对照</button>
+    <button type="button" data-workspace="configuration">严格配置对照</button>
+    <button type="button" data-workspace="exploratory">跨条件描述性探索</button>
   </nav>
 
   <section class="results-condition">
@@ -22,7 +23,9 @@
       <div id="resultsExport" class="results-export hidden"><button id="resultsExportButton" class="btn" type="button" disabled aria-expanded="false">导出</button><div id="resultsExportMenu" class="results-export-menu" aria-hidden="true"><button type="button" data-export-format="pdf">PDF 汇总报告</button><button type="button" data-export-format="csv">CSV 运行结果</button></div></div>
     </div>
   </section>
+  <section id="resultsConditionMatrix" class="results-box results-condition-matrix hidden" aria-label="运行条件矩阵"></section>
   <section id="resultsMetrics" class="results-metrics hidden"></section>
+  <section id="resultsSolverComparison" class="results-box results-solver-comparison hidden" aria-label="求解事实与目标区间"></section>
 
   <section id="resultsMain" class="results-main">
     <article class="results-box chart-box">
@@ -66,6 +69,20 @@
       </div>
     </nav>
     <div id="resultsTable" class="results-table-wrap"><div class="results-placeholder">—</div></div>
+  </section>
+
+  <section id="resultsObjectDrilldown" class="results-box results-object-drilldown">
+    <header class="results-box-head">
+      <div><strong>对象级下钻</strong><small>以同一业务对象比较绝对值、基准值和差值</small></div>
+      <div class="results-object-controls">
+        <label>对象类型<select id="resultsObjectType" class="mini-select"><option value="task">任务</option><option value="airport">机场</option><option value="resource">资源</option><option value="aircraft">航空器</option><option value="collaboration">完整航链与协同</option></select></label>
+        <label id="resultsObjectIdWrap">对象<select id="resultsObjectId" class="mini-select"></select></label>
+        <label id="resultsObjectAirportWrap" class="hidden">机场<select id="resultsObjectAirport" class="mini-select"></select></label>
+        <label id="resultsObjectResourceWrap" class="hidden">具体资源<select id="resultsObjectResource" class="mini-select"></select></label>
+        <label id="resultsObjectAircraftWrap" class="hidden">机型<select id="resultsObjectAircraft" class="mini-select"></select></label>
+      </div>
+    </header>
+    <div id="resultsObjectDetail" class="results-object-detail"><div class="results-placeholder">选择比较条件后查看对象变化</div></div>
   </section>
 
   <aside id="resultsOverlay" class="results-overlay" aria-label="修改比较条件" aria-hidden="true">

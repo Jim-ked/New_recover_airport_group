@@ -5,9 +5,12 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 from backend.algorithm.runner import AlgorithmRunResult
 from backend.analysis.comparison import (
     build_configuration_comparison,
+    build_exploratory_comparison,
     build_multi_scenario_comparison,
+    build_object_comparison,
     build_r0_r1_r2_comparison,
     check_configuration_comparable,
+    check_exploratory_comparable,
     check_multi_scenario_comparable,
     check_r0_r1_r2,
 )
@@ -113,9 +116,27 @@ class RunResultService:
         technical_block: Dict[str, Any] = {
             "solver_status": result.solver_status,
             "objective": result.objective,
+            "best_bound": result.best_bound,
+            "gap": result.gap,
+            "solve_time_s": result.solve_time_s,
+            "cluster_lp_objective": result.cluster_lp_objective,
+            "f1": result.f1,
+            "f2": result.f2,
+            "f3": result.f3,
+            "unmet_demand_total": result.unmet_demand_total,
+            "unmet_demand_penalty": result.unmet_demand_penalty,
         }
         if technical:
-            technical_block.update(dict(technical))
+            supplied = dict(technical)
+            conflicts = sorted(
+                key for key in set(supplied) & set(technical_block)
+                if supplied[key] != technical_block[key]
+            )
+            if conflicts:
+                raise RunResultServiceError(
+                    f"executor technical facts conflict with AlgorithmRunResult: {conflicts}"
+                )
+            technical_block.update(supplied)
 
         metrics = build_metrics_core(snapshot, result.solution, technical=technical_block)
         return self.runs.save_success(
@@ -189,8 +210,10 @@ class RunResultService:
         base_record, base_snapshot, _base_solution, base_metrics = self._successful_bundle(
             base_run_id, actor_user_id=actor_user_id, is_admin=is_admin
         )
-        if mode not in {"multi_scenario", "configuration"}:
-            raise RunResultServiceError("mode must be multi_scenario or configuration")
+        if mode not in {"multi_scenario", "configuration", "exploratory"}:
+            raise RunResultServiceError(
+                "mode must be multi_scenario, configuration or exploratory"
+            )
         candidates = self.runs.list_for_owner(
             base_record.owner_user_id, statuses=("succeeded",), limit=limit, offset=0
         )
@@ -203,19 +226,33 @@ class RunResultService:
             if snapshot is None or result is None:
                 raise RunResultServiceError("succeeded comparison candidate is missing snapshot/result")
             _solution, metrics = result
-            check = (
-                check_multi_scenario_comparable(base_snapshot, snapshot)
-                if mode == "multi_scenario"
-                else check_configuration_comparable(base_snapshot, snapshot)
-            )
-            if not check.comparable or not self._metrics_compatible(base_metrics, metrics):
+            if mode == "multi_scenario":
+                check = check_multi_scenario_comparable(base_snapshot, snapshot)
+            elif mode == "configuration":
+                check = check_configuration_comparable(base_snapshot, snapshot)
+            else:
+                check = check_exploratory_comparable(base_snapshot, snapshot)
+            if not check.comparable:
                 continue
+            if mode != "exploratory" and not self._metrics_compatible(base_metrics, metrics):
+                continue
+            strict_modes = []
+            if check_multi_scenario_comparable(base_snapshot, snapshot).comparable:
+                strict_modes.append("damage")
+            if check_configuration_comparable(base_snapshot, snapshot).comparable:
+                strict_modes.append("configuration")
             payload = snapshot.to_dict()
             items.append({
                 "run_id": record.run_id,
                 "created_at": record.created_at,
                 "finished_at": record.finished_at,
                 "run_config": payload.get("run_config"),
+                "comparability": {
+                    "strict_comparable": bool(strict_modes),
+                    "strict_modes": strict_modes,
+                    "reasons": list(check.reasons),
+                    "differences": list(check.differences),
+                },
             })
         return {
             "base_run_id": base_run_id,
@@ -370,6 +407,56 @@ class RunResultService:
         return build_configuration_comparison(
             [(bundle[1], bundle[3]) for bundle in bundles],
             baseline_run_id=baseline_run_id,
+        )
+
+    def compare_exploratory(
+        self,
+        *,
+        run_ids: Tuple[str, ...],
+        baseline_run_id: str,
+        actor_user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        if not isinstance(run_ids, tuple):
+            run_ids = tuple(run_ids)
+        bundles = [
+            self._successful_bundle(rid, actor_user_id=actor_user_id, is_admin=is_admin)
+            for rid in run_ids
+        ]
+        return build_exploratory_comparison(
+            [(bundle[1], bundle[3]) for bundle in bundles],
+            baseline_run_id=baseline_run_id,
+        )
+
+    def compare_object(
+        self,
+        *,
+        run_ids: Tuple[str, ...],
+        comparison_type: str,
+        baseline_run_id: str,
+        object_type: str,
+        actor_user_id: str,
+        is_admin: bool = False,
+        object_id: Optional[str] = None,
+        airport_id: Optional[str] = None,
+        resource_type_id: Optional[str] = None,
+        aircraft_type_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(run_ids, tuple):
+            run_ids = tuple(run_ids)
+        bundles = [
+            self._successful_bundle(rid, actor_user_id=actor_user_id, is_admin=is_admin)
+            for rid in run_ids
+        ]
+        return build_object_comparison(
+            [(bundle[1], bundle[2], bundle[3]) for bundle in bundles],
+            comparison_type=comparison_type,
+            baseline_run_id=baseline_run_id,
+            object_type=object_type,
+            object_id=object_id,
+            airport_id=airport_id,
+            resource_type_id=resource_type_id,
+            aircraft_type_id=aircraft_type_id,
         )
 
     def compare_r0_r1_r2(

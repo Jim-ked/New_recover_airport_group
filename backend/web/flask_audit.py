@@ -23,6 +23,7 @@ def derive_resource_target(path: str) -> Tuple[Optional[str], Optional[str]]:
     if len(parts) >= 3 and parts[2] not in {
         "validate", "history", "comparable-runs", "damage-candidates",
         "damage-comparison", "scenario-comparison", "config-comparison",
+        "exploratory-comparison", "object-comparison",
         "drafts", "export-data",
     }:
         resource_id = parts[2]

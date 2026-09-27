@@ -146,8 +146,8 @@ process.stdout.write(JSON.stringify(values));
         self.assertIn("refs.legend.innerHTML=''", render.replace(" ", ""))
         self.assertNotIn("<svg", render)
 
-    def test_three_workspaces_and_overlay_are_real(self):
-        for label in ("损毁影响与优化效果", "多场景比较", "方案配置比较", "修改比较条件"):
+    def test_four_workspaces_and_overlay_are_real(self):
+        for label in ("严格损毁对照", "严格多损毁对照", "严格配置对照", "跨条件描述性探索", "修改比较条件"):
             self.assertIn(label, HTML)
         self.assertIn('@bp.get("/results")', UI)
         self.assertIn("ui_v1.results_page", BASE)
@@ -159,6 +159,8 @@ process.stdout.write(JSON.stringify(values));
             "/api/results/scenario-comparison",
             "/api/results/config-comparison",
             "/api/results/comparable-runs",
+            "/api/results/exploratory-comparison",
+            "/api/results/object-comparison",
         ):
             self.assertIn(endpoint, JS)
         for forbidden in ("/api/results/summary", "/api/results/compare", "/api/results/run_detail", "/api/scenes", "scene_file"):
@@ -378,23 +380,76 @@ process.stdout.write(JSON.stringify({{payload:state.payload,selection:state.sele
         self.assertIn("Object.keys(state.payload.airports", JS)
 
     def test_metric_strip_uses_only_unified_canonical_run_summaries(self):
-        for label in ("任务数", "需求架次", "已调度架次", "参与机场", "资源最低余量"):
+        for label in ("需求", "实际履行", "当前缺口", "额外调度", "参与机场", "求解状态"):
             self.assertIn(label, JS)
         for field in (
-            "mission_count",
             "required_sorties_total",
-            "scheduled_sorties_total",
+            "fulfilled_sorties_total",
+            "unmet_sorties_total",
+            "additional_sorties_total",
             "participating_airport_count",
-            "minimum_resource_remaining",
+            "solver_status",
         ):
             self.assertIn(field, JS)
-        for forbidden in ("需求内已执行", "未执行", "额外出动", "完成率"):
-            self.assertNotIn(forbidden, JS + HTML)
         self.assertIn("run_summaries", JS)
         self.assertIn("difference_overview", JS)
         self.assertIn("summary_deltas_vs_baseline", JS)
         self.assertIn("row.departure_share", JS)
         self.assertIn("objective_comparable", JS)
+
+    def test_condition_matrix_precedes_differences_and_marks_comparison_scope(self):
+        self.assertIn('id="resultsConditionMatrix"', HTML)
+        render = extract_function(JS, "renderConditionMatrix")
+        for token in ("comparability", "strict_modes", "differences", "time_axes", "descriptive_only"):
+            self.assertIn(token, render)
+        self.assertIn("仅描述，不作因果归因", JS)
+        comparison = extract_function(JS, "renderComparison")
+        self.assertLess(comparison.index("renderConditionMatrix()"), comparison.index("renderMetrics()"))
+
+    def test_solver_interval_uses_formal_bounds_and_never_infers_optimality(self):
+        self.assertIn('id="resultsSolverComparison"', HTML)
+        render = extract_function(JS, "renderSolverComparison")
+        for token in ("solver_comparison", "objective", "best_bound", "gap", "solve_time_s", "f1", "f2", "f3", "cluster_lp_objective"):
+            self.assertIn(token, JS)
+        self.assertIn("proven_strict_orderings", render)
+        self.assertIn("未记录", render)
+        self.assertIn("可行下界", render)
+        self.assertIn("对偶上界", render)
+        self.assertIn("不是五维综合评价", render)
+
+    def test_object_drilldown_uses_second_stage_endpoint_for_all_supported_types(self):
+        for element_id in ("resultsObjectType", "resultsObjectId", "resultsObjectAirport", "resultsObjectResource", "resultsObjectAircraft", "resultsObjectDetail"):
+            self.assertIn(f'id="{element_id}"', HTML)
+        request = extract_function(JS, "requestObjectComparison")
+        self.assertIn("/api/results/object-comparison", request)
+        for object_type in ("task", "airport", "resource", "aircraft", "collaboration"):
+            self.assertIn(f"'{object_type}'", JS)
+        self.assertIn("delta_vs_baseline", JS)
+        self.assertIn("chain_changes", JS)
+        self.assertIn("origin_airport_id", JS)
+        self.assertIn("return_airport_id", JS)
+        self.assertIn("depart_window", JS)
+        self.assertIn("return_window", JS)
+
+    def test_missing_zero_and_not_applicable_are_distinct_display_states(self):
+        display = extract_function(JS, "displayValue")
+        script = f"""
+{display}
+process.stdout.write(JSON.stringify([
+  displayValue(null), displayValue(undefined), displayValue(0), displayValue(null, {{notApplicable:true}})
+]));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "--eval", script], cwd=ROOT,
+            check=True, capture_output=True, text=True, encoding="utf-8",
+        )
+        self.assertEqual(["未记录", "未记录", "0", "不适用"], json.loads(completed.stdout))
+
+    def test_exploratory_selection_is_not_limited_by_chart_readability(self):
+        overlay = extract_function(JS, "renderComparableOverlay")
+        self.assertIn("mode==='exploratory'?50", overlay.replace(" ", ""))
+        self.assertIn("表格保留全部 Run", JS)
+        self.assertIn("图表仅显示前", JS)
 
     def test_frozen_labels_drive_airport_mission_and_aircraft_display(self):
         self.assertIn("state.payload.labels", JS)
