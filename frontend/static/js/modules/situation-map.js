@@ -121,11 +121,11 @@ function bindMarkerActivation(marker, singleClick, doubleClick) {
   });
 }
 
-function bindPermanentLabel(marker, text, priority, forceVisible, labels, emphasis = '') {
+function bindPermanentLabel(marker, text, priority, forceVisible, labels, emphasis = '', offset = [7, 0]) {
   marker.bindTooltip(escapeHtml(text), {
     permanent: true,
     direction: 'right',
-    offset: [7, 0],
+    offset,
     className: `situation-map-label${emphasis ? ` ${emphasis}` : ''}`,
   });
   const element = marker.getTooltip()?.getElement();
@@ -238,7 +238,8 @@ function drawLeaflet() {
           : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.airport,
       display.selected,
       labels,
-      display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '');
+      display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '',
+      [11, 0]);
   }
 
   syncCandidateLeafletMarkers({ refreshCatalog: false });

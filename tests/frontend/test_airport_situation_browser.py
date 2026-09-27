@@ -1,6 +1,7 @@
 """Exercise airport list/map activation and the Situation airport editor in Chromium."""
 
 import json
+import os
 from pathlib import Path
 import re
 from threading import Thread
@@ -15,6 +16,7 @@ playwright = pytest.importorskip("playwright.sync_api")
 ROOT = Path(__file__).resolve().parents[2]
 MODULES = ROOT / "frontend/static/js/modules"
 SCREENSHOT_DIR = ROOT / "runtime/temp/airport-editor-layout"
+DAMAGE_BADGE_EVIDENCE_DIR = ROOT / "docs/verification/damage-badge-2026-09-27"
 
 
 @pytest.fixture(scope="module")
@@ -631,6 +633,240 @@ def test_current_airport_focus_and_formal_selection_are_distinct(actual_situatio
     assert label.count() == 1
 
 
+def test_damage_badge_is_attached_to_each_airport_role_without_obscuring_selection(
+    actual_situation_page,
+):
+    page = actual_situation_page
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap, fitMap} = await import('/static/js/modules/situation-map.js');
+      const seed = state.working.airports[0];
+      const roles = ['civil', 'military', 'joint'];
+      state.working.missions = [];
+      state.mapFocus = null;
+      state.working.airports = roles.flatMap((role, roleIndex) => ['plain', 'damage'].map((kind, kindIndex) => ({
+        ...structuredClone(seed),
+        airport: {
+          ...structuredClone(seed.airport),
+          airport_id: `BADGE-${role}-${kind}`,
+          airport_name: `${role} ${kind}`,
+          role,
+          longitude: 110 + roleIndex * 4,
+          latitude: 30 + kindIndex * 4,
+        },
+      })));
+      state.working.damage_scenarios = [{
+        damage_scenario_id: 'D-BADGE', name: '角标视觉验证', category: 'custom',
+        events: roles.map((role, index) => ({
+          event_id: `E-BADGE-${role}`, sequence: index,
+          target: {airport_id: `BADGE-${role}-damage`, target_type: 'airport', target_id: null},
+          damage_type: 'capacity_damage', start_slot: 0, end_slot: 1,
+          effect: {closed: false, remaining_capacity_per_window: 4},
+          recovery_mode: 'instant', recovery_duration_slots: null,
+        })),
+      }];
+      state.selected = {type: 'airport', id: 'BADGE-civil-damage'};
+      drawMap();
+      fitMap();
+    }""")
+    page.wait_for_function("document.querySelectorAll('.situation-airport-marker').length === 6")
+
+    capture_prefix = os.environ.get("MAP_DAMAGE_BADGE_EVIDENCE")
+    if capture_prefix:
+        DAMAGE_BADGE_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        page.locator("#situationMap").screenshot(
+            path=str(DAMAGE_BADGE_EVIDENCE_DIR / f"{capture_prefix}-full-map.png")
+        )
+
+    expected_shapes = {
+        "civil": {"radius": "50%", "clipped": False},
+        "military": {"radius": "0px", "clipped": True},
+        "joint": {"radius": "0px", "clipped": True},
+    }
+    for role, expected in expected_shapes.items():
+        for selected_kind in ("damage", "plain"):
+            page.evaluate("""async ({role, selectedKind}) => {
+              const {state} = await import('/static/js/modules/situation-state.js');
+              const {drawMap} = await import('/static/js/modules/situation-map.js');
+              state.selected = {type: 'airport', id: `BADGE-${role}-${selectedKind}`};
+              drawMap();
+            }""", {"role": role, "selectedKind": selected_kind})
+            selected = page.locator(
+                f'.situation-airport-marker[data-object-id="BADGE-{role}-{selected_kind}"]'
+            )
+            damage = page.locator(
+                f'.situation-airport-marker[data-object-id="BADGE-{role}-damage"]'
+            )
+            assert "map-state-selected" in selected.get_attribute("class")
+            assert ("has-damage-config" in selected.get_attribute("class")) == (
+                selected_kind == "damage"
+            )
+            shape = selected.locator("span").evaluate("""node => {
+              const style = getComputedStyle(node);
+              return {width: style.width, height: style.height,
+                radius: style.borderRadius, clip: style.clipPath};
+            }""")
+            assert shape["width"] == shape["height"] == "13px"
+            assert shape["radius"] == expected["radius"]
+            assert (shape["clip"] != "none") == expected["clipped"]
+
+            if capture_prefix and selected_kind == "damage":
+                marker_box = selected.bounding_box()
+                page.screenshot(
+                    path=str(DAMAGE_BADGE_EVIDENCE_DIR / f"{capture_prefix}-{role}-selected-damage-local.png"),
+                    clip={
+                        "x": max(0, marker_box["x"] - 24),
+                        "y": max(0, marker_box["y"] - 24),
+                        "width": 220,
+                        "height": 72,
+                    },
+                )
+
+            badge = damage.evaluate("""node => {
+              const style = getComputedStyle(node, '::after');
+              const marker = node.getBoundingClientRect();
+              const shape = node.querySelector('span').getBoundingClientRect();
+              const left = Number.parseFloat(style.left);
+              const top = Number.parseFloat(style.top);
+              const width = Number.parseFloat(style.width);
+              const height = Number.parseFloat(style.height);
+              const hit = document.elementFromPoint(
+                marker.left + left + width / 2,
+                marker.top + top + height / 2,
+              );
+              return {
+                width: style.width, height: style.height,
+                radius: style.borderRadius, transform: style.transform,
+                background: style.backgroundColor, border: style.borderColor,
+                pointerEvents: style.pointerEvents, boxSizing: style.boxSizing,
+                hitIsMarker: hit === node || hit.closest('.situation-airport-marker') === node,
+                overlapX: Math.min(left + width, shape.right - marker.left) - Math.max(left, shape.left - marker.left),
+                overlapY: Math.min(top + height, shape.bottom - marker.top) - Math.max(top, shape.top - marker.top),
+              };
+            }""")
+            assert badge["width"] == badge["height"] == "6px"
+            assert badge["radius"] == "50%"
+            assert badge["transform"] == "none"
+            assert badge["background"] == "rgb(239, 91, 52)"
+            assert badge["border"] == "rgb(71, 32, 22)"
+            assert badge["pointerEvents"] == "none"
+            assert badge["boxSizing"] == "border-box"
+            assert badge["hitIsMarker"]
+            assert 0 < badge["overlapX"] < 4
+            assert 0 < badge["overlapY"] < 4
+
+    page.wait_for_timeout(300)  # Allow Leaflet's removed tooltip fade transition to finish.
+    selected = page.locator('.situation-airport-marker.map-state-selected')
+    selected_box = selected.bounding_box()
+    selected_label_box = page.get_by_role("tooltip", name="joint plain", exact=True).bounding_box()
+    assert selected_label_box["x"] >= selected_box["x"] + 23
+
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap, setCatalogLayer} = await import('/static/js/modules/situation-map.js');
+      state.selected = {type: 'airport', id: 'BADGE-joint-damage'};
+      drawMap();
+      await setCatalogLayer('airports', true);
+    }""")
+    page.wait_for_function("document.querySelectorAll('.catalog-airport-marker').length > 500")
+    selected = page.locator('.situation-airport-marker[data-object-id="BADGE-joint-damage"]')
+    assert "map-state-selected" in selected.get_attribute("class")
+    hit_class = selected.evaluate("""node => {
+      const rect = node.getBoundingClientRect();
+      return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+        ?.closest('.leaflet-marker-icon')?.className || '';
+    }""")
+    assert "situation-airport-marker" in hit_class
+
+    if capture_prefix:
+        page.locator("#situationMap").screenshot(
+            path=str(DAMAGE_BADGE_EVIDENCE_DIR / f"{capture_prefix}-dense-reference-full-map-dpr1.png")
+        )
+
+
+def test_damage_badge_renders_at_device_scale_factor_two(browser, actual_situation_server):
+    context = browser.new_context(
+        viewport={"width": 1440, "height": 900},
+        device_scale_factor=2,
+    )
+    page = context.new_page()
+    bundle = long_airport()
+    bundle["airport"]["role"] = "joint"
+    situation = {
+        "situation_id": "ST-LAYOUT", "name": "DPR 2 角标验证", "description": None,
+        "airports": [bundle], "missions": [],
+        "damage_scenarios": [{
+            "damage_scenario_id": "D-DPR2", "name": "角标验证", "category": "custom",
+            "events": [{
+                "event_id": "E-DPR2", "sequence": 0,
+                "target": {"airport_id": "AP190", "target_type": "airport", "target_id": None},
+                "damage_type": "capacity_damage", "start_slot": 0, "end_slot": 1,
+                "effect": {"closed": False, "remaining_capacity_per_window": 4},
+                "recovery_mode": "instant", "recovery_duration_slots": None,
+            }],
+        }],
+    }
+    page.route("**/api/**", lambda route: serve_layout_api(route, situation))
+    page.goto(f"{actual_situation_server}/situations")
+    page.wait_for_selector('.situation-airport-marker.has-damage-config')
+    assert page.evaluate("window.devicePixelRatio") == 2
+    marker = page.locator('.situation-airport-marker.has-damage-config')
+    styles = marker.evaluate("""node => {
+      const badge = getComputedStyle(node, '::after');
+      const shape = getComputedStyle(node.querySelector('span'));
+      return {
+        badge: [badge.width, badge.height, badge.borderRadius, badge.transform],
+        shape: [shape.width, shape.height, shape.clipPath],
+      };
+    }""")
+    assert styles["badge"] == ["6px", "6px", "50%", "none"]
+    assert styles["shape"][:2] == ["13px", "13px"]
+    assert styles["shape"][2] != "none"
+
+    capture_prefix = os.environ.get("MAP_DAMAGE_BADGE_EVIDENCE")
+    if capture_prefix:
+        DAMAGE_BADGE_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        page.locator("#situationMap").screenshot(
+            path=str(DAMAGE_BADGE_EVIDENCE_DIR / f"{capture_prefix}-full-map-dpr2.png")
+        )
+        marker_box = marker.bounding_box()
+        page.screenshot(
+            path=str(DAMAGE_BADGE_EVIDENCE_DIR / f"{capture_prefix}-joint-damage-local-dpr2.png"),
+            clip={
+                "x": max(0, marker_box["x"] - 24),
+                "y": max(0, marker_box["y"] - 24),
+                "width": 220,
+                "height": 72,
+            },
+        )
+    context.close()
+
+
+def test_fallback_damage_badge_matches_leaflet_and_keeps_single_hit_target(page):
+    marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert "has-damage-config" in marker.get_attribute("class")
+    result = marker.evaluate("""node => {
+      const style = getComputedStyle(node, '::after');
+      const rect = node.getBoundingClientRect();
+      const x = rect.left + Number.parseFloat(style.left) + Number.parseFloat(style.width) / 2;
+      const y = rect.top + Number.parseFloat(style.top) + Number.parseFloat(style.height) / 2;
+      const hit = document.elementFromPoint(x, y);
+      return {
+        width: style.width, height: style.height, radius: style.borderRadius,
+        transform: style.transform, background: style.backgroundColor,
+        border: style.borderColor, pointerEvents: style.pointerEvents,
+        boxSizing: style.boxSizing,
+        hitIsAirportButton: hit === node || hit.closest('.fallback-object') === node,
+      };
+    }""")
+    assert result == {
+        "width": "6px", "height": "6px", "radius": "50%", "transform": "none",
+        "background": "rgb(239, 91, 52)", "border": "rgb(71, 32, 22)",
+        "pointerEvents": "none", "boxSizing": "border-box", "hitIsAirportButton": True,
+    }
+
+
 def test_airport_marker_spec_renders_three_roles_sources_and_legend(actual_situation_page):
     page = actual_situation_page
     page.evaluate("""async () => {
@@ -693,7 +929,10 @@ def test_airport_marker_spec_renders_three_roles_sources_and_legend(actual_situa
     page.locator("#layerScopeButton").click()
     legend = page.locator(".map-legend")
     assert legend.is_visible()
-    for label in ("机场类别", "民用", "军用", "军民两用", "当前情境", "待加入候选", "基础参考", "损毁事件配置"):
+    for label in (
+        "机场类别", "民用", "军用", "军民两用", "当前情境", "待加入候选", "基础参考",
+        "损毁事件配置（非实时受损）",
+    ):
         assert label in legend.inner_text()
 
 

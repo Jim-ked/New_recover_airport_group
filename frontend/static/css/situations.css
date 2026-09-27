@@ -217,7 +217,7 @@
 .map-legend-source.candidate::after { content: ""; position: absolute; inset: 1px; border: 1px dashed #b9e5ff; border-radius: 3px; }
 .map-legend-source.reference::before { width: 8px; height: 8px; border-radius: 50%; opacity: .62; }
 .map-legend-source.damage::before { width: 11px; height: 11px; border-color: #708b9b; background: transparent; }
-.map-legend-source.damage::after { content: ""; position: absolute; width: 5px; height: 5px; right: 0; top: 0; border: 1px solid #ffd4d7; border-radius: 1px; background: #d94d59; transform: rotate(45deg); }
+.map-legend-source.damage::after { content: ""; position: absolute; box-sizing: border-box; width: 6px; height: 6px; right: 0; top: 0; border: 1px solid #472016; border-radius: 50%; background: #ef5b34; }
 .layer-scope-status { min-height: 18px; padding: 5px 8px 2px; color: #7694a7; font-size: 11px; }
 
 .icon-button {
@@ -602,10 +602,11 @@
 .fallback-object.candidate.candidate-queued .fallback-shape { opacity: 1; outline: 1px dashed rgba(185, 229, 255, .86); outline-offset: 3px; }
 .fallback-object.map-state-focused .fallback-shape { outline: 2px solid #70b9e5; outline-offset: 3px; opacity: 1; }
 .fallback-object.map-state-selected::before { content: ""; position: absolute; inset: -2px; border: 2px solid #d5f1ff; border-radius: 3px; box-shadow: 0 0 0 1px rgba(18, 76, 108, .72); pointer-events: none; }
-.fallback-object.has-damage-config::after { content: ""; position: absolute; width: 5px; height: 5px; right: -1px; top: -1px; border: 1px solid #ffd4d7; border-radius: 1px; background: #d94d59; box-shadow: 0 0 0 1px rgba(64, 9, 15, .72); transform: rotate(45deg); pointer-events: none; }
+.fallback-object.has-damage-config::after,
+.situation-airport-marker.has-damage-config::after { content: ""; position: absolute; left: calc(50% + 4px); top: calc(50% - 9px); box-sizing: border-box; width: 6px; height: 6px; border: 1px solid #472016; border-radius: 50%; background: #ef5b34; box-shadow: 0 0 0 1px rgba(255, 166, 132, .3); pointer-events: none; z-index: 2; }
 .fallback-object.mission .fallback-shape { width: 8px; height: 8px; border: 0; background: #d3a95a; transform: translate(-50%, -50%) rotate(45deg); }
 .fallback-object.mission-preview .fallback-shape { width: 9px; height: 9px; transform: translate(-50%, -50%) rotate(45deg); border: 1px dashed #8ec9e8; background: #173c50; }
-.fallback-label { position: absolute; left: 15px; top: 0; white-space: nowrap; color: #b9d3e2; font-size: 11px; text-shadow: 0 1px 2px #000; }
+.fallback-label { position: absolute; left: 23px; top: 0; white-space: nowrap; color: #b9d3e2; font-size: 11px; text-shadow: 0 1px 2px #000; }
 .fallback-object.candidate .fallback-label { display: none; }
 .fallback-object.candidate.map-state-focused .fallback-label,
 .fallback-object.candidate.candidate-queued .fallback-label { display: block; }
@@ -632,7 +633,6 @@
 .situation-mission-marker.map-state-selected::before { content: ""; position: absolute; inset: -2px; border: 2px solid #d5f1ff; border-radius: 3px; box-shadow: 0 0 0 1px rgba(18, 76, 108, .72); pointer-events: none; }
 .situation-airport-marker.map-state-focused::before,
 .situation-mission-marker.map-state-focused::before { content: ""; position: absolute; inset: 0; border: 1px dashed #70b9e5; border-radius: 3px; pointer-events: none; }
-.situation-airport-marker.has-damage-config::after { content: ""; position: absolute; width: 5px; height: 5px; right: -1px; top: -1px; border: 1px solid #ffd4d7; border-radius: 1px; background: #d94d59; box-shadow: 0 0 0 1px rgba(64, 9, 15, .72); transform: rotate(45deg); pointer-events: none; }
 .situation-candidate-marker.candidate-queued::before { content: ""; position: absolute; inset: -1px; border: 1px dashed rgba(185, 229, 255, .9); border-radius: 3px; pointer-events: none; }
 .situation-candidate-marker.candidate-queued span { opacity: 1; }
 .situation-candidate-marker.map-state-focused span { outline: 2px solid #70b9e5; outline-offset: 3px; opacity: 1; }
