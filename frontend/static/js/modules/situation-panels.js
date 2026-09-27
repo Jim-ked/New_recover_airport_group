@@ -1,4 +1,4 @@
-import { setCatalogLayer } from './situation-map.js';
+import { setCatalogLayer, setMapDisplayOption } from './situation-map.js';
 import { escapeHtml, refs, state } from './situation-state.js';
 
 let callbacks = {};
@@ -120,16 +120,25 @@ function initLayers(signal) {
     panel.classList.add('hidden');
     button.setAttribute('aria-expanded', 'false');
   };
+  const syncDisplayInputs = () => {
+    document.getElementById('showDamageConfig').checked = state.showDamageConfig;
+    document.getElementById('showObjectLabels').checked = state.showObjectLabels;
+  };
   button.addEventListener('click', () => {
     const opening = panel.classList.contains('hidden');
     panel.classList.toggle('hidden', !opening);
     button.setAttribute('aria-expanded', String(opening));
-    if (opening) status.textContent = '当前情境对象始终显示。';
+    if (opening) {
+      syncDisplayInputs();
+      status.textContent = state.mode === 'damage' && !state.showDamageConfig
+        ? '损毁编辑模式中临时显示配置标识；退出后恢复关闭。'
+        : '当前情境机场与任务始终显示。';
+    }
   }, { signal });
   document.getElementById('closeLayerScope').addEventListener('click', close, { signal });
   for (const [id, kind, label] of [
-    ['showAllAirports', 'airports', '基础机场'],
-    ['showAllMissions', 'missions', '任务'],
+    ['showAllAirports', 'airports', '其他基础机场'],
+    ['showAllMissions', 'missions', '其他基础任务'],
   ]) {
     document.getElementById(id).addEventListener('change', async (event) => {
       try {
@@ -143,6 +152,16 @@ function initLayers(signal) {
       }
     }, { signal });
   }
+  for (const [id, option, label] of [
+    ['showDamageConfig', 'showDamageConfig', '损毁事件配置标识'],
+    ['showObjectLabels', 'showObjectLabels', '对象名称标签'],
+  ]) {
+    document.getElementById(id).addEventListener('change', (event) => {
+      setMapDisplayOption(option, event.target.checked);
+      status.textContent = `${label}已${event.target.checked ? '开启' : '关闭'}。`;
+    }, { signal });
+  }
+  syncDisplayInputs();
   document.addEventListener('click', (event) => {
     if (!event.target.closest('#layerScopePanel') && !event.target.closest('#layerScopeButton')) close();
   }, { signal });
@@ -169,6 +188,10 @@ export function destroyPanels() {
   for (const id of ['showAllAirports', 'showAllMissions']) {
     const input = document.getElementById(id);
     if (input) input.checked = false;
+  }
+  for (const id of ['showDamageConfig', 'showObjectLabels']) {
+    const input = document.getElementById(id);
+    if (input) input.checked = true;
   }
   const status = document.getElementById('layerScopeStatus');
   if (status) status.textContent = '';

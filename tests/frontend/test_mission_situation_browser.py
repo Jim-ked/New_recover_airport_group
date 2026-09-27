@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 from threading import Thread
 
@@ -17,6 +18,7 @@ from backend.web.flask_ui import create_ui_blueprint
 playwright = pytest.importorskip("playwright.sync_api")
 ROOT = Path(__file__).resolve().parents[2]
 SCREENSHOT_DIR = ROOT / "runtime/temp/mission-module-browser"
+LAYER_PANEL_EVIDENCE_DIR = ROOT / "docs/verification/layer-panel-controls-2026-09-27"
 
 
 def mission(mission_id: str, name: str, longitude: float, latitude: float, start: int, end: int):
@@ -275,6 +277,17 @@ def test_catalog_and_history_preview_do_not_dirty_until_explicit_add(mission_pag
     source.locator(".mission-card-main").click()
     page.wait_for_timeout(260)
     assert page.locator('.situation-mission-marker.mission-source-preview[data-mission-id="M-CATALOG"]').count() == 1
+    page.locator("#layerScopeButton").click()
+    page.locator("#showObjectLabels").uncheck()
+    page.wait_for_timeout(300)
+    preview_label = page.locator(".situation-map-label.map-label-preview")
+    assert preview_label.count() == 1
+    assert "（预览）" in preview_label.inner_text()
+    if os.environ.get("MAP_LAYER_PANEL_EVIDENCE"):
+        LAYER_PANEL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "labels-off-mission-source-preview-dpr1.png")
+        )
     assert page.locator("#saveSituationButton").is_disabled()
     assert store["copy_requests"] == []
 
@@ -359,6 +372,8 @@ def test_reference_missions_are_lower_and_do_not_capture_location_pick(mission_p
     open_missions(page)
     page.locator('.mission-card[data-mission-id="M-CURRENT-1"] .mission-card-details').click()
     page.locator("#editMission").click()
+    page.locator("#layerScopeButton").click()
+    page.locator("#showObjectLabels").uncheck()
     page.locator("#pickMissionLocation").click()
     reference = page.locator('.catalog-mission-marker[data-object-id="M-REFERENCE-PICK"]')
     assert reference.evaluate("element => getComputedStyle(element).pointerEvents") == "none"
@@ -367,6 +382,14 @@ def test_reference_missions_are_lower_and_do_not_capture_location_pick(mission_p
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     page.wait_for_function("document.getElementById('pickMissionLocation').textContent === '从地图取点'")
     assert page.locator("#sitMissionLon").input_value() != "116.2"
+    page.wait_for_timeout(300)
+    assert page.locator(".situation-mission-marker.mission-location-draft").count() == 1
+    assert page.locator(".situation-map-label.map-label-preview").get_by_text("任务临时位置", exact=True).count() == 1
+    if os.environ.get("MAP_LAYER_PANEL_EVIDENCE"):
+        LAYER_PANEL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "labels-off-mission-location-draft-dpr1.png")
+        )
     assert reference.evaluate("element => getComputedStyle(element).pointerEvents") != "none"
 
     page.locator("#pickMissionLocation").click()

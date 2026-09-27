@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULES = ROOT / "frontend/static/js/modules"
 SCREENSHOT_DIR = ROOT / "runtime/temp/airport-editor-layout"
 DAMAGE_BADGE_EVIDENCE_DIR = ROOT / "docs/verification/damage-badge-2026-09-27"
+LAYER_PANEL_EVIDENCE_DIR = ROOT / "docs/verification/layer-panel-controls-2026-09-27"
 
 
 @pytest.fixture(scope="module")
@@ -525,6 +526,25 @@ def test_candidate_map_reuses_current_objects_and_diffs_debounced_search(actual_
     assert opened["removes"] == 0, opened
     assert opened["currentAirportPreserved"] and opened["currentMissionPreserved"], opened
 
+    page.evaluate("window.__candidateNodes = [...document.querySelectorAll('.situation-candidate-marker')]")
+    page.evaluate("""async () => {
+      const {setMapDisplayOption} = await import('/static/js/modules/situation-map.js');
+      setMapDisplayOption('showObjectLabels', false);
+      setMapDisplayOption('showObjectLabels', true);
+    }""")
+    assert page.locator(".situation-candidate-marker").count() == 565
+    assert page.evaluate("""() => {
+      const current = [...document.querySelectorAll('.situation-candidate-marker')];
+      return current.length === window.__candidateNodes.length
+        && current.every((node, index) => node === window.__candidateNodes[index]);
+    }""")
+    page.evaluate("""baseline => {
+      window.__mapPerf.adds = baseline.adds;
+      window.__mapPerf.removes = baseline.removes;
+      window.__currentAirportNode = document.querySelector('.situation-airport-marker');
+      window.__currentMissionNode = document.querySelector('.situation-mission-marker');
+    }""", opened)
+
     search = page.locator("#airportCandidateSearch")
     search.fill("Candidate 00")
     page.wait_for_timeout(180)
@@ -599,6 +619,148 @@ def test_reference_airports_exclude_current_and_visible_candidates(actual_situat
     page.locator("#layerScopeButton").click()
     page.locator("#showAllAirports").uncheck()
     assert page.locator(".catalog-airport-marker").count() == 0
+
+
+def test_layer_display_controls_keep_damage_and_labels_independent(actual_situation_page):
+    page = actual_situation_page
+    capture_evidence = os.environ.get("MAP_LAYER_PANEL_EVIDENCE")
+    if capture_evidence:
+        LAYER_PANEL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap} = await import('/static/js/modules/situation-map.js');
+      state.working.damage_scenarios = [{
+        damage_scenario_id: 'D-CONTROLS', name: '显示控制验证', category: 'custom',
+        events: [{event_id: 'E-CONTROLS', sequence: 0,
+          target: {airport_id: 'AP190', target_type: 'airport', target_id: null},
+          damage_type: 'capacity_damage', start_slot: 0, end_slot: 1,
+          effect: {closed: false, remaining_capacity_per_window: 4},
+          recovery_mode: 'instant', recovery_duration_slots: null}],
+      }];
+      state.selected = null;
+      state.mapFocus = null;
+      state.mode = 'select';
+      state.dirty = false;
+      drawMap();
+    }""")
+
+    page.locator("#layerScopeButton").click()
+    panel_text = page.locator("#layerScopePanel").inner_text()
+    for text in ("当前情境", "当前机场与任务", "辅助参考", "其他基础机场",
+                 "其他基础任务", "显示标注", "损毁事件配置标识", "对象名称标签"):
+        assert text in panel_text
+    assert "其他已保存情境损毁" not in panel_text
+    assert "projection endpoint" not in panel_text
+    assert page.locator("#showDamageConfig").is_checked()
+    assert page.locator("#showObjectLabels").is_checked()
+    if capture_evidence:
+        page.locator("#layerScopePanel").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "after-layer-panel-dpr1.png")
+        )
+        page.screenshot(path=str(LAYER_PANEL_EVIDENCE_DIR / "after-full-map-dpr1.png"))
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "combination-damage-on-labels-on-dpr1.png")
+        )
+
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "has-damage-config" in marker.get_attribute("class")
+    assert page.locator(".situation-map-label").count() >= 2
+
+    page.locator("#showDamageConfig").uncheck()
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "has-damage-config" not in marker.get_attribute("class")
+    assert marker.get_attribute("data-damage-config") == "true"
+    assert not page.evaluate("(async()=>{const {state}=await import('/static/js/modules/situation-state.js');return state.dirty})()")
+    if capture_evidence:
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "combination-damage-off-labels-on-dpr1.png")
+        )
+
+    page.locator("#showObjectLabels").uncheck()
+    page.wait_for_timeout(300)
+    assert page.locator(".situation-map-label").count() == 0
+    if capture_evidence:
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "combination-damage-off-labels-off-dpr1.png")
+        )
+        page.locator("#showDamageConfig").check()
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "combination-damage-on-labels-off-dpr1.png")
+        )
+        page.locator("#showDamageConfig").uncheck()
+
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap} = await import('/static/js/modules/situation-map.js');
+      state.mapFocus = {type: 'airport', id: 'AP190'};
+      drawMap();
+    }""")
+    assert page.locator(".situation-map-label.map-label-focused").count() == 1
+    if capture_evidence:
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "labels-off-focus-preserved-dpr1.png")
+        )
+
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap} = await import('/static/js/modules/situation-map.js');
+      state.mapFocus = null;
+      state.selected = {type: 'airport', id: 'AP190'};
+      drawMap();
+    }""")
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "map-state-selected" in marker.get_attribute("class")
+    assert "has-damage-config" not in marker.get_attribute("class")
+    assert page.locator(".situation-map-label.map-label-selected").count() == 1
+    page.locator("#showDamageConfig").check()
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "map-state-selected" in marker.get_attribute("class")
+    assert "has-damage-config" in marker.get_attribute("class")
+    if capture_evidence:
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "labels-off-selected-damage-on-dpr1.png")
+        )
+    page.locator("#showDamageConfig").uncheck()
+
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      const {drawMap} = await import('/static/js/modules/situation-map.js');
+      state.mapFocus = null;
+      state.selected = {type: 'mission', id: 'M-LAYOUT'};
+      drawMap();
+    }""")
+    page.wait_for_timeout(300)
+    assert page.locator(".situation-map-label.map-label-selected").count() == 1
+    if capture_evidence:
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "labels-off-selected-task-preserved-dpr1.png")
+        )
+
+    page.locator('[data-mode="damage"]').click()
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "has-damage-config" in marker.get_attribute("class")
+    assert not page.locator("#showDamageConfig").is_checked()
+    if capture_evidence:
+        page.wait_for_timeout(300)
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "damage-mode-forced-visible-dpr1.png")
+        )
+
+    page.locator("#closeInspector").click()
+    marker = page.locator('.situation-airport-marker[data-object-id="AP190"]')
+    assert "has-damage-config" not in marker.get_attribute("class")
+    assert not page.locator("#showDamageConfig").is_checked()
+    if capture_evidence:
+        page.wait_for_timeout(300)
+        page.locator("#situationMap").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "damage-mode-exit-restored-dpr1.png")
+        )
+
+    page.locator("#layerScopeButton").click()
+    page.locator("#showObjectLabels").check()
+    assert page.locator(".situation-map-label").count() >= 2
+    assert not page.evaluate("(async()=>{const {state}=await import('/static/js/modules/situation-state.js');return state.dirty})()")
 
 
 def test_current_airport_focus_and_formal_selection_are_distinct(actual_situation_page):
@@ -840,6 +1002,13 @@ def test_damage_badge_renders_at_device_scale_factor_two(browser, actual_situati
                 "height": 72,
             },
         )
+    if os.environ.get("MAP_LAYER_PANEL_EVIDENCE"):
+        LAYER_PANEL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        page.locator("#layerScopeButton").click()
+        page.locator("#layerScopePanel").screenshot(
+            path=str(LAYER_PANEL_EVIDENCE_DIR / "after-layer-panel-dpr2.png")
+        )
+        page.screenshot(path=str(LAYER_PANEL_EVIDENCE_DIR / "after-full-map-dpr2.png"))
     context.close()
 
 
@@ -865,6 +1034,52 @@ def test_fallback_damage_badge_matches_leaflet_and_keeps_single_hit_target(page)
         "background": "rgb(239, 91, 52)", "border": "rgb(71, 32, 22)",
         "pointerEvents": "none", "boxSizing": "border-box", "hitIsAirportButton": True,
     }
+
+
+def test_fallback_display_controls_match_leaflet_semantics(page):
+    marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert "has-damage-config" in marker.get_attribute("class")
+
+    page.evaluate("""async () => {
+      const {setMapDisplayOption} = await import('/situation-map.js');
+      setMapDisplayOption('showDamageConfig', false);
+      setMapDisplayOption('showObjectLabels', false);
+    }""")
+    marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert "has-damage-config" not in marker.get_attribute("class")
+    if os.environ.get("MAP_LAYER_PANEL_EVIDENCE"):
+        LAYER_PANEL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(LAYER_PANEL_EVIDENCE_DIR / "fallback-damage-off-labels-off.png"))
+    assert marker.get_attribute("data-damage-config") == "true"
+    assert not marker.locator(".fallback-label").is_visible()
+
+    page.evaluate("""async () => {
+      const {state} = await import('/situation-state.js');
+      const {drawMap} = await import('/situation-map.js');
+      state.mapFocus = {type: 'airport', id: 'AP002'};
+      drawMap();
+    }""")
+    marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert marker.locator(".fallback-label").is_visible()
+
+    page.evaluate("""async () => {
+      const {state} = await import('/situation-state.js');
+      const {drawMap} = await import('/situation-map.js');
+      state.mapFocus = null;
+      state.mode = 'damage';
+      drawMap();
+    }""")
+    marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert "has-damage-config" in marker.get_attribute("class")
+
+    page.evaluate("""async () => {
+      const {state} = await import('/situation-state.js');
+      const {drawMap} = await import('/situation-map.js');
+      state.mode = 'select';
+      drawMap();
+    }""")
+    marker = page.locator('.fallback-object.airport[data-id="AP002"]')
+    assert "has-damage-config" not in marker.get_attribute("class")
 
 
 def test_airport_marker_spec_renders_three_roles_sources_and_legend(actual_situation_page):
@@ -931,7 +1146,7 @@ def test_airport_marker_spec_renders_three_roles_sources_and_legend(actual_situa
     assert legend.is_visible()
     for label in (
         "机场类别", "民用", "军用", "军民两用", "当前情境", "待加入候选", "基础参考",
-        "损毁事件配置（非实时受损）",
+        "损毁事件配置标识（非实时受损）",
     ):
         assert label in legend.inner_text()
 

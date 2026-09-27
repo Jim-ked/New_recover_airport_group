@@ -181,6 +181,8 @@
 }
 .layer-scope-panel > header strong { font-size: 13px; }
 .layer-scope-body { padding: 8px; }
+.layer-scope-section + .layer-scope-section { margin-top: 6px; padding-top: 7px; border-top: 1px solid rgba(55, 88, 108, .55); }
+.layer-scope-section > h3 { margin: 0 8px 3px; color: #7694a7; font-size: 11px; font-weight: 600; }
 .layer-scope-row {
   min-height: 42px;
   display: flex;
@@ -198,7 +200,6 @@
 .layer-scope-row .ui-icon { width: 16px; height: 16px; }
 .layer-scope-row em { color: #6f8999; font-size: 11px; font-style: normal; }
 .layer-scope-row input { width: 16px; height: 16px; }
-.layer-unavailable { margin: -3px 8px 5px; color: #6f8999; font-size: 11px; line-height: 1.45; }
 .map-legend { margin: 5px 8px 2px; padding-top: 9px; border-top: 1px solid rgba(55, 88, 108, .65); }
 .map-legend > strong { display: block; margin: 0 0 7px; color: #8da7b7; font-size: 11px; font-weight: 600; }
 .map-legend > strong:not(:first-child) { margin-top: 10px; }
@@ -610,6 +611,7 @@
 .fallback-object.candidate .fallback-label { display: none; }
 .fallback-object.candidate.map-state-focused .fallback-label,
 .fallback-object.candidate.candidate-queued .fallback-label { display: block; }
+.fallback-object.hide-normal-label .fallback-label { display: none; }
 
 .situation-airport-marker,
 .situation-candidate-marker,

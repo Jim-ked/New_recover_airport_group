@@ -291,6 +291,28 @@ def test_save_conflict_can_keep_local_or_reload_server_copy(lifecycle_page):
     page.locator("#cancelSituationInfo").click()
 
 
+def test_display_options_persist_across_situation_switch_and_reset_on_reentry(lifecycle_page):
+    page, _ = lifecycle_page
+    page.locator("#layerScopeButton").click()
+    page.locator("#showDamageConfig").uncheck()
+    page.locator("#showObjectLabels").uncheck()
+    assert page.locator("#saveSituationButton").is_disabled()
+
+    page.locator("#situationSelect").select_option("ST002")
+    page.wait_for_function("document.querySelector('#situationSelect').value === 'ST002'")
+    assert not page.locator("#showDamageConfig").is_checked()
+    assert not page.locator("#showObjectLabels").is_checked()
+    assert page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      return !state.showDamageConfig && !state.showObjectLabels && !state.dirty;
+    }""")
+
+    page.reload()
+    page.wait_for_selector('#situationSelect option[value="ST002"]', state="attached")
+    assert page.locator("#showDamageConfig").is_checked()
+    assert page.locator("#showObjectLabels").is_checked()
+
+
 def test_delete_success_is_not_reclassified_when_list_refresh_fails(lifecycle_page):
     page, state = lifecycle_page
     page.locator("#situationSelect").select_option("ST002")

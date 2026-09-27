@@ -35,6 +35,8 @@ function initialState() {
     candidateDetail: null,
     mapFocus: null,
     draftMissionCoord: null,
+    showDamageConfig: true,
+    showObjectLabels: true,
   };
 }
 

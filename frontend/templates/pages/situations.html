@@ -78,26 +78,38 @@
       <button id="closeLayerScope" class="icon-button" type="button" aria-label="关闭"><svg class="ui-icon"><use href="#i-close"></use></svg></button>
     </header>
     <div class="layer-scope-body">
-      <div class="layer-scope-row current">
-        <span>
-          <svg class="ui-icon"><use href="#i-info"></use></svg>
-          当前情境对象
-        </span>
-        <em>始终显示</em>
-      </div>
-      <label class="layer-scope-row">
-        <span><svg class="ui-icon"><use href="#i-airport"></use></svg>全部基础机场</span>
-        <input id="showAllAirports" type="checkbox">
-      </label>
-      <label class="layer-scope-row">
-        <span><svg class="ui-icon"><use href="#i-task"></use></svg>全部任务</span>
-        <input id="showAllMissions" type="checkbox">
-      </label>
-      <label class="layer-scope-row">
-        <span><svg class="ui-icon"><use href="#i-damage"></use></svg>其他已保存情境损毁</span>
-        <input id="showAllDamage" type="checkbox" disabled aria-describedby="otherDamageUnavailable">
-      </label>
-      <p id="otherDamageUnavailable" class="layer-unavailable">缺少既定 projection endpoint，本轮不可用。</p>
+      <section class="layer-scope-section" aria-labelledby="currentLayerHeading">
+        <h3 id="currentLayerHeading">当前情境</h3>
+        <div class="layer-scope-row current">
+          <span>
+            <svg class="ui-icon"><use href="#i-info"></use></svg>
+            当前机场与任务
+          </span>
+          <em>始终显示</em>
+        </div>
+      </section>
+      <section class="layer-scope-section" aria-labelledby="referenceLayerHeading">
+        <h3 id="referenceLayerHeading">辅助参考</h3>
+        <label class="layer-scope-row">
+          <span><svg class="ui-icon"><use href="#i-airport"></use></svg>其他基础机场</span>
+          <input id="showAllAirports" type="checkbox">
+        </label>
+        <label class="layer-scope-row">
+          <span><svg class="ui-icon"><use href="#i-task"></use></svg>其他基础任务</span>
+          <input id="showAllMissions" type="checkbox">
+        </label>
+      </section>
+      <section class="layer-scope-section" aria-labelledby="annotationLayerHeading">
+        <h3 id="annotationLayerHeading">显示标注</h3>
+        <label class="layer-scope-row">
+          <span><svg class="ui-icon"><use href="#i-damage"></use></svg>损毁事件配置标识</span>
+          <input id="showDamageConfig" type="checkbox" checked>
+        </label>
+        <label class="layer-scope-row">
+          <span><svg class="ui-icon"><use href="#i-info"></use></svg>对象名称标签</span>
+          <input id="showObjectLabels" type="checkbox" checked>
+        </label>
+      </section>
       <section class="map-legend" aria-label="地图标识说明">
         <strong>机场类别</strong>
         <div class="map-legend-grid role-legend">
@@ -110,7 +122,7 @@
           <span><i class="map-legend-source current"></i>当前情境</span>
           <span><i class="map-legend-source candidate"></i>待加入候选</span>
           <span><i class="map-legend-source reference"></i>基础参考</span>
-          <span><i class="map-legend-source damage"></i>损毁事件配置（非实时受损）</span>
+          <span><i class="map-legend-source damage"></i>损毁事件配置标识（非实时受损）</span>
         </div>
       </section>
       <div id="layerScopeStatus" class="layer-scope-status"></div>

@@ -29,12 +29,16 @@ export function configureMap(nextCallbacks) {
   requestSignal = nextCallbacks.signal || requestSignal;
 }
 
-function clearMapLayers() {
+function clearCurrentMapLayers() {
   for (const layer of mapLayers) layer.remove?.();
   mapLayers.length = 0;
+  refs.fallbackObjects?.replaceChildren();
+}
+
+function clearMapLayers() {
+  clearCurrentMapLayers();
   for (const marker of candidateMarkers.values()) marker.remove?.();
   candidateMarkers.clear();
-  refs.fallbackObjects?.replaceChildren();
 }
 
 function damagedAirportIds() {
@@ -48,6 +52,14 @@ function damagedAirportIds() {
 
 function visibleCandidates() {
   return callbacks.visibleCandidateAirports?.() || [];
+}
+
+function damageConfigVisible() {
+  return state.showDamageConfig || state.mode === 'damage';
+}
+
+function currentLabelVisible(display) {
+  return state.showObjectLabels || display.selected || display.focused;
 }
 
 function currentObjectDisplayState(type, objectId) {
@@ -103,7 +115,7 @@ function airportMarkerClass(airport, damaged) {
     display.selected ? 'map-state-selected' : '',
     display.focused ? 'map-state-focused' : '',
     display.primary ? 'map-state-primary' : '',
-    damaged ? 'has-damage-config' : '',
+    damaged && damageConfigVisible() ? 'has-damage-config' : '',
   ]
     .filter(Boolean).join(' ');
 }
@@ -196,7 +208,7 @@ function syncCandidateLeafletMarkers({ refreshCatalog = true } = {}) {
 }
 
 function drawLeaflet() {
-  clearMapLayers();
+  clearCurrentMapLayers();
   if (!map || !state.working) return;
   const L = globalThis.L;
   const damaged = damagedAirportIds();
@@ -232,14 +244,16 @@ function drawLeaflet() {
       if (isDamaged) airportElement.dataset.damageConfig = 'true';
     }
     mapLayers.push(marker);
-    bindPermanentLabel(marker, airportMapLabel(airport),
-      display.selected ? LABEL_PRIORITY.selected
-        : display.focused ? LABEL_PRIORITY.focused
-          : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.airport,
-      display.selected,
-      labels,
-      display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '',
-      [11, 0]);
+    if (currentLabelVisible(display)) {
+      bindPermanentLabel(marker, airportMapLabel(airport),
+        display.selected ? LABEL_PRIORITY.selected
+          : display.focused ? LABEL_PRIORITY.focused
+            : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.airport,
+        display.selected || display.focused,
+        labels,
+        display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '',
+        [11, 0]);
+    }
   }
 
   syncCandidateLeafletMarkers({ refreshCatalog: false });
@@ -268,13 +282,15 @@ function drawLeaflet() {
     annotateMarker(marker, 'mission', mission.mission_id);
     if (marker.getElement()) marker.getElement().dataset.missionId = mission.mission_id;
     mapLayers.push(marker);
-    bindPermanentLabel(marker, mission.name,
-      display.selected ? LABEL_PRIORITY.selected
-        : display.focused ? LABEL_PRIORITY.focused
-          : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.mission,
-      display.selected,
-      labels,
-      display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '');
+    if (currentLabelVisible(display)) {
+      bindPermanentLabel(marker, mission.name,
+        display.selected ? LABEL_PRIORITY.selected
+          : display.focused ? LABEL_PRIORITY.focused
+            : display.primary ? LABEL_PRIORITY.primary : LABEL_PRIORITY.mission,
+        display.selected || display.focused,
+        labels,
+        display.selected ? 'map-label-selected' : display.focused ? 'map-label-focused' : display.primary ? 'map-label-primary' : '');
+    }
   }
 
   const previewMission = state.missionSourceSelection?.mission;
@@ -292,7 +308,7 @@ function drawLeaflet() {
       marker.addTo(map);
       if (marker.getElement()) marker.getElement().dataset.missionId = previewMission.mission_id;
       mapLayers.push(marker);
-      bindPermanentLabel(marker, `${previewMission.name}（预览）`, LABEL_PRIORITY.preview, false, labels, 'map-label-preview');
+      bindPermanentLabel(marker, `${previewMission.name}（预览）`, LABEL_PRIORITY.preview, true, labels, 'map-label-preview');
     }
   }
 
@@ -308,6 +324,7 @@ function drawLeaflet() {
       const marker = L.marker([lat, lon], { icon, interactive: false });
       marker.addTo(map);
       mapLayers.push(marker);
+      bindPermanentLabel(marker, '任务临时位置', LABEL_PRIORITY.preview, true, labels, 'map-label-preview');
     }
   }
   labelLayout?.setItems(labels);
@@ -386,9 +403,12 @@ function drawFallback() {
     const left = 10 + 80 * (point.lon - minLon) / (maxLon - minLon);
     const top = 12 + 76 * (maxLat - point.lat) / (maxLat - minLat);
     const damage = point.type === 'airport' && damaged.has(point.id);
+    const showDamage = damage && damageConfigVisible();
+    const hideNormalLabel = ['airport', 'mission'].includes(point.type)
+      && !state.showObjectLabels && !point.selected && !point.focused;
     const roleClass = point.type === 'airport' || point.type === 'candidate' ? ` ${airportRoleClass(point.role)}` : '';
     const title = `${point.name}${damage ? '；存在损毁事件配置' : ''}`;
-    return `<button class="fallback-object ${point.type}${roleClass}${damage ? ' has-damage-config' : ''}${point.selected ? ' map-state-selected' : ''}${point.focused ? ' map-state-focused' : ''}${point.primary ? ' map-state-primary' : ''}${point.queued ? ' candidate-queued' : ''}" style="left:${left}%;top:${top}%;z-index:${fallbackZIndex(point)}" data-type="${point.type}" data-id="${escapeHtml(point.id)}" title="${escapeHtml(title)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
+    return `<button class="fallback-object ${point.type}${roleClass}${showDamage ? ' has-damage-config' : ''}${hideNormalLabel ? ' hide-normal-label' : ''}${point.selected ? ' map-state-selected' : ''}${point.focused ? ' map-state-focused' : ''}${point.primary ? ' map-state-primary' : ''}${point.queued ? ' candidate-queued' : ''}" style="left:${left}%;top:${top}%;z-index:${fallbackZIndex(point)}" data-type="${point.type}" data-id="${escapeHtml(point.id)}"${damage ? ' data-damage-config="true"' : ''} title="${escapeHtml(title)}"><span class="fallback-shape"></span><span class="fallback-label">${escapeHtml(point.name)}</span></button>`;
   }).join('');
   refs.fallbackObjects.querySelectorAll('button').forEach((button) => {
     let clickTimer = null;
@@ -410,6 +430,14 @@ function drawFallback() {
 export function drawMap() {
   if (fallback) drawFallback();
   else drawLeaflet();
+}
+
+export function setMapDisplayOption(option, enabled) {
+  if (!['showDamageConfig', 'showObjectLabels'].includes(option)) {
+    throw new Error(`unknown map display option: ${option}`);
+  }
+  state[option] = Boolean(enabled);
+  drawMap();
 }
 
 export function updateCandidateMarkers() {
