@@ -50,7 +50,7 @@ def browser():
 
 @pytest.fixture
 def auth_server(tmp_path):
-    calls = {"me": 0, "logout": 0}
+    calls = {"me": 0, "logout": 0, "change_password": 0}
     database_path = tmp_path / "auth-browser.db"
     initialize_database(database_path)
     repository = UserRepository(database_path)
@@ -82,6 +82,8 @@ def auth_server(tmp_path):
     def count_logout_requests():
         if request.path == "/api/auth/logout":
             calls["logout"] += 1
+        if request.path == "/api/auth/change-password":
+            calls["change_password"] += 1
 
     def require_principal():
         if g.current_principal is None:
@@ -126,10 +128,10 @@ def auth_server(tmp_path):
     thread.join(timeout=3)
 
 
-def _login(page, base_url, next_path="/situations"):
+def _login(page, base_url, next_path="/situations", password="Browser-pass-1"):
     page.goto(f"{base_url}/login?next={next_path}")
     page.locator("#loginName").fill("browser-user")
-    page.locator("#loginPassword").fill("Browser-pass-1")
+    page.locator("#loginPassword").fill(password)
     page.locator("#loginButton").click()
     page.wait_for_url(f"{base_url}{next_path}")
     page.wait_for_selector("#accountTrigger")
@@ -157,16 +159,41 @@ def _wait_for_beforeunload_guard(page):
     }""")
 
 
+def _wait_for_modal_open(page, selector):
+    page.wait_for_function("""selector => {
+      const modal = document.querySelector(selector);
+      return modal?.classList.contains('open')
+        && getComputedStyle(modal).visibility === 'visible';
+    }""", arg=selector)
+
+
 def _wait_for_situation_mount(page):
     page.wait_for_function("""async () => {
       const {state} = await import('/static/js/modules/situation-state.js');
-      return Boolean(state.me);
+      const mapReady = document.querySelector('#situationMap')?.classList.contains('leaflet-container');
+      const fallbackReady = !document.querySelector('#situationFallbackMap')?.classList.contains('hidden');
+      return Boolean(state.me && (mapReady || fallbackReady));
     }""")
 
 
 def _logout_audit_count(calls):
     records, _ = calls["audit_repository"].query(limit=500)
     return sum(record.request_path == "/api/auth/logout" for record in records)
+
+
+def _change_password_audit_count(calls):
+    records, _ = calls["audit_repository"].query(limit=500)
+    return sum(record.request_path == "/api/auth/change-password" for record in records)
+
+
+def _open_password_modal(page, *, current="Browser-pass-1", new="Browser-pass-2"):
+    page.locator("#accountTrigger").click()
+    page.locator("#changePasswordAction").click()
+    _wait_for_modal_open(page, "#passwordModal")
+    page.wait_for_function("document.querySelector('#passwordModal').contains(document.activeElement)")
+    page.locator("#currentPassword").fill(current)
+    page.locator("#newPassword").fill(new)
+    page.locator("#newPasswordAgain").fill(new)
 
 
 def test_browser_session_restore_and_logout_failure_contract(browser, auth_server):
@@ -346,6 +373,7 @@ def test_dirty_workspace_navigation_and_direct_leave_guards_remain(browser, auth
     _login(page, base_url, "/base-data")
     page.wait_for_selector("#baseDataTableWrap table")
     page.locator('#baseDataTabs button[data-tab="resource_types"]').click()
+    page.wait_for_function("document.querySelector('#baseDataTableTitle').textContent === '保障资源类型'")
     page.locator("#baseDataAddButton").click()
     page.locator("#edResourceName").fill("导航保护")
     _wait_for_beforeunload_guard(page)
@@ -425,4 +453,197 @@ def test_repeated_logout_click_sends_one_request_and_one_audit_event(browser, au
     assert len(requests) == 1
     assert calls["logout"] == 1
     assert _logout_audit_count(calls) == 1
+    context.close()
+
+
+def test_change_password_local_validation_does_not_leave_or_request(browser, auth_server):
+    base_url, calls = auth_server
+    context = browser.new_context()
+    page = context.new_page()
+    _login(page, base_url)
+    _wait_for_situation_mount(page)
+    page.locator("#accountTrigger").click()
+    page.locator("#changePasswordAction").click()
+
+    page.locator("#passwordSave").click()
+    assert "请输入当前密码和新密码" in page.locator("#passwordMessage").inner_text()
+    assert not page.locator("#situationConfirmModal").get_attribute("class").endswith("open")
+    assert calls["change_password"] == 0
+
+    page.locator("#currentPassword").fill("Browser-pass-1")
+    page.locator("#newPassword").fill("Browser-pass-2")
+    page.locator("#newPasswordAgain").fill("Browser-pass-3")
+    page.locator("#passwordSave").click()
+    assert "两次输入的新密码不一致" in page.locator("#passwordMessage").inner_text()
+    assert calls["change_password"] == 0
+    assert _change_password_audit_count(calls) == 0
+    context.close()
+
+
+def test_base_data_dirty_password_cancel_reject_and_retry(browser, auth_server):
+    base_url, calls = auth_server
+    context = browser.new_context()
+    page = context.new_page()
+    unload_dialogs = []
+    page.on("dialog", lambda dialog: (unload_dialogs.append(dialog.type), dialog.accept()))
+    _login(page, base_url, "/base-data")
+    page.wait_for_selector("#baseDataTableWrap table")
+    page.locator('#baseDataTabs button[data-tab="resource_types"]').click()
+    page.wait_for_function("document.querySelector('#baseDataTableTitle').textContent === '保障资源类型'")
+    page.locator("#baseDataAddButton").click()
+    page.locator("#edResourceName").fill("密码修改期间保留")
+    _wait_for_beforeunload_guard(page)
+    page.wait_for_timeout(100)
+    _open_password_modal(page, current="wrong-current", new="Browser-pass-2")
+
+    page.locator("#passwordSave").click()
+    page.wait_for_selector("#baseDataConfirmModal.open")
+    assert not page.locator("#passwordModal").evaluate("element => element.classList.contains('open')")
+    assert calls["change_password"] == 0
+    page.locator("#baseDataConfirmCancel").click()
+    page.wait_for_selector("#passwordModal.open")
+    assert page.locator("#currentPassword").input_value() == "wrong-current"
+    assert page.locator("#newPassword").input_value() == "Browser-pass-2"
+    page.wait_for_function("document.querySelector('#passwordModal').contains(document.activeElement)")
+    assert page.locator("#edResourceName").input_value() == "密码修改期间保留"
+    assert _beforeunload_is_protected(page)
+
+    page.locator("#passwordSave").click()
+    page.wait_for_selector("#baseDataConfirmModal.open")
+    page.locator("#baseDataConfirmAction").click()
+    page.wait_for_selector("#passwordModal.open")
+    assert "当前密码不正确" in page.locator("#passwordMessage").inner_text()
+    assert calls["change_password"] == 1
+    assert _change_password_audit_count(calls) == 1
+    assert page.locator("#edResourceName").input_value() == "密码修改期间保留"
+    assert _beforeunload_is_protected(page)
+
+    page.locator("#currentPassword").fill("Browser-pass-1")
+    page.locator("#passwordSave").click()
+    page.wait_for_selector("#baseDataConfirmModal.open")
+    page.locator("#baseDataConfirmAction").click()
+    page.wait_for_url("**/login?**")
+    assert calls["change_password"] == 2
+    assert _change_password_audit_count(calls) == 2
+    assert "beforeunload" not in unload_dialogs
+    _login(page, base_url, "/base-data", password="Browser-pass-2")
+    context.close()
+
+
+def test_situation_dirty_and_panel_draft_password_lifecycle(browser, auth_server):
+    base_url, calls = auth_server
+    password = "Browser-pass-1"
+
+    for index, dirty_field in enumerate(("dirty", "panelDraftDirty"), start=2):
+        new_password = f"Browser-pass-{index}"
+        context = browser.new_context()
+        page = context.new_page()
+        unload_dialogs = []
+        page.on("dialog", lambda dialog: (unload_dialogs.append(dialog.type), dialog.accept()))
+        _login(page, base_url, password=password)
+        _wait_for_situation_mount(page)
+        page.evaluate("""async (field) => {
+          const {state} = await import('/static/js/modules/situation-state.js');
+          state[field] = true;
+        }""", dirty_field)
+        _wait_for_beforeunload_guard(page)
+        _open_password_modal(page, current=password, new=new_password)
+
+        page.locator("#passwordSave").click()
+        _wait_for_modal_open(page, "#situationConfirmModal")
+        assert not page.locator("#passwordModal").evaluate("element => element.classList.contains('open')")
+        page.locator("#situationConfirmCancel").click()
+        page.wait_for_selector("#passwordModal.open")
+        assert calls["change_password"] == index - 2
+        assert page.locator("#currentPassword").input_value() == password
+        assert page.locator("#newPassword").input_value() == new_password
+        assert _beforeunload_is_protected(page)
+
+        page.locator("#passwordSave").click()
+        _wait_for_modal_open(page, "#situationConfirmModal")
+        page.locator("#situationConfirmAction").click()
+        page.wait_for_url("**/login?**")
+        assert "beforeunload" not in unload_dialogs
+        password = new_password
+        context.close()
+
+    assert calls["change_password"] == 2
+    assert _change_password_audit_count(calls) == 2
+
+
+def test_situation_saving_blocks_password_request(browser, auth_server):
+    base_url, calls = auth_server
+    context = browser.new_context()
+    page = context.new_page()
+    _login(page, base_url)
+    _wait_for_situation_mount(page)
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      state.saving = true;
+    }""")
+    _open_password_modal(page)
+    page.locator("#passwordSave").click()
+    page.wait_for_function("document.querySelector('#situationMessage').textContent.includes('正在保存')")
+    page.wait_for_selector("#passwordModal.open")
+    assert calls["change_password"] == 0
+    assert page.locator("#passwordSave").is_enabled()
+    context.close()
+
+
+def test_change_password_network_outcomes_and_single_submit(browser, auth_server):
+    base_url, calls = auth_server
+    context = browser.new_context()
+    page = context.new_page()
+    requests = []
+    page.on("request", lambda item: requests.append(item.url)
+            if item.url.endswith("/api/auth/change-password") else None)
+    _login(page, base_url, "/base-data")
+    page.wait_for_selector("#baseDataTableWrap table")
+    _open_password_modal(page)
+    page.route("**/api/auth/change-password", lambda route: route.abort("internetdisconnected"))
+    page.evaluate("""() => {
+      const button = document.querySelector('#passwordSave');
+      button.click();
+      button.click();
+    }""")
+    page.wait_for_function("document.querySelector('#passwordMessage').textContent.includes('会话仍有效')")
+    assert len(requests) == 1
+    assert calls["change_password"] == 0
+    assert page.locator("#passwordModal").get_attribute("class").endswith("open")
+
+    page.unroute("**/api/auth/change-password")
+    page.route("**/api/auth/change-password", lambda route: (
+        route.fetch(), route.abort("internetdisconnected")
+    ))
+    page.locator("#passwordSave").click()
+    page.wait_for_url("**/login?**")
+    assert calls["change_password"] == 1
+    assert _change_password_audit_count(calls) == 1
+    _login(page, base_url, "/base-data", password="Browser-pass-2")
+    context.close()
+
+
+def test_change_password_indeterminate_network_restores_leave_guard(browser, auth_server):
+    base_url, calls = auth_server
+    context = browser.new_context()
+    page = context.new_page()
+    _login(page, base_url)
+    _wait_for_situation_mount(page)
+    page.evaluate("""async () => {
+      const {state} = await import('/static/js/modules/situation-state.js');
+      state.dirty = true;
+    }""")
+    _wait_for_beforeunload_guard(page)
+    _open_password_modal(page)
+    page.route("**/api/auth/change-password", lambda route: route.abort("internetdisconnected"))
+    page.route("**/api/me", lambda route: route.abort("internetdisconnected"))
+
+    page.locator("#passwordSave").click()
+    _wait_for_modal_open(page, "#situationConfirmModal")
+    page.locator("#situationConfirmAction").click()
+    page.wait_for_function("document.querySelector('#passwordMessage').textContent.includes('状态无法确认')")
+    assert calls["change_password"] == 0
+    assert _change_password_audit_count(calls) == 0
+    assert page.locator("#passwordModal").get_attribute("class").endswith("open")
+    assert _beforeunload_is_protected(page)
     context.close()

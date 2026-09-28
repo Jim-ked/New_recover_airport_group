@@ -23,6 +23,7 @@ const newPasswordAgain = document.getElementById('newPasswordAgain');
 let account = null;
 let redirecting = false;
 let logoutInProgress = false;
+let passwordChangeInProgress = false;
 
 function loginUrl() {
   const next = `${location.pathname}${location.search}${location.hash}`;
@@ -62,7 +63,7 @@ function clearLogoutMessage() {
   logoutMessage.textContent = '';
   logoutMessage.className = 'inline-message hidden';
 }
-async function resolveNetworkLogoutState() {
+async function resolveSessionState() {
   try {
     await apiFetch('/api/me', { notifyAuthRequired: false });
     return 'authenticated';
@@ -76,7 +77,21 @@ function openPasswordModal() {
   clearPasswordMessage();
   currentPassword.value = ''; newPassword.value = ''; newPasswordAgain.value = '';
   passwordModal.classList.add('open'); passwordModal.setAttribute('aria-hidden', 'false');
-  setTimeout(() => currentPassword.focus(), 0);
+  focusPasswordModal();
+}
+function focusPasswordModal() {
+  const focusCurrentPassword = () => {
+    passwordModal.removeEventListener('transitionend', focusCurrentPassword);
+    if (passwordModal.classList.contains('open')) currentPassword.focus();
+  };
+  passwordModal.addEventListener('transitionend', focusCurrentPassword);
+  requestAnimationFrame(() => {
+    if (getComputedStyle(passwordModal).visibility === 'visible') focusCurrentPassword();
+  });
+}
+function restorePasswordModal() {
+  passwordModal.classList.add('open'); passwordModal.setAttribute('aria-hidden', 'false');
+  focusPasswordModal();
 }
 function closePasswordModal() {
   passwordModal.classList.remove('open'); passwordModal.setAttribute('aria-hidden', 'true');
@@ -118,18 +133,54 @@ passwordSave?.addEventListener('click', async () => {
   clearPasswordMessage();
   if (!currentPassword.value || !newPassword.value) { setPasswordMessage('请输入当前密码和新密码。'); return; }
   if (newPassword.value !== newPasswordAgain.value) { setPasswordMessage('两次输入的新密码不一致。'); return; }
+  if (passwordChangeInProgress || logoutInProgress) return;
+  passwordChangeInProgress = true;
   passwordSave.disabled = true;
+  const submittedCurrentPassword = currentPassword.value;
+  const submittedNewPassword = newPassword.value;
+  let leavePermit = null;
+  closePasswordModal();
   try {
-    await apiFetch('/api/auth/change-password', { method: 'POST', body: { current_password: currentPassword.value, new_password: newPassword.value } });
+    leavePermit = await requestCurrentWorkspaceLeave();
+    if (!leavePermit) {
+      restorePasswordModal();
+      return;
+    }
+    await apiFetch('/api/auth/change-password', {
+      method: 'POST',
+      body: { current_password: submittedCurrentPassword, new_password: submittedNewPassword },
+      notifyAuthRequired: false,
+    });
     clearAccount();
-    setPasswordMessage('密码已修改，需要重新登录。', 'success');
-    setTimeout(redirectToLogin, 350);
+    redirectToLogin();
   } catch (error) {
-    setPasswordMessage(error instanceof ApiError ? error.message : '修改密码失败。');
-  } finally { passwordSave.disabled = false; }
+    if (error instanceof ApiError && error.code === 'NETWORK_ERROR') {
+      const state = await resolveSessionState();
+      if (state === 'logged-out') {
+        clearAccount();
+        redirectToLogin();
+        return;
+      }
+      leavePermit?.revoke();
+      restorePasswordModal();
+      setPasswordMessage(state === 'authenticated'
+        ? '修改密码请求未完成：网络连接异常，已确认当前会话仍有效，请重试。'
+        : '修改密码请求状态无法确认。请刷新页面核实后重新登录。');
+    } else if (error instanceof ApiError && error.status === 401) {
+      clearAccount();
+      redirectToLogin();
+    } else {
+      leavePermit?.revoke();
+      restorePasswordModal();
+      setPasswordMessage(error instanceof ApiError ? error.message : '修改密码失败。');
+    }
+  } finally {
+    passwordChangeInProgress = false;
+    passwordSave.disabled = false;
+  }
 });
 logoutAction?.addEventListener('click', async () => {
-  if (logoutInProgress) return;
+  if (logoutInProgress || passwordChangeInProgress) return;
   logoutInProgress = true;
   logoutAction.disabled = true;
   clearLogoutMessage();
@@ -145,7 +196,7 @@ logoutAction?.addEventListener('click', async () => {
     redirectToLogin();
   } catch (error) {
     if (error instanceof ApiError && error.code === 'NETWORK_ERROR') {
-      const state = await resolveNetworkLogoutState();
+      const state = await resolveSessionState();
       if (state === 'logged-out') {
         clearAccount();
         closeAccount();
