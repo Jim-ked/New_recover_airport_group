@@ -1,5 +1,6 @@
 import { apiFetch, ApiError } from './api-client.js';
 import { clearAccount, getAccount } from './account-context.js';
+import { requestCurrentWorkspaceLeave } from './workspace-navigation.js';
 
 const authenticated = document.body.dataset.authenticated === 'true';
 const accountTrigger = document.getElementById('accountTrigger');
@@ -21,6 +22,7 @@ const newPasswordAgain = document.getElementById('newPasswordAgain');
 
 let account = null;
 let redirecting = false;
+let logoutInProgress = false;
 
 function loginUrl() {
   const next = `${location.pathname}${location.search}${location.hash}`;
@@ -48,6 +50,26 @@ function setPasswordMessage(text, type = 'error') {
 function clearPasswordMessage() {
   passwordMessage.className = 'inline-message hidden';
   passwordMessage.textContent = '';
+}
+function setLogoutMessage(text) {
+  if (!logoutMessage) return;
+  logoutMessage.textContent = text;
+  logoutMessage.className = 'inline-message error';
+  logoutMessage.classList.remove('hidden');
+}
+function clearLogoutMessage() {
+  if (!logoutMessage) return;
+  logoutMessage.textContent = '';
+  logoutMessage.className = 'inline-message hidden';
+}
+async function resolveNetworkLogoutState() {
+  try {
+    await apiFetch('/api/me', { notifyAuthRequired: false });
+    return 'authenticated';
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return 'logged-out';
+    return 'unknown';
+  }
 }
 function openPasswordModal() {
   closeAccount();
@@ -107,12 +129,14 @@ passwordSave?.addEventListener('click', async () => {
   } finally { passwordSave.disabled = false; }
 });
 logoutAction?.addEventListener('click', async () => {
+  if (logoutInProgress) return;
+  logoutInProgress = true;
   logoutAction.disabled = true;
-  if (logoutMessage) {
-    logoutMessage.textContent = '';
-    logoutMessage.className = 'inline-message hidden';
-  }
+  clearLogoutMessage();
+  let leavePermit = null;
   try {
+    leavePermit = await requestCurrentWorkspaceLeave();
+    if (!leavePermit) return;
     await apiFetch('/api/auth/logout', {
       method: 'POST', body: {}, notifyAuthRequired: false,
     });
@@ -120,14 +144,26 @@ logoutAction?.addEventListener('click', async () => {
     closeAccount();
     redirectToLogin();
   } catch (error) {
-    if (logoutMessage) {
-      logoutMessage.textContent = error instanceof ApiError
-        ? `退出未完成：${error.message}` : '退出未完成，请稍后重试。';
-      logoutMessage.className = 'inline-message error';
-      logoutMessage.classList.remove('hidden');
+    if (error instanceof ApiError && error.code === 'NETWORK_ERROR') {
+      const state = await resolveNetworkLogoutState();
+      if (state === 'logged-out') {
+        clearAccount();
+        closeAccount();
+        redirectToLogin();
+        return;
+      }
+      leavePermit?.revoke();
+      setLogoutMessage(state === 'authenticated'
+        ? '退出未完成：网络连接异常，已确认当前会话仍有效，请重试。'
+        : '退出请求未完成，服务端会话状态无法确认。请刷新页面核实后重试。');
+    } else {
+      leavePermit?.revoke();
+      setLogoutMessage(error instanceof ApiError
+        ? `退出未完成：${error.message}` : '退出未完成，请稍后重试。');
     }
     openAccount();
   } finally {
+    logoutInProgress = false;
     logoutAction.disabled = false;
   }
 });

@@ -15,6 +15,7 @@ class WorkspaceNavigationContractTests(unittest.TestCase):
         cls.situations_js = (ROOT / "frontend/static/js/modules/situations.js").read_text(encoding="utf-8")
         cls.map_js = (ROOT / "frontend/static/js/modules/situation-map.js").read_text(encoding="utf-8")
         cls.navigation_js = (ROOT / "frontend/static/js/modules/workspace-navigation.js").read_text(encoding="utf-8")
+        cls.shell_js = (ROOT / "frontend/static/js/modules/shell.js").read_text(encoding="utf-8")
 
     def test_one_shell_navigation_authority_is_loaded_globally(self):
         self.assertEqual(self.base.count("js/modules/workspace-navigation.js"), 1)
@@ -45,6 +46,15 @@ class WorkspaceNavigationContractTests(unittest.TestCase):
         self.assertIn("beforeLeave", self.navigation_js)
         self.assertIn("unmount", self.navigation_js)
         self.assertIn("mount", self.navigation_js)
+
+    def test_logout_uses_the_current_workspace_leave_protocol(self):
+        self.assertIn("requestCurrentWorkspaceLeave", self.navigation_js)
+        self.assertIn("allowConfirmedExternalLeave", self.base_data_js)
+        self.assertIn("revokeConfirmedExternalLeave", self.base_data_js)
+        self.assertIn("allowConfirmedExternalLeave", self.situations_js)
+        self.assertIn("revokeConfirmedExternalLeave", self.situations_js)
+        self.assertIn("requestCurrentWorkspaceLeave", self.shell_js)
+        self.assertIn("logoutInProgress", self.shell_js)
 
 
 if __name__ == "__main__":

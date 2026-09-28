@@ -6,6 +6,26 @@ let navigationController = null;
 let navigationSequence = 0;
 let restoringHistory = false;
 
+export async function requestCurrentWorkspaceLeave() {
+  const workspace = currentWorkspace;
+  if (!workspace) return { revoke() {} };
+
+  if (await workspace.module.beforeLeave?.() === false) return null;
+  if (currentWorkspace !== workspace) return null;
+
+  const granted = workspace.module.allowConfirmedExternalLeave?.();
+  if (granted === false) return null;
+
+  let active = true;
+  return {
+    revoke() {
+      if (!active) return;
+      active = false;
+      workspace.module.revokeConfirmedExternalLeave?.();
+    },
+  };
+}
+
 function workspaceRoot(documentRoot = document) {
   return documentRoot.querySelector('main[data-workspace][data-workspace-module]');
 }

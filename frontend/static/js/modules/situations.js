@@ -46,6 +46,7 @@ let lifecycleController = null;
 let situationLoadController = null;
 let situationLoadSequence = 0;
 let mounted = false;
+let confirmedExternalLeave = false;
 let pendingPanelTransition = null;
 let candidateClickTimer = null;
 let candidateSearchTimer = null;
@@ -998,7 +999,7 @@ function bind(signal) {
     refs.overviewTrigger.setAttribute('aria-label', open ? '收起情境摘要' : '展开情境摘要');
   }, { signal });
   window.addEventListener('beforeunload', (event) => {
-    if (state.saving || state.dirty || state.panelDraftDirty) {
+    if (!confirmedExternalLeave && (state.saving || state.dirty || state.panelDraftDirty)) {
       event.preventDefault();
       event.returnValue = '';
     }
@@ -1045,6 +1046,7 @@ async function init(signal) {
 
 export async function mount(root) {
   if (mounted) unmount();
+  confirmedExternalLeave = false;
   pendingPanelTransition = null;
   resetSituationState();
   bindSituationDom(root);
@@ -1062,8 +1064,19 @@ export async function beforeLeave() {
   return confirmAction('当前情境有尚未保存的修改。离开会丢弃这些修改。', '放弃修改并离开');
 }
 
+export function allowConfirmedExternalLeave() {
+  if (!mounted) return false;
+  confirmedExternalLeave = true;
+  return true;
+}
+
+export function revokeConfirmedExternalLeave() {
+  confirmedExternalLeave = false;
+}
+
 export function unmount() {
   if (!mounted) return;
+  confirmedExternalLeave = false;
   mounted = false;
   situationLoadSequence += 1;
   situationLoadController?.abort();

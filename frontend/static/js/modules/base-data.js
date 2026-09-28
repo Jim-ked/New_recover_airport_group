@@ -6,6 +6,7 @@ import { regionDisplayName, regionDisplayWithCode } from './region-display.js';
 let pageRoot = null;
 let lifecycleController = null;
 let mounted = false;
+let confirmedExternalLeave = false;
 const $ = (id) => pageRoot?.querySelector(`#${CSS.escape(id)}`) || document.getElementById(id);
 
 function initialState() { return {
@@ -382,7 +383,7 @@ function bind(signal){
   refs.importCancel.onclick=()=>setModal(refs.importModal,false);
   refs.importConfirm.onclick=doImport;
   refs.exportBtn.onclick=exportCurrent;
-  window.addEventListener('beforeunload',e=>{ if(state.editing&&state.editorDirty){ e.preventDefault(); e.returnValue=''; } },{signal});
+  window.addEventListener('beforeunload',e=>{ if(!confirmedExternalLeave&&state.editing&&state.editorDirty){ e.preventDefault(); e.returnValue=''; } },{signal});
 }
 
 async function init(context){
@@ -401,6 +402,7 @@ async function init(context){
 
 export async function mount(root, context = {}){
   if(mounted)unmount();
+  confirmedExternalLeave=false;
   pageRoot=root;
   Object.assign(state,initialState());
   bindRefs();
@@ -414,8 +416,19 @@ export async function beforeLeave(){
   return canLeaveEditor();
 }
 
+export function allowConfirmedExternalLeave(){
+  if(!mounted)return false;
+  confirmedExternalLeave=true;
+  return true;
+}
+
+export function revokeConfirmedExternalLeave(){
+  confirmedExternalLeave=false;
+}
+
 export function unmount(){
   if(!mounted)return;
+  confirmedExternalLeave=false;
   mounted=false;
   state.listSeq++;
   state.detailSeq++;
