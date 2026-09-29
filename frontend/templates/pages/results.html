@@ -8,6 +8,7 @@
       <button type="button" class="active" data-workspace="damage">损毁与组群</button>
       <button type="button" data-workspace="multi">多损毁</button>
       <button type="button" data-workspace="configuration">方案配置</button>
+      <button type="button" data-workspace="assessment">评估结果可视化</button>
     </nav>
     <div class="results-head-actions">
       <button id="changeConditionButton" class="btn" type="button">选择Run</button>
@@ -21,7 +22,7 @@
     </div>
   </header>
 
-  <section class="results-condition" aria-label="当前比较条件">
+  <section id="comparisonCondition" class="results-condition" aria-label="当前比较条件">
     <strong id="conditionTitle">损毁与组群</strong>
     <div id="conditionFacts" role="status" aria-live="polite">正在读取可比较运行…</div>
     <div id="focusControls" class="focus-controls hidden">
@@ -79,6 +80,35 @@
     </nav>
     <div id="resultsThemeContent" class="theme-content"><div class="results-placeholder">等待比较结果</div></div>
     <aside id="resultsConclusions" class="results-conclusions" aria-label="主要结论"></aside>
+  </section>
+
+  <section id="assessmentWorkbench" class="assessment-workbench hidden" aria-label="评估结果可视化">
+    <header class="assessment-toolbar">
+      <div><strong>评估结果可视化</strong><small>展示已经落库的正式评估记录</small></div>
+      <button id="assessmentRefreshButton" class="btn small" type="button">刷新</button>
+    </header>
+    <div id="assessmentError" class="results-error hidden" role="alert"></div>
+    <section class="assessment-grid assessment-grid-main">
+      <article class="assessment-card assessment-heat-card">
+        <header class="assessment-card-head"><h3>机场 × 场景热力矩阵</h3><span>最新一次评估的初始支撑度</span></header>
+        <div id="assessmentHeatmap" class="assessment-heatmap"><div class="results-placeholder">加载中…</div></div>
+      </article>
+      <article class="assessment-card assessment-curve-card">
+        <header class="assessment-card-head"><h3>恢复曲线</h3><select id="assessmentAirportSelect" class="mini-select" aria-label="选择评估机场"></select></header>
+        <div id="assessmentCurves" class="assessment-curves"><div class="results-placeholder">加载中…</div></div>
+        <div id="assessmentCurveLegend" class="results-legend"></div>
+      </article>
+    </section>
+    <section class="assessment-grid assessment-grid-bottom">
+      <article class="assessment-card">
+        <header class="assessment-card-head"><h3>风险分级</h3><span>正式记录的 1—5 级风险</span></header>
+        <div id="assessmentRiskTable" class="assessment-risk-table"><div class="results-placeholder">—</div></div>
+      </article>
+      <article class="assessment-card">
+        <header class="assessment-card-head"><h3>跨场景记录</h3></header>
+        <div id="assessmentComparisons" class="assessment-comparisons"><div class="results-placeholder">—</div></div>
+      </article>
+    </section>
   </section>
 
   <aside id="resultsOverlay" class="results-overlay" aria-label="选择比较Run" aria-hidden="true">

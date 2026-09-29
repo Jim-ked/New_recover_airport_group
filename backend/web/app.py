@@ -11,6 +11,7 @@ from backend.web.flask_auth import (
     session_principal_resolver,
 )
 from backend.web.flask_results import create_results_blueprint
+from backend.web.flask_assessment_results import create_assessment_results_blueprint
 from backend.web.flask_situations import create_situation_blueprint
 from backend.web.flask_catalog import create_catalog_blueprint
 from backend.web.flask_indicators import create_indicator_blueprint
@@ -21,6 +22,7 @@ from backend.web.flask_tiles import create_tile_blueprint
 from backend.web.flask_user_admin import create_user_admin_blueprint
 from backend.web.run_api import RunApi
 from backend.web.results_api import ResultsApi
+from backend.web.assessment_results_api import AssessmentResultsApi
 from backend.web.situation_api import SituationApi
 from backend.web.catalog_api import CatalogApi
 from backend.web.indicator_api import IndicatorApi
@@ -38,6 +40,7 @@ def create_app(
     mutation_guard: Optional[MutationGuard] = None,
     secret_key: Optional[str] = None,
     results_api: Optional[ResultsApi] = None,
+    assessment_results_api: Optional[AssessmentResultsApi] = None,
     situation_api: Optional[SituationApi] = None,
     catalog_api: Optional[CatalogApi] = None,
     indicator_api: Optional[IndicatorApi] = None,
@@ -100,6 +103,12 @@ def create_app(
     if results_api is not None:
         app.register_blueprint(
             create_results_blueprint(api=results_api, principal_resolver=principal_resolver)
+        )
+    if assessment_results_api is not None:
+        app.register_blueprint(
+            create_assessment_results_blueprint(
+                api=assessment_results_api, principal_resolver=principal_resolver
+            )
         )
     if situation_api is not None:
         app.register_blueprint(

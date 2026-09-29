@@ -4,6 +4,7 @@ from backend.auth.csrf import CsrfValidationError
 from backend.auth.principal import PermissionDeniedError
 from backend.domain.airport import AirportValidationError
 from backend.domain.airport_operations import AirportOperationsValidationError
+from backend.domain.assessment import AssessmentValidationError
 from backend.domain.catalog import CatalogValidationError
 from backend.domain.damage import DamageValidationError
 from backend.domain.indicator import IndicatorValidationError
@@ -112,7 +113,7 @@ def map_expected_error(exc: Exception) -> ApiResponse | None:
     if isinstance(
         exc,
         (
-            AirportValidationError, AirportOperationsValidationError, CatalogValidationError,
+            AirportValidationError, AirportOperationsValidationError, AssessmentValidationError, CatalogValidationError,
             DamageValidationError, MissionValidationError, SituationValidationError, IndicatorValidationError,
         ),
     ):

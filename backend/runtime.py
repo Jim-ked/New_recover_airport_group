@@ -23,6 +23,7 @@ from backend.web.app import create_app
 from backend.web.user_admin_api import UserAdminApi
 from backend.web.composition import (
     build_account_api,
+    build_assessment_results_api,
     build_audit_api,
     build_catalog_api,
     build_indicator_api,
@@ -105,6 +106,7 @@ def build_application(
     app = app_factory(
         run_api=build_run_api(db_path),
         results_api=build_results_api(db_path),
+        assessment_results_api=build_assessment_results_api(db_path),
         situation_api=build_situation_api(db_path),
         catalog_api=build_catalog_api(db_path),
         indicator_api=build_indicator_api(db_path),

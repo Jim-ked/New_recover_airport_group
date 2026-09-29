@@ -24,6 +24,7 @@ from backend.storage.migrations.v017_nullable_replenishment import apply as appl
 from backend.storage.migrations.v018_identifier_sequences import apply as apply_v018
 from backend.storage.migrations.v019_airport_assurance_display import apply as apply_v019
 from backend.storage.migrations.v020_interval_replenishment import apply as apply_v020
+from backend.storage.migrations.v021_assessment_visualization import apply as apply_v021
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -71,6 +72,7 @@ _MIGRATIONS: Tuple[Tuple[str, Callable[[sqlite3.Connection], None]], ...] = (
     ("v018_identifier_sequences", apply_v018),
     ("v019_airport_assurance_display", apply_v019),
     ("v020_interval_replenishment", apply_v020),
+    ("v021_assessment_visualization", apply_v021),
 )
 
 

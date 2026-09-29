@@ -20,6 +20,7 @@ from backend.storage.situation_repository import SituationRepository
 from backend.storage.mission_repository import MissionRepository
 from backend.storage.indicator_repository import IndicatorRepository
 from backend.storage.audit_repository import AuditRepository
+from backend.storage.assessment_repository import AssessmentRepository
 from backend.storage.user_repository import UserRepository
 from backend.web.run_api import RunApi, RunIdFactory, default_run_id_factory
 from backend.web.results_api import ResultsApi
@@ -28,6 +29,7 @@ from backend.web.catalog_api import CatalogApi
 from backend.web.indicator_api import IndicatorApi
 from backend.web.account_api import AccountApi
 from backend.web.audit_api import AuditApi
+from backend.web.assessment_results_api import AssessmentResultsApi
 
 
 def build_run_api(
@@ -81,6 +83,13 @@ def build_results_api(db_path: str | Path) -> ResultsApi:
     return ResultsApi(result_service=result_service)
 
 
+def build_assessment_results_api(db_path: str | Path) -> AssessmentResultsApi:
+    return AssessmentResultsApi(
+        assessment_repository=AssessmentRepository(db_path),
+        airport_repository=WorkspaceAirportRepository(db_path),
+    )
+
+
 def build_situation_api(db_path: str | Path) -> SituationApi:
     return SituationApi(
         situation_repository=SituationRepository(db_path),
@@ -116,7 +125,7 @@ def build_audit_api(db_path: str | Path) -> AuditApi:
 
 
 __all__ = [
-    "build_run_api", "build_results_api", "build_situation_api",
+    "build_run_api", "build_results_api", "build_assessment_results_api", "build_situation_api",
     "build_catalog_api", "build_indicator_api", "build_account_api", "build_audit_api",
     "build_user_repository",
 ]

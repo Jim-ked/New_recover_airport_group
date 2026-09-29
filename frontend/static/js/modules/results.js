@@ -27,6 +27,7 @@ const state = {
     multi: createWorkspaceState(),
     configuration: createWorkspaceState(),
   },
+  assessment: { status: 'idle', overview: null, curves: null, comparisons: null, airportId: null, error: null },
 };
 const refs = {
   page: $('resultsPage'), conditionTitle: $('conditionTitle'), conditionFacts: $('conditionFacts'),
@@ -40,6 +41,12 @@ const refs = {
   overlay: $('resultsOverlay'), overlayBody: $('resultsOverlayBody'), search: $('resultsRunSearch'),
   apply: $('applyResultsComparison'), error: $('resultsError'),
   exportWrap: $('resultsExport'), exportButton: $('resultsExportButton'), exportMenu: $('resultsExportMenu'),
+  comparisonCondition: $('comparisonCondition'), primary: $('resultsPrimary'), analysis: $('resultsAnalysis'),
+  assessmentWorkbench: $('assessmentWorkbench'), assessmentError: $('assessmentError'),
+  assessmentRefresh: $('assessmentRefreshButton'), assessmentHeatmap: $('assessmentHeatmap'),
+  assessmentCurves: $('assessmentCurves'), assessmentCurveLegend: $('assessmentCurveLegend'),
+  assessmentAirportSelect: $('assessmentAirportSelect'), assessmentRiskTable: $('assessmentRiskTable'),
+  assessmentComparisons: $('assessmentComparisons'),
 };
 
 function view() { return state.workspaceStates[state.workspace]; }
@@ -135,6 +142,97 @@ function runIdentity(runId) {
 function selectionLabel(runId) {
   const identity = runIdentity(runId);
   return [identity.primary, identity.context].filter(Boolean).join(' · ');
+}
+
+const ASSESSMENT_SCENARIO_LABELS = {
+  low: '低强度', medium: '中强度', high: '高强度', extreme: '极重',
+  local_persistent: '局部持续', custom: '自定义',
+};
+const ASSESSMENT_RISK_LABELS = { 1: '1级 低', 2: '2级 较低', 3: '3级 中', 4: '4级 较高', 5: '5级 高' };
+function assessmentScenarioLabel(value) { return ASSESSMENT_SCENARIO_LABELS[value] || value || '—'; }
+function assessmentAirportName(airportId) { return state.assessment.overview?.airport_names?.[airportId] || airportId || '—'; }
+function assessmentHeatColor(value) {
+  const v = Math.max(0, Math.min(1, Number(value) || 0));
+  const low = [18, 54, 82]; const high = [70, 154, 105];
+  const mix = (index) => Math.round(low[index] + (high[index] - low[index]) * v);
+  return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
+}
+function renderAssessmentHeatmap() {
+  const overview = state.assessment.overview;
+  if (!overview?.airport_ids?.length || !overview?.scenario_types?.length) {
+    refs.assessmentHeatmap.innerHTML = '<div class="results-placeholder">暂无评估落库结果</div>'; return;
+  }
+  const scenarios = overview.scenario_types;
+  const header = scenarios.map((scenario) => `<th>${esc(assessmentScenarioLabel(scenario))}</th>`).join('');
+  const rows = overview.airport_ids.map((airportId) => {
+    const cells = scenarios.map((scenario) => {
+      const cell = overview.cells?.[airportId]?.[scenario];
+      if (!cell) return '<td class="assessment-heat-cell assessment-heat-empty" title="暂无评估">—</td>';
+      const value = cell.support_index;
+      const title = `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 支撑度 ${number(value, 2)} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
+      return `<td class="assessment-heat-cell" style="background:${assessmentHeatColor(value)}" title="${esc(title)}">${esc(number(value, 2))}</td>`;
+    }).join('');
+    return `<tr><th title="${esc(airportId)}">${esc(assessmentAirportName(airportId))}</th>${cells}</tr>`;
+  }).join('');
+  refs.assessmentHeatmap.innerHTML = `<table class="assessment-heat-table"><thead><tr><th>机场</th>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderAssessmentCurves() {
+  const airportIds = state.assessment.overview?.airport_ids || [];
+  refs.assessmentAirportSelect.innerHTML = airportIds.map((id) => `<option value="${esc(id)}" ${id === state.assessment.airportId ? 'selected' : ''}>${esc(assessmentAirportName(id))}</option>`).join('');
+  const series = state.assessment.curves?.series || [];
+  if (!series.length) {
+    refs.assessmentCurves.innerHTML = '<div class="results-placeholder">当前机场暂无评估曲线</div>';
+    refs.assessmentCurveLegend.innerHTML = ''; return;
+  }
+  const maxStep = Math.max(1, ...series.flatMap((row) => row.steps || []));
+  const width = 760; const height = 230; const pad = { left: 42, right: 18, top: 16, bottom: 28 };
+  const x = (value) => pad.left + Number(value) / maxStep * (width - pad.left - pad.right);
+  const y = (value) => height - pad.bottom - Math.max(0, Math.min(1, Number(value))) * (height - pad.top - pad.bottom);
+  const grid = [0, .5, 1].map((value) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y(value)}" y2="${y(value)}" stroke="#29495d"/><text x="${pad.left - 7}" y="${y(value) + 3}" text-anchor="end" fill="#7894a6" font-size="10">${value.toFixed(1)}</text>`).join('');
+  const lines = series.map((row, index) => {
+    const points = row.steps.map((step, pointIndex) => `${x(step)},${y(row.support[pointIndex])}`).join(' ');
+    return `<polyline points="${points}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
+  }).join('');
+  refs.assessmentCurves.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="保障支撑度恢复曲线">${grid}<path d="M${pad.left} ${height - pad.bottom}H${width - pad.right}M${pad.left} ${pad.top}V${height - pad.bottom}" stroke="#48687b"/>${lines}</svg>`;
+  refs.assessmentCurveLegend.innerHTML = series.map((row, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${esc(assessmentScenarioLabel(row.scenario_type))}</span>`).join('');
+}
+function renderAssessmentRisk() {
+  const risks = state.assessment.overview?.risks || [];
+  if (!risks.length) { refs.assessmentRiskTable.innerHTML = '<div class="results-placeholder">暂无风险等级评估结果</div>'; return; }
+  const rows = risks.map((risk) => `<tr><td title="${esc(risk.airport_id)}">${esc(assessmentAirportName(risk.airport_id))}</td><td><span class="assessment-risk-badge" data-risk-level="${esc(risk.risk_level)}">${esc(ASSESSMENT_RISK_LABELS[risk.risk_level] || risk.risk_level)}</span></td><td>${esc(number(Number(risk.risk_score) * 100, 1))}%</td><td>${esc(risk.updated_at || '—')}</td></tr>`).join('');
+  refs.assessmentRiskTable.innerHTML = `<table><thead><tr><th>机场</th><th>风险等级</th><th>评分</th><th>更新时间</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderAssessmentComparisons() {
+  const items = state.assessment.comparisons?.items || [];
+  if (!items.length) { refs.assessmentComparisons.innerHTML = '<div class="results-placeholder">暂无跨场景评估对比记录</div>'; return; }
+  const rows = items.map((item) => `<tr><td>${esc(assessmentAirportName(item.base_airport_id))} · ${esc(assessmentScenarioLabel(item.base_scenario_type))}</td><td>${esc(assessmentAirportName(item.compared_airport_id))} · ${esc(assessmentScenarioLabel(item.compared_scenario_type))}</td><td title="${esc(item.log || '')}">${esc(item.conclusion || '—')}</td><td>${esc(item.created_at || '—')}</td></tr>`).join('');
+  refs.assessmentComparisons.innerHTML = `<table><thead><tr><th>基准</th><th>对照</th><th>记录结论</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderAssessmentWorkspace() {
+  const active = state.workspace === 'assessment';
+  refs.page.classList.toggle('assessment-active', active);
+  refs.assessmentWorkbench.classList.toggle('hidden', !active);
+  for (const node of [refs.comparisonCondition, refs.modeSpecific, refs.primary, refs.analysis]) node.classList.toggle('hidden', active);
+  refs.change.classList.toggle('hidden', active); refs.exportWrap.classList.toggle('hidden', active);
+  if (!active) return;
+  refs.assessmentError.classList.toggle('hidden', state.assessment.status !== 'error');
+  refs.assessmentError.textContent = state.assessment.status === 'error' ? '评估数据读取失败，请稍后重试。' : '';
+  renderAssessmentHeatmap(); renderAssessmentCurves(); renderAssessmentRisk(); renderAssessmentComparisons();
+}
+async function loadAssessmentWorkspace({ force = false } = {}) {
+  if (state.assessment.status === 'loading' && !force) return;
+  state.assessment.status = 'loading'; state.assessment.error = null; renderAssessmentWorkspace();
+  try {
+    const [overview, comparisons] = await Promise.all([
+      apiFetch('/api/results/assessment/overview'),
+      apiFetch('/api/results/assessment/comparisons?limit=50'),
+    ]);
+    state.assessment.overview = overview; state.assessment.comparisons = comparisons;
+    if (!state.assessment.airportId || !overview.airport_ids.includes(state.assessment.airportId)) state.assessment.airportId = overview.airport_ids[0] || null;
+    state.assessment.curves = state.assessment.airportId ? await apiFetch(`/api/results/assessment/curves?airport_id=${encodeURIComponent(state.assessment.airportId)}`) : null;
+    state.assessment.status = 'ready';
+  } catch (error) { state.assessment.status = 'error'; state.assessment.error = error; }
+  renderAssessmentWorkspace();
 }
 function legendLabel(runId) {
   const payload = view().payload || {};
@@ -440,6 +538,8 @@ function renderConclusions() {
 }
 function render() {
   document.querySelectorAll('[data-workspace]').forEach((button) => button.classList.toggle('active', button.dataset.workspace === state.workspace));
+  renderAssessmentWorkspace();
+  if (state.workspace === 'assessment') return;
   document.querySelectorAll('[data-series-kind]').forEach((button) => button.classList.toggle('active', button.dataset.seriesKind === view().seriesKind));
   document.querySelectorAll('[data-observation]').forEach((button) => button.classList.toggle('active', button.dataset.observation === view().observation));
   renderCondition(); renderModeSpecific(); renderChart(); renderValueComparison(); renderTheme(); renderConclusions();
@@ -511,7 +611,11 @@ async function exportResults(format) {
 }
 function showError(error) { refs.error.textContent = error?.message || '操作失败'; refs.error.classList.remove('hidden'); globalThis.setTimeout(() => refs.error.classList.add('hidden'), 5000); }
 
-document.querySelectorAll('[data-workspace]').forEach((button) => button.addEventListener('click', async () => { state.workspace = button.dataset.workspace; await applyDefault(state.workspace); persistSessionState(); render(); }));
+document.querySelectorAll('[data-workspace]').forEach((button) => button.addEventListener('click', async () => {
+  state.workspace = button.dataset.workspace;
+  if (state.workspace === 'assessment') { render(); await loadAssessmentWorkspace(); return; }
+  await applyDefault(state.workspace); persistSessionState(); render();
+}));
 document.querySelectorAll('[data-damage-stage]').forEach((button) => button.addEventListener('click', () => { view().activeDamageStage = button.dataset.damageStage; view().windowStart = 0; persistSessionState(); render(); }));
 document.querySelectorAll('[data-series-kind]').forEach((button) => button.addEventListener('click', () => { view().seriesKind = button.dataset.seriesKind; persistSessionState(); render(); }));
 document.querySelectorAll('[data-observation]').forEach((button) => button.addEventListener('click', () => { view().observation = button.dataset.observation; persistSessionState(); render(); }));
@@ -522,6 +626,15 @@ refs.change.addEventListener('click', () => openOverlay().catch(showError)); ref
 $('closeResultsOverlay').addEventListener('click', closeOverlay); $('cancelResultsOverlay').addEventListener('click', closeOverlay); refs.apply.addEventListener('click', () => applyOverlay());
 refs.exportButton.addEventListener('click', () => { const open = !refs.exportMenu.classList.contains('open'); refs.exportMenu.classList.toggle('open', open); refs.exportMenu.setAttribute('aria-hidden', String(!open)); });
 refs.exportMenu.addEventListener('click', (event) => { const button = event.target.closest('[data-export-format]'); if (button) { refs.exportMenu.classList.remove('open'); exportResults(button.dataset.exportFormat); } });
+refs.assessmentRefresh.addEventListener('click', () => loadAssessmentWorkspace({ force: true }));
+refs.assessmentAirportSelect.addEventListener('change', async () => {
+  state.assessment.airportId = refs.assessmentAirportSelect.value || null;
+  try {
+    state.assessment.curves = state.assessment.airportId ? await apiFetch(`/api/results/assessment/curves?airport_id=${encodeURIComponent(state.assessment.airportId)}`) : null;
+    state.assessment.status = 'ready';
+  } catch (error) { state.assessment.status = 'error'; state.assessment.error = error; }
+  renderAssessmentWorkspace();
+});
 globalThis.addEventListener('resize', () => { if (view().payload) renderChart(); });
 
 restoreSessionState();
