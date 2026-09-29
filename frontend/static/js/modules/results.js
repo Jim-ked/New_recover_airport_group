@@ -1,5 +1,6 @@
 import { apiFetch, apiDownload, saveBlob } from './api-client.js';
 import { getAccount } from './account-context.js';
+import { formatDecimal } from './number-display.js';
 
 const $ = (id) => document.getElementById(id);
 const MODES = ['damage', 'multi', 'configuration'];
@@ -169,8 +170,9 @@ function renderAssessmentHeatmap() {
       const cell = overview.cells?.[airportId]?.[scenario];
       if (!cell) return '<td class="assessment-heat-cell assessment-heat-empty" title="暂无评估">—</td>';
       const value = cell.support_index;
-      const title = `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 支撑度 ${number(value, 2)} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
-      return `<td class="assessment-heat-cell" style="background:${assessmentHeatColor(value)}" title="${esc(title)}">${esc(number(value, 2))}</td>`;
+      const support = formatDecimal(Number(value), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const title = `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 支撑度 ${support} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
+      return `<td class="assessment-heat-cell" style="background:${assessmentHeatColor(value)}" title="${esc(title)}">${esc(support)}</td>`;
     }).join('');
     return `<tr><th title="${esc(airportId)}">${esc(assessmentAirportName(airportId))}</th>${cells}</tr>`;
   }).join('');
