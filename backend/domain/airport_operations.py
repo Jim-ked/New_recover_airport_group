@@ -96,27 +96,56 @@ class AirportResourceStock:
 
     resource_type_id: str
     initial_quantity: Optional[JsonNumber] = None
+    replenishment_capacity_per_window: Optional[JsonNumber] = None
+    storage_capacity: Optional[JsonNumber] = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any], *, index: int) -> "AirportResourceStock":
         field = f"resource_stocks[{index}]"
-        allowed = {"resource_type_id", "initial_quantity", "replenishment_capacity_per_window"}
+        allowed = {
+            "resource_type_id",
+            "initial_quantity",
+            "replenishment_capacity_per_window",
+            "storage_capacity",
+        }
         unknown = [k for k in value if k not in allowed]
         if unknown:
             _fail(f"{field}.{unknown[0]}", f"unknown field: {field}.{unknown[0]}")
         initial = value.get("initial_quantity")
+        storage_capacity = value.get("storage_capacity")
+        canonical_initial = None if initial is None else _nonnegative_number(
+            initial, f"{field}.initial_quantity"
+        )
+        canonical_storage = None if storage_capacity is None else _nonnegative_number(
+            storage_capacity, f"{field}.storage_capacity"
+        )
+        if (
+            canonical_initial is not None
+            and canonical_storage is not None
+            and float(canonical_storage) < float(canonical_initial)
+        ):
+            _fail(
+                f"{field}.storage_capacity",
+                "storage_capacity must be greater than or equal to initial_quantity",
+            )
         return cls(
             resource_type_id=_id(value.get("resource_type_id"), f"{field}.resource_type_id"),
-            initial_quantity=None if initial is None else _nonnegative_number(
-                initial, f"{field}.initial_quantity"
-            ),
+            initial_quantity=canonical_initial,
+            # This retired field remains accepted for historical input compatibility,
+            # but it is not part of the current Airport profile contract. Archived V5
+            # snapshots consume it directly at the adapter boundary instead.
+            replenishment_capacity_per_window=None,
+            storage_capacity=canonical_storage,
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        out = {
             "resource_type_id": self.resource_type_id,
             "initial_quantity": self.initial_quantity,
         }
+        if self.storage_capacity is not None:
+            out["storage_capacity"] = self.storage_capacity
+        return out
 
 
 @dataclass(frozen=True)

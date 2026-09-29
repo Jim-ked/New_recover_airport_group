@@ -8,7 +8,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from backend.algorithm.snapshot_adapter import build_algorithm_input
-from tests.algorithm.test_snapshot_adapter import make_snapshot
+from tests.algorithm.test_snapshot_adapter import as_physical_inventory_v5, make_snapshot
 from original_algorithm_overlay.model import decision_vars as dv
 from original_algorithm_overlay.model import model_builder as mb
 
@@ -179,6 +179,25 @@ class ModelBuilderOverlayTests(unittest.TestCase):
                 b.ds, b.run_params, maps, integer_vars=True,
                 runtime=runtime, model_factory=FakeModel,
             )
+
+    def test_archived_v5_uses_stock_balance_constraints(self):
+        bundle = build_algorithm_input(
+            as_physical_inventory_v5(make_snapshot(cluster_enabled=False))
+        )
+        maps = dv.build_path_map(bundle.ds, bundle.run_params)
+        model, pack = mb.build_model(
+            bundle.ds,
+            bundle.run_params,
+            maps,
+            integer_vars=True,
+            runtime=bundle.runtime,
+            model_factory=FakeModel,
+        )
+
+        self.assertIsNotNone(pack["dynamic_inventory"])
+        self.assertTrue(
+            any(name.startswith("INV_BALANCE__A1__FUEL-A") for name in model.cons)
+        )
 
 
 if __name__ == "__main__":

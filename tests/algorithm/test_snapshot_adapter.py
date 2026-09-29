@@ -137,7 +137,54 @@ def make_snapshot(
     )
 
 
+def as_physical_inventory_v5(snapshot: RunSnapshot) -> RunSnapshot:
+    """Promote a synthetic v4 snapshot to the archived v5 inventory contract."""
+    payload = snapshot.to_dict()
+    payload["schema"] = "run_input_snapshot_v5"
+    payload["run_config"]["resource_inventory_model"] = "physical_inventory_v1"
+    storage = {}
+    for airport in payload["situation"]["airports"]:
+        airport_id = airport["airport"]["airport_id"]
+        storage[airport_id] = {}
+        for stock in airport["operational_profile"]["resource_stocks"]:
+            initial = float(stock["initial_quantity"])
+            stock["replenishment_capacity_per_window"] = 0.0
+            stock["storage_capacity"] = initial
+            storage[airport_id][stock["resource_type_id"]] = initial
+    payload["dynamic_inventory"] = {
+        "semantics": "physical_inventory_v1",
+        "storage_capacity": storage,
+    }
+    payload_json = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return RunSnapshot(
+        run_id=snapshot.run_id,
+        situation_id=snapshot.situation_id,
+        content_hash=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+        payload_json=payload_json,
+    )
+
+
 class SnapshotAdapterTests(unittest.TestCase):
+    def test_archived_v5_physical_inventory_snapshot_builds_algorithm_input(self):
+        bundle = build_algorithm_input(as_physical_inventory_v5(make_snapshot()))
+
+        self.assertEqual(
+            "physical_inventory_v1",
+            bundle.ds["timeview"]["resource_inventory_model"],
+        )
+        facts = bundle.ds["timeview"]["dynamic_inventory"]
+        self.assertEqual(100.0, facts["opening_inventory"]["A1"]["FUEL-A"])
+        self.assertEqual(
+            [100.0] * bundle.ds["timeview"]["T"],
+            facts["storage_capacity"]["A1"]["FUEL-A"],
+        )
+
     def test_historical_categories_roundtrip_hash_and_frozen_projection_compatibility(self):
         for category in ("low", "medium", "high", "custom"):
             with self.subTest(category=category):

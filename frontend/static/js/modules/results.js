@@ -152,11 +152,20 @@ const ASSESSMENT_SCENARIO_LABELS = {
 const ASSESSMENT_RISK_LABELS = { 1: '1级 低', 2: '2级 较低', 3: '3级 中', 4: '4级 较高', 5: '5级 高' };
 function assessmentScenarioLabel(value) { return ASSESSMENT_SCENARIO_LABELS[value] || value || '—'; }
 function assessmentAirportName(airportId) { return state.assessment.overview?.airport_names?.[airportId] || airportId || '—'; }
+function assessmentComparisonLabel(airportId, scenario) {
+  return airportId ? `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)}` : assessmentScenarioLabel(scenario);
+}
 function assessmentHeatColor(value) {
   const v = Math.max(0, Math.min(1, Number(value) || 0));
   const low = [18, 54, 82]; const high = [70, 154, 105];
   const mix = (index) => Math.round(low[index] + (high[index] - low[index]) * v);
   return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
+}
+function assessmentCellValue(cell) {
+  if (cell?.metric_kind === 'capacity_availability_v1') {
+    return cell.matrix_value == null ? null : Number(cell.matrix_value);
+  }
+  return cell?.support_index == null ? null : Number(cell.support_index);
 }
 function renderAssessmentHeatmap() {
   const overview = state.assessment.overview;
@@ -169,10 +178,14 @@ function renderAssessmentHeatmap() {
     const cells = scenarios.map((scenario) => {
       const cell = overview.cells?.[airportId]?.[scenario];
       if (!cell) return '<td class="assessment-heat-cell assessment-heat-empty" title="暂无评估">—</td>';
-      const value = cell.support_index;
-      const support = formatDecimal(Number(value), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const title = `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 支撑度 ${support} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
-      return `<td class="assessment-heat-cell" style="background:${assessmentHeatColor(value)}" title="${esc(title)}">${esc(support)}</td>`;
+      const value = assessmentCellValue(cell);
+      const isCapacity = cell.metric_kind === 'capacity_availability_v1';
+      const display = value == null || !Number.isFinite(value) ? '未记录' : (isCapacity ? `${number(value * 100, 1)}%` : formatDecimal(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      const coverage = isCapacity ? ` · 有效窗 ${cell.effective_windows ?? '未记录'} · 不可用窗 ${cell.unavailable_windows ?? '未记录'}` : '';
+      const title = isCapacity
+        ? `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 运行期容量占用率 ${display}${coverage} · 来源 ${cell.source_run_id || '未记录'}`
+        : `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 支撑度 ${display} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
+      return `<td class="assessment-heat-cell" style="background:${assessmentHeatColor(value ?? 0)}" title="${esc(title)}">${esc(display)}</td>`;
     }).join('');
     return `<tr><th title="${esc(airportId)}">${esc(assessmentAirportName(airportId))}</th>${cells}</tr>`;
   }).join('');
@@ -186,28 +199,34 @@ function renderAssessmentCurves() {
     refs.assessmentCurves.innerHTML = '<div class="results-placeholder">当前机场暂无评估曲线</div>';
     refs.assessmentCurveLegend.innerHTML = ''; return;
   }
-  const maxStep = Math.max(1, ...series.flatMap((row) => row.steps || []));
+  const allSteps = series.flatMap((row) => row.steps || []).map(Number).filter(Number.isFinite);
+  const minStep = Math.min(...allSteps); const maxStep = Math.max(...allSteps); const stepSpan = Math.max(1, maxStep - minStep);
   const width = 760; const height = 230; const pad = { left: 42, right: 18, top: 16, bottom: 28 };
-  const x = (value) => pad.left + Number(value) / maxStep * (width - pad.left - pad.right);
+  const x = (value) => pad.left + (Number(value) - minStep) / stepSpan * (width - pad.left - pad.right);
   const y = (value) => height - pad.bottom - Math.max(0, Math.min(1, Number(value))) * (height - pad.top - pad.bottom);
   const grid = [0, .5, 1].map((value) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y(value)}" y2="${y(value)}" stroke="#29495d"/><text x="${pad.left - 7}" y="${y(value) + 3}" text-anchor="end" fill="#7894a6" font-size="10">${value.toFixed(1)}</text>`).join('');
   const lines = series.map((row, index) => {
-    const points = row.steps.map((step, pointIndex) => `${x(step)},${y(row.support[pointIndex])}`).join(' ');
+    const values = row.values || row.support || [];
+    const points = row.steps.map((step, pointIndex) => `${x(step)},${y(values[pointIndex])}`).join(' ');
     return `<polyline points="${points}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
   }).join('');
-  refs.assessmentCurves.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="保障支撑度恢复曲线">${grid}<path d="M${pad.left} ${height - pad.bottom}H${width - pad.right}M${pad.left} ${pad.top}V${height - pad.bottom}" stroke="#48687b"/>${lines}</svg>`;
+  const metricLabel = series[0]?.metric_label || (series[0]?.metric_kind === 'capacity_availability_v1' ? '起降容量可用比例' : '评估指标');
+  refs.assessmentCurves.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(metricLabel)}逐窗曲线">${grid}<path d="M${pad.left} ${height - pad.bottom}H${width - pad.right}M${pad.left} ${pad.top}V${height - pad.bottom}" stroke="#48687b"/>${lines}</svg>`;
   refs.assessmentCurveLegend.innerHTML = series.map((row, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${esc(assessmentScenarioLabel(row.scenario_type))}</span>`).join('');
 }
 function renderAssessmentRisk() {
   const risks = state.assessment.overview?.risks || [];
-  if (!risks.length) { refs.assessmentRiskTable.innerHTML = '<div class="results-placeholder">暂无风险等级评估结果</div>'; return; }
+  if (!risks.length) {
+    const reason = state.assessment.overview?.risk_status?.reason || '未配置独立风险评估模型或正式专家评分';
+    refs.assessmentRiskTable.innerHTML = `<div class="results-placeholder">${esc(reason)}</div>`; return;
+  }
   const rows = risks.map((risk) => `<tr><td title="${esc(risk.airport_id)}">${esc(assessmentAirportName(risk.airport_id))}</td><td><span class="assessment-risk-badge" data-risk-level="${esc(risk.risk_level)}">${esc(ASSESSMENT_RISK_LABELS[risk.risk_level] || risk.risk_level)}</span></td><td>${esc(number(Number(risk.risk_score) * 100, 1))}%</td><td>${esc(risk.updated_at || '—')}</td></tr>`).join('');
   refs.assessmentRiskTable.innerHTML = `<table><thead><tr><th>机场</th><th>风险等级</th><th>评分</th><th>更新时间</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function renderAssessmentComparisons() {
   const items = state.assessment.comparisons?.items || [];
   if (!items.length) { refs.assessmentComparisons.innerHTML = '<div class="results-placeholder">暂无跨场景评估对比记录</div>'; return; }
-  const rows = items.map((item) => `<tr><td>${esc(assessmentAirportName(item.base_airport_id))} · ${esc(assessmentScenarioLabel(item.base_scenario_type))}</td><td>${esc(assessmentAirportName(item.compared_airport_id))} · ${esc(assessmentScenarioLabel(item.compared_scenario_type))}</td><td title="${esc(item.log || '')}">${esc(item.conclusion || '—')}</td><td>${esc(item.created_at || '—')}</td></tr>`).join('');
+  const rows = items.map((item) => `<tr><td>${esc(assessmentComparisonLabel(item.base_airport_id, item.base_scenario_type))}</td><td>${esc(assessmentComparisonLabel(item.compared_airport_id, item.compared_scenario_type))}</td><td title="${esc(item.log || '')}">${esc(item.conclusion || '—')}</td><td>${esc(item.created_at || '—')}</td></tr>`).join('');
   refs.assessmentComparisons.innerHTML = `<table><thead><tr><th>基准</th><th>对照</th><th>记录结论</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function renderAssessmentWorkspace() {
@@ -637,7 +656,9 @@ refs.assessmentAirportSelect.addEventListener('change', async () => {
   } catch (error) { state.assessment.status = 'error'; state.assessment.error = error; }
   renderAssessmentWorkspace();
 });
-globalThis.addEventListener('resize', () => { if (view().payload) renderChart(); });
+globalThis.addEventListener('resize', () => {
+  if (state.workspace !== 'assessment' && view()?.payload) renderChart();
+});
 
 restoreSessionState();
 getAccount().then((account) => { state.canExport = Boolean(account.permissions?.includes('results.export')); render(); }).catch(() => {});

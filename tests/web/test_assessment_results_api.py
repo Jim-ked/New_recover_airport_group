@@ -142,6 +142,39 @@ class AssessmentResultsApiTests(unittest.TestCase):
         self.assertEqual(1, comparisons.body["total"])
         self.assertEqual("CMP-1", comparisons.body["items"][0]["id"])
 
+    def test_run_derived_capacity_observation_has_explicit_semantics_and_provenance(self) -> None:
+        digest = "a" * 64
+        self.repository.save_result(
+            AssessmentResult.from_mapping(
+                {
+                    "id": "v5cap:RUN-1:AP1",
+                    "airport_id": "AP1",
+                    "scenario_type": "R1",
+                    "curves": {"9": 1.0, "10": 0.5},
+                    "decline_rate": 0.5,
+                    "recovery_slope": 0.0,
+                    "initial_capacity": 10,
+                    "metric_kind": "capacity_availability_v1",
+                    "matrix_value": 0.4,
+                    "source_run_id": "RUN-1",
+                    "snapshot_hash": digest,
+                    "metrics_hash": digest,
+                    "effective_windows": 2,
+                    "unavailable_windows": 0,
+                }
+            )
+        )
+
+        overview = self.api.overview(principal=self.viewer).body
+        cell = overview["cells"]["AP1"]["R1"]
+        self.assertEqual("capacity_availability_v1", cell["metric_kind"])
+        self.assertEqual(0.4, cell["matrix_value"])
+        self.assertEqual("RUN-1", cell["source_run_id"])
+        self.assertEqual("unavailable", overview["risk_status"]["status"])
+        curves = self.api.curves(principal=self.viewer, airport_id="AP1").body
+        self.assertEqual("起降容量可用比例", curves["series"][0]["metric_label"])
+        self.assertEqual([1.0, 0.5], curves["series"][0]["values"])
+
     def test_invalid_curve_request_and_missing_permission_are_rejected(self) -> None:
         invalid = self.api.curves(principal=self.viewer, airport_id=" ")
         self.assertEqual(400, invalid.status)

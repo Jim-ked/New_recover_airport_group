@@ -15,6 +15,7 @@ PRESET_OBJECTIVE_WEIGHTS = {
 MAX_CORE_AIRPORTS = 2
 MAX_CLUSTER_SIZE = 8
 CUSTOM_ZERO_FLOOR = 0.05
+RESOURCE_INVENTORY_MODELS = frozenset({"legacy_budget_v4", "physical_inventory_v1"})
 
 
 class RunConfigValidationError(ValueError):
@@ -127,6 +128,7 @@ class RunConfig:
     f3_tardiness_coefficient: Optional[float]
     unmet_demand_penalty: Optional[float]
     core_airport_reward_weight: Optional[float]
+    resource_inventory_model: str = "legacy_budget_v4"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "RunConfig":
@@ -138,6 +140,7 @@ class RunConfig:
             "f2_resource_reference_quantities", "f2_resource_weights",
             "f3_time_reference_slots", "f3_tardiness_coefficient",
             "unmet_demand_penalty", "core_airport_reward_weight",
+            "resource_inventory_model",
         }
         unknown = set(raw) - allowed
         if unknown:
@@ -211,6 +214,14 @@ class RunConfig:
                 "F2 resource references and weights must have identical resource IDs",
             )
 
+        inventory_model = raw.get("resource_inventory_model", "legacy_budget_v4")
+        if inventory_model not in RESOURCE_INVENTORY_MODELS:
+            _fail(
+                "resource_inventory_model",
+                "resource_inventory_model must be one of "
+                f"{sorted(RESOURCE_INVENTORY_MODELS)}",
+            )
+
         return cls(
             damage_scenario_id=_optional_id(raw.get("damage_scenario_id"), "damage_scenario_id"),
             objective_profile_id=_optional_id(
@@ -242,6 +253,7 @@ class RunConfig:
                 "core_airport_reward_weight",
                 positive=False,
             ),
+            resource_inventory_model=str(inventory_model),
         )
 
     def validate_against(
@@ -328,7 +340,7 @@ class RunConfig:
         return dict(self.aircraft_type_weights)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "damage_scenario_id": self.damage_scenario_id,
             "objective_profile_id": self.objective_profile_id,
             "preference_mode": self.preference_mode,
@@ -346,3 +358,6 @@ class RunConfig:
             "unmet_demand_penalty": self.unmet_demand_penalty,
             "core_airport_reward_weight": self.core_airport_reward_weight,
         }
+        if self.resource_inventory_model != "legacy_budget_v4":
+            payload["resource_inventory_model"] = self.resource_inventory_model
+        return payload

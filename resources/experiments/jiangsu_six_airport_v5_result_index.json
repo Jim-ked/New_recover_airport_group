@@ -1,0 +1,659 @@
+{
+  "assessment": {
+    "curve_metric": "逐窗起降容量可用比例=本窗可用容量/冻结基准容量",
+    "matrix_metric": "运行期容量占用率=有效时间窗使用量之和/同期可用容量之和",
+    "metric_kind": "capacity_availability_v1",
+    "result_count": 66,
+    "risk": {
+      "reason": "未配置独立风险评估模型或正式专家评分",
+      "status": "unavailable"
+    }
+  },
+  "comparisons": {
+    "checks": [
+      {
+        "eligible": true,
+        "labels": [
+          "R0",
+          "R1",
+          "R2"
+        ],
+        "mode": "damage_and_cluster"
+      },
+      {
+        "eligible": true,
+        "labels": [
+          "P0",
+          "P1",
+          "P2"
+        ],
+        "mode": "damage_and_cluster"
+      },
+      {
+        "eligible": true,
+        "labels": [
+          "R0",
+          "R1",
+          "RESOURCE",
+          "CAPACITY",
+          "MUN2",
+          "STORAGE"
+        ],
+        "mode": "multi_damage"
+      },
+      {
+        "eligible": true,
+        "labels": [
+          "R1",
+          "R2"
+        ],
+        "mode": "configuration"
+      },
+      {
+        "eligible": true,
+        "labels": [
+          "P1",
+          "P2"
+        ],
+        "mode": "configuration"
+      },
+      {
+        "eligible": true,
+        "labels": [
+          "P0",
+          "P3"
+        ],
+        "mode": "configuration"
+      }
+    ],
+    "persisted_records": 9
+  },
+  "experiment_id": "jiangsu-six-airport-three-mission-v5",
+  "runs": [
+    {
+      "archived_metrics_hash": "a6b1bf7b1e9f85333175a9c7cfe23f91f2e8130ed305712426377bf43d68edd7",
+      "label": "R0",
+      "metrics_hash": "4cdd044995f5f4e6b78a5f153285f5f50372283119aad817024c7d0e8789cb93",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND15-R0",
+      "snapshot_hash": "9afb431dca334f18dfa53a36aad0ff1a1aa039053aea05fb6b6eee75f1e67065",
+      "solution_hash": "d125821c7499e5bdb75bdd70f2a745f1bae3773ebbce66165d7d69b951b934f3",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP179",
+          "share": 0.23577235772357724,
+          "sorties": 58
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 42,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -201.87582375433317,
+        "cluster_lp_objective": null,
+        "f1": 242.4,
+        "f2": 280.7244444444444,
+        "f3": 25.6875,
+        "gap": 0.005114440065289031,
+        "objective": -202.90830555555556,
+        "snapshot_hash": "9afb431dca334f18dfa53a36aad0ff1a1aa039053aea05fb6b6eee75f1e67065",
+        "solve_time_s": 7.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "663d7727529d0fff76b1d15d9d070665cfd192ad4a14e3fd925bc876c5fe0d9f",
+      "label": "R1",
+      "metrics_hash": "b06ba2028256c882f160c42cf5234067e4416e09f0561b29fba633c15d3caee8",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND15-R1",
+      "snapshot_hash": "62c6463104dd56f9812835efee5e9c1d063ab54efb369aa35562d8261bd1d5ac",
+      "solution_hash": "b603cfadcf4133f49d92663c7947ec22796186fec9e7365b0981a5418e70e670",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP183",
+          "share": 0.23577235772357724,
+          "sorties": 58
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 28,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -202.55724566006535,
+        "cluster_lp_objective": null,
+        "f1": 242.40000000000006,
+        "f2": 280.3777777777775,
+        "f3": 43.75,
+        "gap": 0.0092812111264185,
+        "objective": -204.43722222222223,
+        "snapshot_hash": "62c6463104dd56f9812835efee5e9c1d063ab54efb369aa35562d8261bd1d5ac",
+        "solve_time_s": 13.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "fa36e15f9caba9f12d664f742e65278b79bd0cdf812af54e007dc37d8e3c12be",
+      "label": "R2",
+      "metrics_hash": "ab934294821fb2c2e5470b60c1265a3cce9ad7593fc376740bc8aca156a75236",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND15-R2",
+      "snapshot_hash": "a5ff1442af0ea681350a2ff8e4083af2e9293ef41327a73a54c723551ebbdea8",
+      "solution_hash": "abbba6017615057283d52f546ff1e5f3a34e4f0c9d16b72daa0b8588c469f916",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 1,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP179",
+          "share": 0.23170731707317074,
+          "sorties": 57
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 35,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 4,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -202.06810141238395,
+        "cluster_lp_objective": -202.02017132155572,
+        "f1": 242.40000000000003,
+        "f2": 282.06666666666655,
+        "f3": 25.0,
+        "gap": 0.009131732856655203,
+        "objective": -203.91333333333336,
+        "snapshot_hash": "a5ff1442af0ea681350a2ff8e4083af2e9293ef41327a73a54c723551ebbdea8",
+        "solve_time_s": 24.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "5e3bdaa0085db3194fa131b983c258b5b95b9bf1a0fa37a6e21bf9ccdf811019",
+      "label": "RESOURCE",
+      "metrics_hash": "00dfbaf48f203c034100ccc49e9080487f29c3b27303fd429807da58a38ad900",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND16-RESOURCE",
+      "snapshot_hash": "bab1fa33efdb640b1d61ae9413577663e141655209799818bd45d41e3c9b5c91",
+      "solution_hash": "f073d5aa9c6b88e9bf329b4bbde3a7e665781fb81f89be7c769b549028aa9d8e",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP190",
+          "share": 0.21544715447154472,
+          "sorties": 53
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 42,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -202.14838881715752,
+        "cluster_lp_objective": null,
+        "f1": 242.4,
+        "f2": 281.44444444444446,
+        "f3": 27.125,
+        "gap": 0.007319705821333016,
+        "objective": -203.62805555555556,
+        "snapshot_hash": "bab1fa33efdb640b1d61ae9413577663e141655209799818bd45d41e3c9b5c91",
+        "solve_time_s": 1.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "a4c27b67a26e9183e0177ae54244834a16b88446d8ba7b2574223582bd303a09",
+      "label": "CAPACITY",
+      "metrics_hash": "3fa86ddafed93d0bf251574041fc41938156fccf32044dc7b01bf3b9068561e9",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND16-CAPACITY",
+      "snapshot_hash": "d71a03fe9e152a38d812fe6d23fab6ddd1f10015b4ff715788f957a199e534cd",
+      "solution_hash": "1d1d3ab498b2565381b600e4bbe3c2865f56bf35e2bf636647d182636f05ad5c",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP179",
+          "share": 0.25609756097560976,
+          "sorties": 63
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 33,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -202.25383727994392,
+        "cluster_lp_objective": null,
+        "f1": 242.40000000000003,
+        "f2": 280.94666666666654,
+        "f3": 32.125,
+        "gap": 0.007297740667073195,
+        "objective": -203.72983333333337,
+        "snapshot_hash": "d71a03fe9e152a38d812fe6d23fab6ddd1f10015b4ff715788f957a199e534cd",
+        "solve_time_s": 10.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "a60b9094ed3850f6744140c5521c246bf76186fefcb638692227a84fd40a7dc2",
+      "label": "MUN2",
+      "metrics_hash": "b30fe73f5e81d6334eb2bbaf254fd4ee20023d94064b754c86a2d3fcd179fc8b",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND17-MUN2",
+      "snapshot_hash": "bd990cc70d19a4c538fa522a3b833c2a9a701942d922a573e13e1fdd0a3053c9",
+      "solution_hash": "bc41af132772201bd4a6202b061a1d72fc46ee8ffadd69e129db6cc59c7a502c",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP190",
+          "share": 0.22357723577235772,
+          "sorties": 55
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 31,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -202.56268542819373,
+        "cluster_lp_objective": null,
+        "f1": 242.40000000000006,
+        "f2": 280.37777777777774,
+        "f3": 39.9375,
+        "gap": 0.007371973721970922,
+        "objective": -204.05597222222224,
+        "snapshot_hash": "bd990cc70d19a4c538fa522a3b833c2a9a701942d922a573e13e1fdd0a3053c9",
+        "solve_time_s": 11.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "aa3581c3b6badcde5c31530c1eae28af319e2061dd629eef08bbe2f7d15b6b08",
+      "label": "STORAGE",
+      "metrics_hash": "91da5f222613d38eec3fae0e66f66e49e4717bda90918e7adada435c408b2747",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND17-STORAGE",
+      "snapshot_hash": "8ee4e7ad60e226bfed51bebf02e66c91b9a93c0249a9b401dff2664fc20dfbc9",
+      "solution_hash": "e58bf415c37a81d50f549a1ce5576defc331f38ede4c60fa4be12e69f273eb65",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 1.0,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 246,
+        "max_airport_departure": {
+          "airport_id": "AP190",
+          "share": 0.22357723577235772,
+          "sorties": 55
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 37,
+          "window": 17
+        },
+        "required_sorties_total": 246,
+        "returned_sorties_total": 246,
+        "scheduled_sorties_total": 246,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 0
+      },
+      "technical": {
+        "best_bound": -202.55029265270696,
+        "cluster_lp_objective": null,
+        "f1": 242.4,
+        "f2": 281.65777777777754,
+        "f3": 31.5,
+        "gap": 0.008323510904059656,
+        "objective": -204.23622222222224,
+        "snapshot_hash": "8ee4e7ad60e226bfed51bebf02e66c91b9a93c0249a9b401dff2664fc20dfbc9",
+        "solve_time_s": 1.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 0.0
+      }
+    },
+    {
+      "archived_metrics_hash": "5e82eb26727c3d2aa157d18e00f0b08395ac1572a610a07ef1f7ae4956a554d3",
+      "label": "P0",
+      "metrics_hash": "51950ec8bb202948c39fc009a6ce2fed8e2e7bc69b5b7ca135a63d9cc92056e5",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND18-P0",
+      "snapshot_hash": "bc6b1770029f196a2fbcfd0fe7ec03bbe46984a0c8dad3e8cda1d3392efc0040",
+      "solution_hash": "5fa825b0df4f373b6d47e20a976c838a208bf9603e33162689d2a1242a5bc51a",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 0.9805194805194806,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 302,
+        "max_airport_departure": {
+          "airport_id": "AP190",
+          "share": 0.19536423841059603,
+          "sorties": 59
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 34,
+          "window": 17
+        },
+        "required_sorties_total": 308,
+        "returned_sorties_total": 302,
+        "scheduled_sorties_total": 302,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 6
+      },
+      "technical": {
+        "best_bound": -262.17763595270986,
+        "cluster_lp_objective": null,
+        "f1": 297.5000000000001,
+        "f2": 337.5666666666663,
+        "f3": 54.25,
+        "gap": 0.0059146821390336,
+        "objective": -263.7283333333334,
+        "snapshot_hash": "bc6b1770029f196a2fbcfd0fe7ec03bbe46984a0c8dad3e8cda1d3392efc0040",
+        "solve_time_s": 22.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 6.0
+      }
+    },
+    {
+      "archived_metrics_hash": "891f85e58284f62ed82b2f9a6a299c5440303a34fae85d52753da17fddf15814",
+      "label": "P1",
+      "metrics_hash": "61f21a5362e163d5cb9c539a91a035ccaa84fb54075f46622f3a15b5a8df5431",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND18-P1",
+      "snapshot_hash": "076cd0035467bc76a14d7fee2fe38938fe41b229f7470f8e8ff1b9994416b7b7",
+      "solution_hash": "3503230d5b7e9f0e2718ec549fc1ed6a6440b14bad4d600f5f673ba72b2a124c",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 0.9805194805194806,
+        "core_airport_count": 0,
+        "fulfilled_sorties_total": 302,
+        "max_airport_departure": {
+          "airport_id": "AP179",
+          "share": 0.2119205298013245,
+          "sorties": 64
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 31,
+          "window": 17
+        },
+        "required_sorties_total": 308,
+        "returned_sorties_total": 302,
+        "scheduled_sorties_total": 302,
+        "selected_cluster_count": 0,
+        "unmet_sorties_total": 6
+      },
+      "technical": {
+        "best_bound": -264.44807062120657,
+        "cluster_lp_objective": null,
+        "f1": 297.4999999999997,
+        "f2": 339.11333333333226,
+        "f3": 60.43750000000033,
+        "gap": 0.004297047971615004,
+        "objective": -265.5844166666669,
+        "snapshot_hash": "076cd0035467bc76a14d7fee2fe38938fe41b229f7470f8e8ff1b9994416b7b7",
+        "solve_time_s": 15.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 6.000000000000272
+      }
+    },
+    {
+      "archived_metrics_hash": "d2867a427257af6cd119ad0b5a504e11d5a479e34787199232dbb37e1a0870de",
+      "label": "P2",
+      "metrics_hash": "bd1801fde177e6d4b489299f51d00efa4c196be6ec286f88d4e5594635d6f9a6",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND18-P2",
+      "snapshot_hash": "0f6da9e6323528ca0a56f4a71ced4c3558290b0dde30203610bf72ca829a2ceb",
+      "solution_hash": "1c44867a2f8f73321d86108a4426fab82fc16a57a44ca180e3d50d2b3631f74b",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 0.9902597402597403,
+        "core_airport_count": 1,
+        "fulfilled_sorties_total": 305,
+        "max_airport_departure": {
+          "airport_id": "AP179",
+          "share": 0.2,
+          "sorties": 61
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 28,
+          "window": 11
+        },
+        "required_sorties_total": 308,
+        "returned_sorties_total": 305,
+        "scheduled_sorties_total": 305,
+        "selected_cluster_count": 4,
+        "unmet_sorties_total": 3
+      },
+      "technical": {
+        "best_bound": -260.11312859850943,
+        "cluster_lp_objective": -259.6974117747194,
+        "f1": 300.5,
+        "f2": 346.4000000000001,
+        "f3": 69.125,
+        "gap": 0.011031244047352652,
+        "objective": -262.9825,
+        "snapshot_hash": "0f6da9e6323528ca0a56f4a71ced4c3558290b0dde30203610bf72ca829a2ceb",
+        "solve_time_s": 120.0,
+        "solver_status": "timelimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 3.0
+      }
+    },
+    {
+      "archived_metrics_hash": "f358d50dc936e93530fc32c24604e6e63f443e4db3fd33b93e9ad86627352dbd",
+      "label": "P3",
+      "metrics_hash": "292df4a53f97ce9ec772734557603bddcb86c87d284d2ac23601fadc915fda9a",
+      "metrics_matches_archive": false,
+      "run_id": "RUN-ROUND19-P3",
+      "snapshot_hash": "52a78ea6f1e0281e4de326ce8001a071eee2986edbe63faf4f9babba71129fa3",
+      "solution_hash": "e0003a9cd62ef4a72a901dfac767011606a6cfc4d68664d703602c2aef8cdad1",
+      "solution_matches_archive": true,
+      "summary": {
+        "additional_sorties_total": 0,
+        "completion_ratio": 0.9902597402597403,
+        "core_airport_count": 1,
+        "fulfilled_sorties_total": 305,
+        "max_airport_departure": {
+          "airport_id": "AP190",
+          "share": 0.2098360655737705,
+          "sorties": 64
+        },
+        "mission_count": 3,
+        "participating_airport_count": 6,
+        "peak_departure_slot": {
+          "slot_minutes": 15,
+          "sorties": 32,
+          "window": 11
+        },
+        "required_sorties_total": 308,
+        "returned_sorties_total": 305,
+        "scheduled_sorties_total": 305,
+        "selected_cluster_count": 4,
+        "unmet_sorties_total": 3
+      },
+      "technical": {
+        "best_bound": -259.1819832485087,
+        "cluster_lp_objective": -258.75294989024866,
+        "f1": 300.5,
+        "f2": 344.7733333333332,
+        "f3": 54.749999999999986,
+        "gap": 0.004096285570668062,
+        "objective": -260.2436666666667,
+        "snapshot_hash": "52a78ea6f1e0281e4de326ce8001a071eee2986edbe63faf4f9babba71129fa3",
+        "solve_time_s": 88.0,
+        "solver_status": "gaplimit",
+        "state_models": {
+          "aircraft": "retained_recyclable",
+          "capacity": "per_window_capacity",
+          "consumable_resources": "physical_inventory_storage_capacity_loss",
+          "service_assets": "not_yet_in_optimizer_fact_chain"
+        },
+        "unmet_demand_penalty": 3.0,
+        "unmet_demand_total": 3.0
+      }
+    }
+  ],
+  "schema_version": "jiangsu-six-airport-v5-result-index.v1",
+  "source_archive_sha256": "434be55334c0205c1718011ceb3c97d21c49c7db4732d7d0e13b380efed3bd89"
+}

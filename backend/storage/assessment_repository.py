@@ -38,8 +38,10 @@ class AssessmentRepository:
                 """
                 INSERT INTO assessment_result (
                     id, airport_id, scenario_type, curves, decline_rate, recovery_slope,
-                    task_threshold, initial_capacity, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
+                    task_threshold, initial_capacity, metric_kind, matrix_value,
+                    source_run_id, snapshot_hash, metrics_hash, effective_windows,
+                    unavailable_windows, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
                 ON CONFLICT(id) DO UPDATE SET
                     airport_id=excluded.airport_id,
                     scenario_type=excluded.scenario_type,
@@ -48,6 +50,13 @@ class AssessmentRepository:
                     recovery_slope=excluded.recovery_slope,
                     task_threshold=excluded.task_threshold,
                     initial_capacity=excluded.initial_capacity,
+                    metric_kind=excluded.metric_kind,
+                    matrix_value=excluded.matrix_value,
+                    source_run_id=excluded.source_run_id,
+                    snapshot_hash=excluded.snapshot_hash,
+                    metrics_hash=excluded.metrics_hash,
+                    effective_windows=excluded.effective_windows,
+                    unavailable_windows=excluded.unavailable_windows,
                     created_at=excluded.created_at
                 """,
                 (
@@ -59,6 +68,13 @@ class AssessmentRepository:
                     result.recovery_slope,
                     result.task_threshold,
                     result.initial_capacity,
+                    result.metric_kind,
+                    result.matrix_value,
+                    result.source_run_id,
+                    result.snapshot_hash,
+                    result.metrics_hash,
+                    result.effective_windows,
+                    result.unavailable_windows,
                     result.created_at,
                 ),
             )
@@ -113,6 +129,13 @@ class AssessmentRepository:
                     "recovery_slope": row["recovery_slope"],
                     "task_threshold": row["task_threshold"],
                     "initial_capacity": row["initial_capacity"],
+                    "metric_kind": row["metric_kind"],
+                    "matrix_value": row["matrix_value"],
+                    "source_run_id": row["source_run_id"],
+                    "snapshot_hash": row["snapshot_hash"],
+                    "metrics_hash": row["metrics_hash"],
+                    "effective_windows": row["effective_windows"],
+                    "unavailable_windows": row["unavailable_windows"],
                     "created_at": row["created_at"],
                 }
             )
@@ -156,6 +179,14 @@ class AssessmentRepository:
                     id, base_airport_id, base_scenario_type, compared_airport_id,
                     compared_scenario_type, conclusion, log, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
+                ON CONFLICT(id) DO UPDATE SET
+                    base_airport_id=excluded.base_airport_id,
+                    base_scenario_type=excluded.base_scenario_type,
+                    compared_airport_id=excluded.compared_airport_id,
+                    compared_scenario_type=excluded.compared_scenario_type,
+                    conclusion=excluded.conclusion,
+                    log=excluded.log,
+                    created_at=excluded.created_at
                 """,
                 (
                     comparison.id,

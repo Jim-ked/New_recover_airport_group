@@ -8,6 +8,7 @@ from backend.domain.damage import (
     AircraftDamageEffect,
     CapacityDamageEffect,
     DamageScenario,
+    DynamicInventoryResourceDamageEffect,
     NavigationDelayEffect,
     ResourceDamageEffect,
 )
@@ -98,6 +99,11 @@ def project_damage(situation: Situation, scenario: DamageScenario, *, horizon_sl
                     series[t] = min(series[t], damaged)
                 if event.recovery_mode == "average" and end < horizon_slots:
                     _recover_float(before, series, start, end, series[end - 1], event.recovery_duration_slots or 1)
+            continue
+
+        if isinstance(event.effect, DynamicInventoryResourceDamageEffect):
+            # V5 effects are enforced by the physical stock-conservation model. Applying
+            # them here would double-count them as a recoverable legacy budget ceiling.
             continue
 
         if isinstance(event.effect, CapacityDamageEffect):

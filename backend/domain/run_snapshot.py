@@ -13,7 +13,11 @@ from backend.domain.situation import Situation
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 SNAPSHOT_SCHEMA = "run_input_snapshot_v4"
-READABLE_SNAPSHOT_SCHEMAS = frozenset({SNAPSHOT_SCHEMA, "run_input_snapshot_v5"})
+DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA = "run_input_snapshot_v5"
+SUPPORTED_SNAPSHOT_SCHEMAS = frozenset(
+    {SNAPSHOT_SCHEMA, DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA}
+)
+READABLE_SNAPSHOT_SCHEMAS = SUPPORTED_SNAPSHOT_SCHEMAS
 
 
 class RunSnapshotValidationError(ValueError):

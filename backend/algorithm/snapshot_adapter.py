@@ -7,10 +7,18 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from backend.domain.catalog import AircraftResourceRequirement, AircraftType, ResourceType
 from backend.domain.damage import DamageScenario, NavigationDelayEffect
 from backend.domain.run_config import RunConfig
-from backend.domain.run_snapshot import RunSnapshot, SNAPSHOT_SCHEMA
+from backend.domain.run_snapshot import (
+    DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA,
+    RunSnapshot,
+    SUPPORTED_SNAPSHOT_SCHEMAS,
+)
 from backend.domain.situation import ResourceReplenishment, Situation
 from backend.services.damage_projection_service import DamageProjection, project_damage
 from backend.services.snapshot_materialization import SnapshotMaterializationError, materialize_situation
+from backend.services.dynamic_inventory import (
+    DynamicInventoryError,
+    build_dynamic_inventory_facts,
+)
 
 DELTA_MIN = 15
 
@@ -221,7 +229,9 @@ def _build_replenishment_maps(
     *,
     t_min: int,
     t_max: int,
+    capacity_overrides: Optional[Mapping[str, Mapping[str, float]]] = None,
 ) -> Tuple[
+    Dict[str, Dict[str, List[float]]],
     Dict[str, Dict[str, List[float]]],
     Dict[str, Dict[str, List[float]]],
 ]:
@@ -236,11 +246,13 @@ def _build_replenishment_maps(
 
     T = t_max - t_min + 1
     resource_ids = sorted(r.resource_type_id for r in resources)
+    capacity: Dict[str, Dict[str, List[float]]] = {}
     actual: Dict[str, Dict[str, List[float]]] = {}
     cumulative: Dict[str, Dict[str, List[float]]] = {}
 
     for item in situation.airports:
         aid = item.airport_id
+        capacity[aid] = {}
         actual[aid] = {}
         cumulative[aid] = {}
 
@@ -250,6 +262,18 @@ def _build_replenishment_maps(
 
         for rid in resource_ids:
             schedule = schedule_by_resource.get(rid, [])
+            raw_capacity = ((capacity_overrides or {}).get(aid) or {}).get(rid, 0.0)
+            try:
+                replenishment_capacity = float(raw_capacity)
+            except (TypeError, ValueError) as exc:
+                raise AlgorithmInputError(
+                    f"invalid replenishment capacity: {aid}/{rid}"
+                ) from exc
+            if replenishment_capacity < 0:
+                raise AlgorithmInputError(
+                    f"invalid replenishment capacity: {aid}/{rid}"
+                )
+            capacity[aid][rid] = [replenishment_capacity] * T
             prior = sum(
                 max(0, min(row.end_slot, t_min) - row.start_slot) * float(row.quantity)
                 for row in schedule
@@ -269,7 +293,7 @@ def _build_replenishment_maps(
             actual[aid][rid] = visible
             cumulative[aid][rid] = cumul
 
-    return actual, cumulative
+    return capacity, actual, cumulative
 
 
 def _build_timeview(
@@ -279,6 +303,10 @@ def _build_timeview(
     *,
     t_min: int,
     t_max: int,
+    dynamic_inventory: Optional[Mapping[str, Any]] = None,
+    replenishment_capacity_overrides: Optional[
+        Mapping[str, Mapping[str, float]]
+    ] = None,
 ) -> Dict[str, Any]:
     horizon_abs = max(1, t_max + 1)
     projection = (
@@ -290,9 +318,51 @@ def _build_timeview(
     base_boundary, _fuel_by_id_base, _legacy_fuel_base, _mats_base, _muns_base = _resource_maps(
         situation, resources, projection, t_min, t_max
     )
-    replenishment_actual, replenishment_cumulative = _build_replenishment_maps(
-        situation, resources, t_min=t_min, t_max=t_max
-    )
+    if dynamic_inventory is None:
+        (
+            replenishment_capacity,
+            replenishment_actual,
+            replenishment_cumulative,
+        ) = _build_replenishment_maps(
+            situation, resources, t_min=t_min, t_max=t_max
+        )
+        replenishment_capacity_abs = replenishment_actual_abs = None
+    else:
+        (
+            replenishment_capacity_abs,
+            replenishment_actual_abs,
+            _,
+        ) = _build_replenishment_maps(
+            situation,
+            resources,
+            t_min=0,
+            t_max=t_max,
+            capacity_overrides=replenishment_capacity_overrides,
+        )
+        replenishment_capacity = {
+            aid: {
+                rid: list(values[t_min : t_max + 1])
+                for rid, values in rows.items()
+            }
+            for aid, rows in replenishment_capacity_abs.items()
+        }
+        replenishment_actual = {
+            aid: {
+                rid: list(values[t_min : t_max + 1])
+                for rid, values in rows.items()
+            }
+            for aid, rows in replenishment_actual_abs.items()
+        }
+        replenishment_cumulative = {}
+        for aid, rows in replenishment_actual_abs.items():
+            replenishment_cumulative[aid] = {}
+            for rid, values in rows.items():
+                running = 0.0
+                full = []
+                for value in values:
+                    running += float(value)
+                    full.append(running)
+                replenishment_cumulative[aid][rid] = full[t_min : t_max + 1]
 
     # The optimizer consumes an effective cumulative stock boundary:
     # damage-adjusted baseline stock + actual replenishment that has arrived through t.
@@ -362,7 +432,7 @@ def _build_timeview(
             elif shock.start_slot <= t_max:
                 shocks[shock.airport_id][aircraft_type_id][shock.start_slot - t_min] -= int(loss)
 
-    return {
+    out = {
         "cap": {aid: _crop(seq, t_min, t_max) for aid, seq in projection.capacity_per_window.items()},
         # Effective cumulative boundary consumed by model_facts/model_builder.
         "resources": effective_resources,
@@ -384,6 +454,61 @@ def _build_timeview(
         "aircraft_shock": shocks,
         "T": T,
     }
+    if dynamic_inventory is not None:
+        out["resource_replenishment_capacity"] = replenishment_capacity
+        try:
+            out["dynamic_inventory"] = build_dynamic_inventory_facts(
+                situation,
+                scenario,
+                dynamic_inventory,
+                replenishment_capacity_abs=replenishment_capacity_abs or {},
+                replenishment_actual_abs=replenishment_actual_abs or {},
+                t_min=t_min,
+                t_max=t_max,
+            )
+        except DynamicInventoryError as exc:
+            raise AlgorithmInputError(f"invalid dynamic inventory input: {exc}") from exc
+        out["resource_inventory_model"] = "physical_inventory_v1"
+    return out
+
+
+def _archived_v5_replenishment_capacities(
+    raw_situation: Mapping[str, Any],
+) -> Dict[str, Dict[str, float]]:
+    capacities: Dict[str, Dict[str, float]] = {}
+    for index, item in enumerate(raw_situation.get("airports") or []):
+        if not isinstance(item, Mapping):
+            raise AlgorithmInputError(f"invalid frozen airport row: {index}")
+        raw_airport = item.get("airport") or {}
+        raw_profile = item.get("operational_profile") or {}
+        aid = str(
+            item.get("airport_id")
+            or (raw_airport.get("airport_id") if isinstance(raw_airport, Mapping) else None)
+            or (raw_profile.get("airport_id") if isinstance(raw_profile, Mapping) else None)
+            or ""
+        ).strip()
+        if not aid:
+            raise AlgorithmInputError(f"frozen airport row is missing airport_id: {index}")
+        profile = raw_profile
+        if not isinstance(profile, Mapping):
+            raise AlgorithmInputError(f"invalid frozen operational profile: {aid}")
+        capacities[aid] = {}
+        for stock in profile.get("resource_stocks") or []:
+            if not isinstance(stock, Mapping):
+                raise AlgorithmInputError(f"invalid frozen resource stock: {aid}")
+            rid = str(stock.get("resource_type_id") or "").strip()
+            raw = stock.get("replenishment_capacity_per_window")
+            if not rid or isinstance(raw, bool) or not isinstance(raw, (int, float)):
+                raise AlgorithmInputError(
+                    f"V5 replenishment capacity is missing/invalid: {aid}/{rid or '?'}"
+                )
+            value = float(raw)
+            if value < 0:
+                raise AlgorithmInputError(
+                    f"V5 replenishment capacity is negative: {aid}/{rid}"
+                )
+            capacities[aid][rid] = value
+    return capacities
 
 
 def _build_static(situation: Situation, od: Mapping[Tuple[str, str], float]) -> Dict[str, Any]:
@@ -504,10 +629,11 @@ def build_algorithm_input(snapshot: RunSnapshot) -> AlgorithmInputBundle:
     if not isinstance(snapshot, RunSnapshot):
         raise AlgorithmInputError("snapshot must be RunSnapshot")
     payload = snapshot.to_dict()
-    if payload.get("schema") != SNAPSHOT_SCHEMA:
+    if payload.get("schema") not in SUPPORTED_SNAPSHOT_SCHEMAS:
         raise AlgorithmInputError(f"unsupported snapshot schema: {payload.get('schema')!r}")
 
-    situation = _situation_from_payload(payload.get("situation") or {})
+    raw_situation = payload.get("situation") or {}
+    situation = _situation_from_payload(raw_situation)
     aircraft_types, resource_types, requirements = _catalogs_from_payload(payload.get("catalogs") or {})
     try:
         runtime_obj = RunConfig.from_mapping(payload.get("run_config") or {})
@@ -541,6 +667,16 @@ def build_algorithm_input(snapshot: RunSnapshot) -> AlgorithmInputBundle:
         scenario,
         t_min=t_min,
         t_max=t_max,
+        dynamic_inventory=(
+            payload.get("dynamic_inventory")
+            if payload.get("schema") == DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA
+            else None
+        ),
+        replenishment_capacity_overrides=(
+            _archived_v5_replenishment_capacities(raw_situation)
+            if payload.get("schema") == DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA
+            else None
+        ),
     )
     static = _build_static(situation, od)
 

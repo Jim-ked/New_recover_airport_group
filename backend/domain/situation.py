@@ -9,7 +9,12 @@ from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 from backend.domain.airport import AirportBase
 from backend.domain.airport_operations import AirportOperationalProfile
-from backend.domain.damage import AircraftDamageEffect, DamageScenario, ResourceDamageEffect
+from backend.domain.damage import (
+    AircraftDamageEffect,
+    DamageScenario,
+    DynamicInventoryResourceDamageEffect,
+    ResourceDamageEffect,
+)
 from backend.domain.mission import Mission
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
@@ -194,6 +199,12 @@ class SituationAirport:
                     f"resource_replenishments[{i}].resource_type_id",
                     "replenishment resource must be configured in the airport operational profile",
                 )
+            capacity = stock.replenishment_capacity_per_window
+            if capacity is not None and float(item.quantity) > float(capacity) + 1e-9:
+                _fail(
+                    f"resource_replenishments[{i}].quantity",
+                    "actual replenishment cannot exceed replenishment_capacity_per_window",
+                )
             intervals_by_resource.setdefault(item.resource_type_id, []).append(
                 (item.start_slot, item.end_slot, i)
             )
@@ -292,6 +303,7 @@ class Situation:
 
         airport_by_id = {a.airport_id: a for a in self.airports}
         for scenario in self.damage_scenarios:
+            dynamic_intervals: Dict[Tuple[str, str], list[Tuple[int, int, str]]] = {}
             for event in scenario.events:
                 item = airport_by_id.get(event.target.airport_id)
                 if item is None:
@@ -312,6 +324,61 @@ class Situation:
                     unknown = sorted({k for k, _ in event.effect.remaining_quantity} - configured)
                     if unknown:
                         _fail("damage_scenarios.events.effect.remaining_quantity", f"airport does not configure damaged resources: {unknown}")
+                if isinstance(event.effect, DynamicInventoryResourceDamageEffect):
+                    stock_by_id = {
+                        row.resource_type_id: row
+                        for row in item.operational_profile.resource_stocks
+                    }
+                    affected = {
+                        key for key, _ in event.effect.physical_remaining_quantity
+                    } | {
+                        key for key, _ in event.effect.damaged_storage_capacity
+                    }
+                    unknown = sorted(affected - set(stock_by_id))
+                    if unknown:
+                        _fail(
+                            "damage_scenarios.events.effect",
+                            "airport does not configure dynamic-inventory resources: "
+                            f"{unknown}",
+                        )
+                    physical = dict(event.effect.physical_remaining_quantity)
+                    damaged = dict(event.effect.damaged_storage_capacity)
+                    for resource_id in sorted(affected):
+                        stock = stock_by_id[resource_id]
+                        baseline = stock.storage_capacity
+                        if baseline is None:
+                            _fail(
+                                "damage_scenarios.events.effect",
+                                "storage_capacity is required before configuring dynamic "
+                                f"inventory damage: {item.airport_id}/{resource_id}",
+                            )
+                        if physical.get(resource_id, 0.0) > float(baseline) + 1e-12:
+                            _fail(
+                                "damage_scenarios.events.effect.physical_loss",
+                                "physical remaining quantity exceeds baseline storage "
+                                f"capacity: {item.airport_id}/{resource_id}",
+                            )
+                        if damaged.get(resource_id, 0.0) > float(baseline) + 1e-12:
+                            _fail(
+                                "damage_scenarios.events.effect.storage_capacity_damage",
+                                "damaged storage capacity exceeds baseline storage "
+                                f"capacity: {item.airport_id}/{resource_id}",
+                            )
+                        active_end = event.end_slot
+                        if event.recovery_mode == "average":
+                            active_end += int(event.recovery_duration_slots or 0)
+                        key = (item.airport_id, resource_id)
+                        intervals = dynamic_intervals.setdefault(key, [])
+                        for prior_start, prior_end, prior_id in intervals:
+                            if max(event.start_slot, prior_start) < min(active_end, prior_end):
+                                _fail(
+                                    "damage_scenarios.events",
+                                    "overlapping dynamic inventory damage is not supported: "
+                                    f"{item.airport_id}/{resource_id}/{prior_id}/{event.event_id}",
+                                )
+                        intervals.append(
+                            (event.start_slot, active_end, event.event_id)
+                        )
 
     def with_airport(self, item: SituationAirport) -> "Situation":
         updated = [a for a in self.airports if a.airport_id != item.airport_id]

@@ -18,10 +18,27 @@ from backend.analysis.metrics import (
 from backend.domain.solution import Solution, SortieChain
 from original_algorithm_overlay.model.decision_vars import build_base_path_map
 from tests.algorithm.test_runner import RunnerFakeModel, fixed_cluster_selector
-from tests.algorithm.test_snapshot_adapter import make_snapshot
+from tests.algorithm.test_snapshot_adapter import as_physical_inventory_v5, make_snapshot
 
 
 class MetricsCoreTests(unittest.TestCase):
+    def test_archived_v5_reports_physical_inventory_state(self):
+        snapshot = as_physical_inventory_v5(make_snapshot())
+        result = run_once(
+            snapshot,
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=RunnerFakeModel,
+        )
+        metrics = build_metrics_core(snapshot, result.solution)
+
+        fuel = metrics["resources"]["by_airport"]["A1"]["FUEL-A"]
+        self.assertEqual(
+            "physical_inventory_with_storage_capacity",
+            metrics["resources"]["state_model"],
+        )
+        self.assertIn("permanent_loss", fuel)
+        self.assertEqual([0.0] * len(fuel["remaining"]), fuel["permanent_loss"])
+
     def _fixture(self):
         snapshot = make_snapshot()
         result = run_once(
@@ -372,7 +389,8 @@ class MetricsCoreTests(unittest.TestCase):
         from backend.domain.situation import ResourceReplenishment
 
         snapshot = make_snapshot(
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 6, 5),),
+            # The fake solver selects the earliest legal departure (absolute window 3).
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 3, 4, 5),),
         )
         result = run_once(
             snapshot,
@@ -397,7 +415,7 @@ class MetricsCoreTests(unittest.TestCase):
 
         snapshot = make_snapshot(
             a1_fuel_initial=0,
-            a1_replenishments=(ResourceReplenishment("FUEL-A", 4, 6, 5),),
+            a1_replenishments=(ResourceReplenishment("FUEL-A", 3, 4, 5),),
         )
         result = run_once(
             snapshot,

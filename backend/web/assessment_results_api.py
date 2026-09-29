@@ -42,14 +42,23 @@ class AssessmentResultsApi:
             }
             cells: dict[str, dict[str, dict[str, Any]]] = {}
             scenarios: set[str] = set()
+            metric_kinds: set[str] = set()
             for result in results:
                 airport_cells = cells.setdefault(result.airport_id, {})
                 if result.scenario_type in airport_cells:
                     continue
                 scenarios.add(result.scenario_type)
+                metric_kinds.add(result.metric_kind)
                 airport_cells[result.scenario_type] = {
                     "result_id": result.id,
                     "support_index": result.initial_capacity,
+                    "metric_kind": result.metric_kind,
+                    "matrix_value": result.matrix_value,
+                    "source_run_id": result.source_run_id,
+                    "snapshot_hash": result.snapshot_hash,
+                    "metrics_hash": result.metrics_hash,
+                    "effective_windows": result.effective_windows,
+                    "unavailable_windows": result.unavailable_windows,
                     "decline_rate": result.decline_rate,
                     "recovery_slope": result.recovery_slope,
                     "task_threshold": result.task_threshold,
@@ -63,6 +72,7 @@ class AssessmentResultsApi:
                     "airport_ids": sorted(cells),
                     "airport_names": airport_names,
                     "cells": cells,
+                    "metric_kinds": sorted(metric_kinds),
                     "risks": [
                         {
                             "airport_id": risk.airport_id,
@@ -72,6 +82,16 @@ class AssessmentResultsApi:
                         }
                         for risk in risks
                     ],
+                    "risk_status": (
+                        {"status": "available", "reason": None}
+                        if risks else {
+                            "status": "unavailable" if results else "no_data",
+                            "reason": (
+                                "未配置独立风险评估模型或正式专家评分"
+                                if results else "暂无评估落库结果"
+                            ),
+                        }
+                    ),
                     "total_results": total,
                 },
                 200,
@@ -96,6 +116,18 @@ class AssessmentResultsApi:
                             "created_at": result.created_at,
                             "steps": [step for step, _ in result.curves],
                             "support": [support for _, support in result.curves],
+                            "values": [support for _, support in result.curves],
+                            "metric_kind": result.metric_kind,
+                            "metric_label": (
+                                "起降容量可用比例"
+                                if result.metric_kind == "capacity_availability_v1"
+                                else "保障支撑度"
+                            ),
+                            "source_run_id": result.source_run_id,
+                            "snapshot_hash": result.snapshot_hash,
+                            "metrics_hash": result.metrics_hash,
+                            "effective_windows": result.effective_windows,
+                            "unavailable_windows": result.unavailable_windows,
                             "decline_rate": result.decline_rate,
                             "recovery_slope": result.recovery_slope,
                             "task_threshold": result.task_threshold,

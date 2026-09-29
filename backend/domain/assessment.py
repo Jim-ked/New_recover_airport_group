@@ -7,6 +7,7 @@ from typing import Any, Mapping, NoReturn, Optional
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class AssessmentValidationError(ValueError):
@@ -63,6 +64,22 @@ def _reject_unknown(raw: Mapping[str, Any], allowed: set[str]) -> None:
         _fail(unknown[0], f"unknown field: {unknown[0]}")
 
 
+def _hash(value: Any, field: str, *, optional: bool = False) -> Optional[str]:
+    if value is None and optional:
+        return None
+    if not isinstance(value, str) or not _HASH_RE.fullmatch(value):
+        _fail(field, f"{field} must be a lowercase SHA-256 hex digest")
+    return value
+
+
+def _count(value: Any, field: str, *, optional: bool = False) -> Optional[int]:
+    if value is None and optional:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        _fail(field, f"{field} must be a nonnegative integer")
+    return value
+
+
 @dataclass(frozen=True)
 class AssessmentResult:
     id: str
@@ -73,6 +90,13 @@ class AssessmentResult:
     recovery_slope: float
     initial_capacity: float
     task_threshold: Optional[float] = None
+    metric_kind: str = "support_index_v1"
+    matrix_value: Optional[float] = None
+    source_run_id: Optional[str] = None
+    snapshot_hash: Optional[str] = None
+    metrics_hash: Optional[str] = None
+    effective_windows: Optional[int] = None
+    unavailable_windows: Optional[int] = None
     created_at: Optional[str] = None
 
     @classmethod
@@ -90,6 +114,13 @@ class AssessmentResult:
                 "recovery_slope",
                 "task_threshold",
                 "initial_capacity",
+                "metric_kind",
+                "matrix_value",
+                "source_run_id",
+                "snapshot_hash",
+                "metrics_hash",
+                "effective_windows",
+                "unavailable_windows",
                 "created_at",
             },
         )
@@ -117,6 +148,13 @@ class AssessmentResult:
             recovery_slope=float(_number(raw.get("recovery_slope"), "recovery_slope", minimum=0.0)),
             task_threshold=_number(raw.get("task_threshold"), "task_threshold", minimum=0.0, optional=True),
             initial_capacity=float(_number(raw.get("initial_capacity", 1.0), "initial_capacity", minimum=0.0)),
+            metric_kind=str(_id(raw.get("metric_kind", "support_index_v1"), "metric_kind")),
+            matrix_value=_number(raw.get("matrix_value"), "matrix_value", minimum=0.0, maximum=1.0, optional=True),
+            source_run_id=_id(raw.get("source_run_id"), "source_run_id", optional=True),
+            snapshot_hash=_hash(raw.get("snapshot_hash"), "snapshot_hash", optional=True),
+            metrics_hash=_hash(raw.get("metrics_hash"), "metrics_hash", optional=True),
+            effective_windows=_count(raw.get("effective_windows"), "effective_windows", optional=True),
+            unavailable_windows=_count(raw.get("unavailable_windows"), "unavailable_windows", optional=True),
             created_at=_text(raw.get("created_at"), "created_at", optional=True),
         )
 

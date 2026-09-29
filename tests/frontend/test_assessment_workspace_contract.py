@@ -31,11 +31,17 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
         for message in (
             "暂无评估落库结果",
             "当前机场暂无评估曲线",
-            "暂无风险等级评估结果",
+            "未配置独立风险评估模型或正式专家评分",
             "暂无跨场景评估对比记录",
             "评估数据读取失败",
         ):
             self.assertIn(message, JS)
+
+    def test_run_metrics_are_not_mislabeled_as_capability_or_risk(self) -> None:
+        self.assertIn("运行期容量占用率", JS)
+        self.assertIn("起降容量可用比例", JS)
+        self.assertNotIn("保障支撑度恢复曲线", JS)
+        self.assertIn("state.workspace !== 'assessment' && view()?.payload", JS)
 
     def test_workspace_only_consumes_read_endpoints(self) -> None:
         for endpoint in (

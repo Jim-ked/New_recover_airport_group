@@ -6,6 +6,10 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 from backend.algorithm.snapshot_adapter import DELTA_MIN, build_algorithm_input
 from backend.domain.run_snapshot import RunSnapshot
 from backend.domain.solution import Solution, SortieChain
+from backend.services.dynamic_inventory import (
+    DynamicInventoryError,
+    replay_dynamic_inventory,
+)
 from original_algorithm_overlay.model.decision_vars import (
     SortiePath,
     build_base_path_map,
@@ -374,6 +378,7 @@ def _build_resource_metrics(
     tv = ds.get("timeview") or {}
     effective_raw = tv.get("resources") or {}
     base_boundary_raw = tv.get("resource_base_boundary") or {}
+    replenishment_capacity_raw = tv.get("resource_replenishment_capacity") or {}
     replenishment_actual_raw = tv.get("resource_replenishment_actual") or {}
     replenishment_cumulative_raw = tv.get("resource_replenishment_cumulative") or {}
 
@@ -404,6 +409,15 @@ def _build_resource_metrics(
                 float(row.amount) * int(chain.sorties)
             )
 
+    dynamic_states = None
+    if tv.get("resource_inventory_model") == "physical_inventory_v1":
+        try:
+            dynamic_states = replay_dynamic_inventory(tv, consumed_increment)
+        except DynamicInventoryError as exc:
+            raise MetricsBuildError(
+                f"dynamic inventory invariant failed: {exc}"
+            ) from exc
+
     participating = set(participating_airports)
     category_candidates: Dict[str, List[Tuple[float, str, str, int]]] = defaultdict(list)
     category_candidates_by_window: Dict[str, Dict[int, List[Tuple[float, str, str]]]] = defaultdict(
@@ -422,12 +436,76 @@ def _build_resource_metrics(
                     raise MetricsBuildError(f"{label} series missing/length mismatch: {aid}/{rid}")
                 return [float(v) for v in seq]
 
-            base_boundary = _series(base_boundary_raw, "resource base-boundary")
-            effective = _series(effective_raw, "effective resource")
             actual = _series(replenishment_actual_raw, "replenishment actual")
             replenishment_cumulative = _series(
                 replenishment_cumulative_raw, "replenishment cumulative"
             )
+
+            if dynamic_states is not None:
+                state = (dynamic_states.get(aid) or {}).get(rid)
+                if not isinstance(state, Mapping):
+                    raise MetricsBuildError(
+                        f"dynamic inventory result missing: {aid}/{rid}"
+                    )
+                capacity = _series(
+                    replenishment_capacity_raw, "replenishment capacity"
+                )
+                storage_capacity = _series(
+                    (tv.get("dynamic_inventory") or {}).get(
+                        "storage_capacity"
+                    )
+                    or {},
+                    "storage capacity",
+                )
+                inc = [float(value) for value in state["consumed_increment"]]
+                cumul: List[float] = []
+                running = 0.0
+                for value in inc:
+                    running += value
+                    cumul.append(running)
+                remaining = [
+                    float(value) for value in state["ending_inventory"]
+                ]
+                ratio_initial = [
+                    (value / init) if init > 0 else None for value in remaining
+                ]
+                for index, ratio in enumerate(ratio_initial):
+                    if (
+                        aid in participating
+                        and ratio is not None
+                        and metadata[rid]["category"]
+                        in {"fuel", "material", "munition"}
+                    ):
+                        category = metadata[rid]["category"]
+                        category_candidates[category].append(
+                            (float(ratio), aid, rid, windows[index])
+                        )
+                        category_candidates_by_window[category][windows[index]].append(
+                            (float(ratio), aid, rid)
+                        )
+                by_resource[rid] = {
+                    "initial": init,
+                    "storage_capacity": storage_capacity,
+                    "replenishment_capacity_per_window": capacity,
+                    "replenishment_actual": actual,
+                    "replenishment_cumulative": replenishment_cumulative,
+                    "inherited_inventory": list(state["inherited"]),
+                    "after_physical_loss": list(
+                        state["after_physical_loss"]
+                    ),
+                    "permanent_loss": list(state["permanent_loss"]),
+                    "available_before_consumption": list(
+                        state["available_before_consumption"]
+                    ),
+                    "consumed_increment": inc,
+                    "consumed_cumulative": cumul,
+                    "remaining": remaining,
+                    "remaining_ratio_initial": ratio_initial,
+                }
+                continue
+
+            base_boundary = _series(base_boundary_raw, "resource base-boundary")
+            effective = _series(effective_raw, "effective resource")
 
             for i in range(n):
                 if actual[i] < -_EPS:
@@ -536,7 +614,11 @@ def _build_resource_metrics(
         category_timeline[category] = timeline_rows
 
     return {
-        "state_model": "consumable_stock_with_replenishment",
+        "state_model": (
+            "physical_inventory_with_storage_capacity"
+            if dynamic_states is not None
+            else "consumable_stock_with_replenishment"
+        ),
         "resource_types": metadata,
         "by_airport": by_airport,
         "category_min_remaining_ratio": category_min,
@@ -811,7 +893,12 @@ def build_metrics_core(
         "snapshot_hash": snapshot.content_hash,
         "state_models": {
             "capacity": "per_window_capacity",
-            "consumable_resources": "stock_replenishment_consumption",
+            "consumable_resources": (
+                "physical_inventory_storage_capacity_loss"
+                if ds["timeview"].get("resource_inventory_model")
+                == "physical_inventory_v1"
+                else "stock_replenishment_consumption"
+            ),
             "aircraft": "retained_recyclable",
             "service_assets": "not_yet_in_optimizer_fact_chain",
         },

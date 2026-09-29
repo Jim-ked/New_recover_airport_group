@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any, Dict, Mapping, Sequence, Tuple
 
+from backend.services.dynamic_inventory import (
+    DynamicInventoryError,
+    replay_dynamic_inventory,
+)
+
 from .decision_vars import PathKey, PathMaps, SortiePath
 
 DELTA_HOURS = 0.25
@@ -439,9 +444,41 @@ def validate_schedule_base(
                     )
                 available -= dep
 
+    use = resource_use_by_path(maps, run_params)
+    if ds["timeview"].get("resource_inventory_model") == "physical_inventory_v1":
+        opening = (
+            (ds["timeview"].get("dynamic_inventory") or {}).get(
+                "opening_inventory"
+            )
+            or {}
+        )
+        consumption = {
+            aid: {resource_id: [0.0] * T for resource_id in rows}
+            for aid, rows in opening.items()
+        }
+        for path in maps.path_records:
+            quantity = q.get(path.key, 0.0)
+            if quantity <= tolerance:
+                continue
+            for row in use[path.key]:
+                if row.resource_type_id not in consumption.get(row.airport_id, {}):
+                    raise ModelFactError(
+                        "dynamic inventory resource missing: "
+                        f"{row.airport_id}/{row.resource_type_id}"
+                    )
+                consumption[row.airport_id][row.resource_type_id][
+                    path.depart_slot
+                ] += row.amount * quantity
+        try:
+            replay_dynamic_inventory(
+                ds["timeview"], consumption, tolerance=tolerance
+            )
+        except DynamicInventoryError as exc:
+            raise ModelFactError(str(exc)) from exc
+        return
+
     # Consumables are airport-local shared pools.  Recovery only changes the external
     # availability boundary; cumulative mission consumption is never reset.
-    use = resource_use_by_path(maps, run_params)
     resource_limits = ds["timeview"].get("resources") or {}
     for aid in airports:
         for rid, series in (resource_limits.get(aid) or {}).items():

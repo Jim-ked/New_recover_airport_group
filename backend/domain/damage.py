@@ -135,6 +135,101 @@ class ResourceDamageEffect:
 
 
 @dataclass(frozen=True)
+class DynamicInventoryResourceDamageEffect:
+    """Physical-stock loss and storage-capacity damage from archived v5 inputs."""
+
+    physical_remaining_quantity: Tuple[Tuple[str, float], ...] = ()
+    damaged_storage_capacity: Tuple[Tuple[str, float], ...] = ()
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> "DynamicInventoryResourceDamageEffect":
+        allowed = {"inventory_semantics", "physical_loss", "storage_capacity_damage"}
+        unknown = set(raw) - allowed
+        if unknown:
+            _fail("effect", f"unknown dynamic inventory effect fields: {sorted(unknown)}")
+        if raw.get("inventory_semantics") != "physical_inventory_v1":
+            _fail(
+                "effect.inventory_semantics",
+                "inventory_semantics must be physical_inventory_v1",
+            )
+        physical_raw = raw.get("physical_loss")
+        storage_raw = raw.get("storage_capacity_damage")
+        if physical_raw is None and storage_raw is None:
+            _fail(
+                "effect",
+                "dynamic inventory resource damage requires physical_loss and/or storage_capacity_damage",
+            )
+
+        def rows(
+            block: Any,
+            *,
+            block_name: str,
+            value_name: str,
+        ) -> list[tuple[str, float]]:
+            if block is None:
+                return []
+            if not isinstance(block, Mapping) or set(block) != {value_name}:
+                _fail(
+                    f"effect.{block_name}",
+                    f"{block_name} must contain only {value_name} object",
+                )
+            values = block.get(value_name)
+            if not isinstance(values, Mapping) or not values:
+                _fail(
+                    f"effect.{block_name}.{value_name}",
+                    f"{value_name} must be a nonempty object",
+                )
+            return [
+                (
+                    _id(key, f"effect.{block_name}.{value_name}.{key}"),
+                    _nonnegative_number(
+                        value, f"effect.{block_name}.{value_name}.{key}"
+                    ),
+                )
+                for key, value in values.items()
+            ]
+
+        physical = rows(
+            physical_raw,
+            block_name="physical_loss",
+            value_name="remaining_quantity",
+        )
+        storage = rows(
+            storage_raw,
+            block_name="storage_capacity_damage",
+            value_name="remaining_capacity",
+        )
+        physical_map = dict(physical)
+        storage_map = dict(storage)
+        for resource_id in sorted(set(physical_map) & set(storage_map)):
+            if physical_map[resource_id] > storage_map[resource_id] + 1e-12:
+                _fail(
+                    f"effect.physical_loss.remaining_quantity.{resource_id}",
+                    "physical remaining quantity must not exceed damaged storage capacity",
+                )
+        missing_loss = sorted(set(storage_map) - set(physical_map))
+        if missing_loss:
+            _fail(
+                "effect.physical_loss.remaining_quantity",
+                "storage capacity damage requires physical loss caps for resources: "
+                f"{missing_loss}",
+            )
+        return cls(tuple(sorted(physical)), tuple(sorted(storage)))
+
+    def to_dict(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {"inventory_semantics": "physical_inventory_v1"}
+        if self.physical_remaining_quantity:
+            out["physical_loss"] = {
+                "remaining_quantity": dict(self.physical_remaining_quantity)
+            }
+        if self.damaged_storage_capacity:
+            out["storage_capacity_damage"] = {
+                "remaining_capacity": dict(self.damaged_storage_capacity)
+            }
+        return out
+
+
+@dataclass(frozen=True)
 class CapacityDamageEffect:
     remaining_capacity_per_window: int
 
@@ -184,7 +279,13 @@ class NavigationDelayEffect:
         return {"departure_delay_slots": self.departure_delay_slots, "return_delay_slots": self.return_delay_slots}
 
 
-DamageEffect = Union[AircraftDamageEffect, ResourceDamageEffect, CapacityDamageEffect, NavigationDelayEffect]
+DamageEffect = Union[
+    AircraftDamageEffect,
+    ResourceDamageEffect,
+    DynamicInventoryResourceDamageEffect,
+    CapacityDamageEffect,
+    NavigationDelayEffect,
+]
 
 
 def _effect_from_mapping(damage_type: str, raw: Any) -> DamageEffect:
@@ -193,6 +294,8 @@ def _effect_from_mapping(damage_type: str, raw: Any) -> DamageEffect:
     if damage_type == "aircraft_damage":
         return AircraftDamageEffect.from_mapping(raw)
     if damage_type == "resource_damage":
+        if raw.get("inventory_semantics") is not None:
+            return DynamicInventoryResourceDamageEffect.from_mapping(raw)
         return ResourceDamageEffect.from_mapping(raw)
     if damage_type == "capacity_damage":
         return CapacityDamageEffect.from_mapping(raw)
@@ -260,6 +363,28 @@ class DamageEvent:
                 _fail("target.target_type", "aircraft_damage targets an airport")
             if self.recovery_mode != "none" or self.recovery_duration_slots is not None:
                 _fail("recovery_mode", "aircraft damage is a one-time non-recovering loss")
+        elif isinstance(self.effect, DynamicInventoryResourceDamageEffect):
+            if self.effect.damaged_storage_capacity:
+                if self.recovery_mode == "none":
+                    _fail(
+                        "recovery_mode",
+                        "storage capacity damage must use instant or average recovery",
+                    )
+                if self.recovery_mode == "average" and self.recovery_duration_slots is None:
+                    _fail(
+                        "recovery_duration_slots",
+                        "average recovery requires recovery_duration_slots",
+                    )
+                if self.recovery_mode == "instant" and self.recovery_duration_slots is not None:
+                    _fail(
+                        "recovery_duration_slots",
+                        "instant recovery must not specify recovery_duration_slots",
+                    )
+            elif self.recovery_mode != "none" or self.recovery_duration_slots is not None:
+                _fail(
+                    "recovery_mode",
+                    "physical-only inventory loss is permanent and must use recovery_mode none",
+                )
         else:
             if self.recovery_mode == "none":
                 _fail("recovery_mode", "non-aircraft damage must use instant or average recovery")

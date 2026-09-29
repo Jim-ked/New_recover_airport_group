@@ -123,8 +123,197 @@ def _add_demand(model, ds, maps: PathMaps, x_path, *, vtype: str, sum_terms):
     return unmet
 
 
-def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T, sum_terms):
+def _add_dynamic_inventory_resources(
+    model,
+    ds,
+    maps: PathMaps,
+    run_params,
+    x_path,
+    A,
+    T,
+    sum_terms,
+    *,
+    integer_vars: bool,
+):
+    """Add explicit airport/resource/slot stock conservation for archived v5 inputs."""
+    timeview = ds["timeview"]
+    facts = timeview.get("dynamic_inventory") or {}
+    opening = facts.get("opening_inventory") or {}
+    storage = facts.get("storage_capacity") or {}
+    loss_caps = facts.get("physical_loss_cap") or {}
+    arrivals = timeview.get("resource_replenishment_actual") or {}
+    arrival_caps = timeview.get("resource_replenishment_capacity") or {}
+    uses = resource_use_by_path(maps, run_params)
+    used_pairs = {
+        (row.airport_id, row.resource_type_id)
+        for rows in uses.values()
+        for row in rows
+        if row.amount > 0
+    }
+    for aid, resource_id in sorted(used_pairs):
+        if resource_id not in (opening.get(aid) or {}):
+            raise ModelFactError(
+                f"dynamic inventory resource missing: {aid}/{resource_id}"
+            )
+
+    ending = {}
+    after_loss = {}
+    selectors = {}
+    for aid in A:
+        ending[aid] = {}
+        after_loss[aid] = {}
+        selectors[aid] = {}
+        for resource_id, raw_opening in sorted((opening.get(aid) or {}).items()):
+            cap_seq = (storage.get(aid) or {}).get(resource_id)
+            loss_seq = (loss_caps.get(aid) or {}).get(resource_id)
+            arrival_seq = (arrivals.get(aid) or {}).get(resource_id)
+            arrival_cap_seq = (arrival_caps.get(aid) or {}).get(resource_id)
+            if any(
+                not isinstance(seq, list) or len(seq) < T
+                for seq in (cap_seq, loss_seq, arrival_seq, arrival_cap_seq)
+            ):
+                raise ModelFactError(
+                    f"dynamic inventory series missing/short: {aid}/{resource_id}"
+                )
+            max_capacity = max(float(value) for value in cap_seq) if cap_seq else 0.0
+            if max_capacity < 0:
+                raise ModelFactError(
+                    f"negative storage capacity: {aid}/{resource_id}"
+                )
+            ending[aid][resource_id] = {}
+            after_loss[aid][resource_id] = {}
+            selectors[aid][resource_id] = {}
+            by_depart: Dict[int, list] = {}
+            for path in maps.path_records:
+                if path.origin_airport_id != aid:
+                    continue
+                amount = sum(
+                    row.amount
+                    for row in uses[path.key]
+                    if row.resource_type_id == resource_id
+                )
+                if amount > 0:
+                    by_depart.setdefault(path.depart_slot, []).append(
+                        amount * x_path[path.key]
+                    )
+
+            for slot in range(T):
+                inherited = (
+                    float(raw_opening)
+                    if slot == 0
+                    else ending[aid][resource_id][slot - 1]
+                )
+                after = model.addVar(
+                    lb=0.0,
+                    vtype="C",
+                    name=f"INV_AFTER_LOSS__{aid}__{resource_id}__{slot}",
+                )
+                end = model.addVar(
+                    lb=0.0,
+                    vtype="C",
+                    name=f"INV_END__{aid}__{resource_id}__{slot}",
+                )
+                after_loss[aid][resource_id][slot] = after
+                ending[aid][resource_id][slot] = end
+                loss_cap = loss_seq[slot]
+                if loss_cap is None:
+                    model.addCons(
+                        after == inherited,
+                        name=f"INV_NO_LOSS__{aid}__{resource_id}__{slot}",
+                    )
+                else:
+                    cap_value = float(loss_cap)
+                    if cap_value < 0:
+                        raise ModelFactError(
+                            f"invalid physical loss cap: {aid}/{resource_id}/slot={slot}"
+                        )
+                    if cap_value >= max_capacity - 1e-9:
+                        model.addCons(
+                            after == inherited,
+                            name=(
+                                f"INV_LOSS_CAP_INACTIVE__{aid}__{resource_id}__{slot}"
+                            ),
+                        )
+                    else:
+                        selector = model.addVar(
+                            lb=0.0,
+                            vtype="B" if integer_vars else "C",
+                            name=f"INV_MIN_SEL__{aid}__{resource_id}__{slot}",
+                        )
+                        selectors[aid][resource_id][slot] = selector
+                        if not integer_vars:
+                            model.addCons(
+                                selector <= 1.0,
+                                name=(
+                                    f"INV_MIN_SEL_UB__{aid}__{resource_id}__{slot}"
+                                ),
+                            )
+                        big_m = max_capacity
+                        model.addCons(
+                            after <= inherited,
+                            name=f"INV_MIN_A__{aid}__{resource_id}__{slot}",
+                        )
+                        model.addCons(
+                            after <= cap_value,
+                            name=f"INV_MIN_B__{aid}__{resource_id}__{slot}",
+                        )
+                        model.addCons(
+                            after >= inherited - big_m * selector,
+                            name=f"INV_MIN_C__{aid}__{resource_id}__{slot}",
+                        )
+                        model.addCons(
+                            after >= cap_value - big_m * (1.0 - selector),
+                            name=f"INV_MIN_D__{aid}__{resource_id}__{slot}",
+                        )
+
+                arrival = float(arrival_seq[slot])
+                arrival_cap = float(arrival_cap_seq[slot])
+                if arrival < -1e-9 or arrival > arrival_cap + 1e-9:
+                    raise ModelFactError(
+                        "actual replenishment exceeds capacity: "
+                        f"{aid}/{resource_id}/slot={slot}"
+                    )
+                model.addCons(
+                    after + arrival <= float(cap_seq[slot]),
+                    name=f"INV_STORAGE__{aid}__{resource_id}__{slot}",
+                )
+                consumption = sum_terms(by_depart.get(slot, ()))
+                model.addCons(
+                    end == after + arrival - consumption,
+                    name=f"INV_BALANCE__{aid}__{resource_id}__{slot}",
+                )
+    return {
+        "ending": ending,
+        "after_loss": after_loss,
+        "loss_selectors": selectors,
+    }
+
+
+def _add_shared_resources(
+    model,
+    ds,
+    maps: PathMaps,
+    run_params,
+    x_path,
+    A,
+    T,
+    sum_terms,
+    *,
+    integer_vars: bool,
+):
     """Airport-local shared consumable pools, including reserve-adjusted fuel."""
+    if ds["timeview"].get("resource_inventory_model") == "physical_inventory_v1":
+        return _add_dynamic_inventory_resources(
+            model,
+            ds,
+            maps,
+            run_params,
+            x_path,
+            A,
+            T,
+            sum_terms,
+            integer_vars=integer_vars,
+        )
     uses = resource_use_by_path(maps, run_params)
     limits = ds["timeview"].get("resources") or {}
 
@@ -155,6 +344,7 @@ def _add_shared_resources(model, ds, maps: PathMaps, run_params, x_path, A, T, s
             for t in range(T):
                 cumulative = cumulative + sum_terms(by_depart.get(t, ()))
                 model.addCons(cumulative <= float(seq[t]), name=f"RES__{aid}__{rid}__{t}")
+    return None
 
 
 def _resolve_unmet_penalty(runtime: Mapping[str, Any]) -> float:
@@ -249,7 +439,17 @@ def build_model(
     _add_aircraft_flow(model, ds, maps, x_path, z, A, K, T, sum_terms)
     _add_capacity(model, ds, maps, run_params, x_path, A, T, sum_terms)
     unmet_demand = _add_demand(model, ds, maps, x_path, vtype=vtype, sum_terms=sum_terms)
-    _add_shared_resources(model, ds, maps, run_params, x_path, A, T, sum_terms)
+    inventory = _add_shared_resources(
+        model,
+        ds,
+        maps,
+        run_params,
+        x_path,
+        A,
+        T,
+        sum_terms,
+        integer_vars=integer_vars,
+    )
     unmet_penalty = _set_objective(
         model, ds, maps, run_params, runtime, x_path, unmet_demand, sum_terms
     )
@@ -264,6 +464,7 @@ def build_model(
         "unmet_demand_penalty": unmet_penalty,
         "path_records": tuple(maps.path_records),
         "sets": {"A": A, "M": M, "K": K, "T": T},
+        "dynamic_inventory": inventory,
     }
     return model, pack
 
