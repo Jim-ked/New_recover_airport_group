@@ -29,6 +29,7 @@ from backend.web.composition import (
     build_indicator_api,
     build_results_api,
     build_run_api,
+    build_security_api,
     build_situation_api,
     build_user_repository,
 )
@@ -112,6 +113,7 @@ def build_application(
         indicator_api=build_indicator_api(db_path),
         account_api=build_account_api(db_path),
         audit_api=build_audit_api(db_path),
+        security_api=build_security_api(db_path, runtime_root=settings.runtime_root),
         user_admin_api=UserAdminApi(prepared.user_repository),
         user_repository=prepared.user_repository,
         secret_key=settings.secret_key,

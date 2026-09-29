@@ -13,6 +13,7 @@ from backend.services.run_submission_service import (
     default_solver_probe,
 )
 from backend.services.run_worker_status import RunWorkerStatus
+from backend.services.security_service import SecurityService
 from backend.storage.workspace_airport_repository import WorkspaceAirportRepository
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
@@ -22,6 +23,7 @@ from backend.storage.indicator_repository import IndicatorRepository
 from backend.storage.audit_repository import AuditRepository
 from backend.storage.assessment_repository import AssessmentRepository
 from backend.storage.user_repository import UserRepository
+from backend.storage.security_repository import SecurityRepository
 from backend.web.run_api import RunApi, RunIdFactory, default_run_id_factory
 from backend.web.results_api import ResultsApi
 from backend.web.situation_api import SituationApi
@@ -30,6 +32,7 @@ from backend.web.indicator_api import IndicatorApi
 from backend.web.account_api import AccountApi
 from backend.web.audit_api import AuditApi
 from backend.web.assessment_results_api import AssessmentResultsApi
+from backend.web.security_api import SecurityApi
 
 
 def build_run_api(
@@ -124,8 +127,20 @@ def build_audit_api(db_path: str | Path) -> AuditApi:
     return AuditApi(repository=AuditRepository(db_path))
 
 
+def build_security_api(db_path: str | Path, *, runtime_root: str | Path) -> SecurityApi:
+    root = Path(runtime_root)
+    service = SecurityService(
+        SecurityRepository(db_path),
+        db_path=db_path,
+        backup_root=root / "security" / "backups",
+        report_root=root / "security" / "reports",
+        audit_repository=AuditRepository(db_path),
+    )
+    return SecurityApi(service)
+
+
 __all__ = [
     "build_run_api", "build_results_api", "build_assessment_results_api", "build_situation_api",
-    "build_catalog_api", "build_indicator_api", "build_account_api", "build_audit_api",
+    "build_catalog_api", "build_indicator_api", "build_account_api", "build_audit_api", "build_security_api",
     "build_user_repository",
 ]

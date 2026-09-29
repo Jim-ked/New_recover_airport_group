@@ -20,6 +20,7 @@ from backend.web.flask_account import create_account_blueprint
 from backend.web.flask_audit import create_audit_blueprint, install_audit_hook
 from backend.web.flask_tiles import create_tile_blueprint
 from backend.web.flask_user_admin import create_user_admin_blueprint
+from backend.web.flask_security import create_security_blueprint
 from backend.web.run_api import RunApi
 from backend.web.results_api import ResultsApi
 from backend.web.assessment_results_api import AssessmentResultsApi
@@ -29,6 +30,7 @@ from backend.web.indicator_api import IndicatorApi
 from backend.web.account_api import AccountApi
 from backend.web.audit_api import AuditApi
 from backend.web.user_admin_api import UserAdminApi
+from backend.web.security_api import SecurityApi
 from backend.storage.user_repository import UserRepository
 from backend.auth.session_policy import DEFAULT_IDLE_TIMEOUT_SECONDS, DEFAULT_ABSOLUTE_TIMEOUT_SECONDS
 
@@ -47,6 +49,7 @@ def create_app(
     account_api: Optional[AccountApi] = None,
     audit_api: Optional[AuditApi] = None,
     user_admin_api: Optional[UserAdminApi] = None,
+    security_api: Optional[SecurityApi] = None,
     user_repository: Optional[UserRepository] = None,
     session_idle_timeout_seconds: int = DEFAULT_IDLE_TIMEOUT_SECONDS,
     session_absolute_timeout_seconds: int = DEFAULT_ABSOLUTE_TIMEOUT_SECONDS,
@@ -155,6 +158,14 @@ def create_app(
         )
         install_audit_hook(
             app, repository=audit_api.repository, principal_resolver=principal_resolver
+        )
+    if security_api is not None:
+        app.register_blueprint(
+            create_security_blueprint(
+                api=security_api,
+                principal_resolver=principal_resolver,
+                mutation_guard=mutation_guard,
+            )
         )
     if tile_root is not None:
         app.register_blueprint(create_tile_blueprint(tile_root=tile_root))

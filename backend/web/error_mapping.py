@@ -10,6 +10,8 @@ from backend.domain.damage import DamageValidationError
 from backend.domain.indicator import IndicatorValidationError
 from backend.domain.mission import MissionValidationError
 from backend.domain.run_config import RunConfigValidationError
+from backend.domain.security import SecurityValidationError
+from backend.services.security_service import SecurityServiceError
 from backend.domain.situation import SituationValidationError
 from backend.analysis.comparison import ComparisonError
 from backend.domain.run_snapshot import RunSnapshotValidationError
@@ -115,6 +117,7 @@ def map_expected_error(exc: Exception) -> ApiResponse | None:
         (
             AirportValidationError, AirportOperationsValidationError, AssessmentValidationError, CatalogValidationError,
             DamageValidationError, MissionValidationError, SituationValidationError, IndicatorValidationError,
+            SecurityValidationError,
         ),
     ):
         return ApiResponse(error_body("VALIDATION_FAILED", str(exc), field=_field(exc)), 422)
@@ -124,6 +127,9 @@ def map_expected_error(exc: Exception) -> ApiResponse | None:
         (RunConfigValidationError, RunSnapshotValidationError, ODDistanceServiceError, RunSnapshotServiceError),
     ):
         return ApiResponse(error_body("RUN_VALIDATION_FAILED", str(exc), field=_field(exc)), 422)
+
+    if isinstance(exc, SecurityServiceError):
+        return ApiResponse(error_body("SECURITY_OPERATION_FAILED", str(exc)), 422)
 
     # A repository failure is an internal persistence error unless it is one of the
     # explicit conflict/transition classes handled above.

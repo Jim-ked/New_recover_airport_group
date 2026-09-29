@@ -24,6 +24,7 @@
 .account-security-row strong,.account-security-row small{display:block}.account-security-row strong{font-size:12px}.account-security-row small{margin-top:4px;color:var(--text-muted);font-size:10px}
 
 #userWorkspace,#auditWorkspace{display:grid;grid-template-rows:auto minmax(0,1fr)}
+.security-workspace{padding:10px;overflow:auto}.security-grid{display:grid;gap:10px}.security-card{position:relative;min-height:190px;margin-bottom:10px;border:1px solid var(--line-soft);background:#071b29;display:grid;grid-template-rows:auto minmax(0,1fr)}.security-card:last-child{margin-bottom:0}.security-card>header{min-height:48px;padding:7px 10px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line-soft);background:#081d2c}.security-card h2{margin:0;font-size:12px}.security-card header small{display:block;margin-top:3px;color:var(--text-muted);font-size:9.5px}.security-table-wrap{min-height:0;overflow:auto}.security-chip{display:inline-flex;min-width:52px;justify-content:center;padding:2px 7px;border:1px solid var(--line-soft);border-radius:999px;font-size:9.5px}.security-chip.sev-critical{border-color:#8c3b3b;color:#ffb2b2}.security-chip.sev-warning{border-color:#806431;color:#f1ca76}.security-chip.sev-info{border-color:#315e7b;color:#a9d4ee}.security-state{position:absolute;inset:49px 0 0;z-index:2;display:grid;place-items:center;background:rgba(6,21,34,.92);color:var(--text-muted);font-size:11px}.security-actions{display:flex;gap:5px}.security-report-controls{display:flex;align-items:center;gap:6px}.security-report-controls .control{width:auto;min-width:120px}.security-report-controls select{min-width:76px}.security-card .settings-table th:nth-child(n){width:auto}.security-card .settings-table td:last-child,.security-card .settings-table th:last-child{width:150px}
 .settings-toolbar{display:flex;align-items:center;gap:8px;min-width:0;min-height:50px;padding:8px 10px;border-bottom:1px solid var(--line-soft);background:#081d2c}
 .settings-toolbar .control{width:auto;min-width:124px}
 .settings-toolbar-spacer{flex:1}
@@ -74,4 +75,5 @@
   .settings-toolbar{flex-wrap:wrap}.settings-toolbar-spacer{display:none}
   .audit-toolbar{grid-template-columns:repeat(4,minmax(130px,1fr))}
   .settings-master-detail.inspector-open{grid-template-columns:minmax(0,1fr) 320px}
+  .security-card>header{align-items:flex-start;flex-direction:column}.security-report-controls{width:100%;flex-wrap:wrap}.security-report-controls .control{flex:1 1 150px}.security-card{min-height:240px}
 }

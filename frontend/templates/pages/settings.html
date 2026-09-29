@@ -9,6 +9,7 @@
       <button class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="accountWorkspace" data-settings-tab="account">账户与安全</button>
       <button class="settings-tab settings-tab-admin hidden" type="button" role="tab" aria-selected="false" aria-controls="userWorkspace" data-settings-tab="users" data-permission="users.admin">用户管理</button>
       <button class="settings-tab settings-tab-admin hidden" type="button" role="tab" aria-selected="false" aria-controls="auditWorkspace" data-settings-tab="audit" data-permission="audit.read">审计日志</button>
+      <button class="settings-tab settings-tab-admin hidden" type="button" role="tab" aria-selected="false" aria-controls="securityWorkspace" data-settings-tab="security" data-permission="audit.read">安全工作区</button>
     </nav>
   </header>
 
@@ -123,6 +124,24 @@
         </aside>
       </div>
     </section>
+
+    <section id="securityWorkspace" class="settings-panel security-workspace hidden" role="tabpanel" data-settings-panel="security" aria-hidden="true">
+      <article class="security-card">
+        <header><div><h2>异常预警</h2><small>读取已登记的安全异常，不改变审计日志。</small></div><button id="securityRefreshAlerts" class="btn ghost" type="button">刷新</button></header>
+        <div class="security-table-wrap"><table class="settings-table"><thead><tr><th>时间</th><th>级别</th><th>类型</th><th>说明</th></tr></thead><tbody id="alertTableBody"></tbody></table></div>
+        <div id="securityAlertState" class="security-state hidden" role="status"></div>
+      </article>
+      <article class="security-card">
+        <header><div><h2>数据备份与恢复</h2><small>仅创建全量 SQLite 备份；当前未配置备份加密。</small></div><button id="securityCreateBackup" class="btn primary" type="button">创建全量备份</button></header>
+        <div class="security-table-wrap"><table class="settings-table"><thead><tr><th>时间</th><th>类型</th><th>加密状态</th><th>文件</th><th>操作</th></tr></thead><tbody id="backupTableBody"></tbody></table></div>
+        <div id="securityBackupState" class="security-state hidden" role="status"></div>
+      </article>
+      <article class="security-card security-report-card">
+        <header><div><h2>安全审计报告</h2><small>报告文件由服务端写入受限目录。</small></div><div class="security-report-controls"><input id="securityReportStart" class="control" type="date" aria-label="审计报告开始日期"><input id="securityReportEnd" class="control" type="date" aria-label="审计报告结束日期"><select id="securityReportFormat" class="control" aria-label="审计报告格式"><option value="csv">CSV</option><option value="pdf">PDF</option></select><button id="securityCreateReport" class="btn primary" type="button">生成报告</button></div></header>
+        <div class="security-table-wrap"><table class="settings-table"><thead><tr><th>生成时间</th><th>统计范围</th><th>格式</th><th>文件</th><th>操作</th></tr></thead><tbody id="reportTableBody"></tbody></table></div>
+        <div id="securityReportState" class="security-state hidden" role="status"></div>
+      </article>
+    </section>
   </div>
 
   <div id="settingsMessage" class="workspace-message hidden" role="alert"></div>
@@ -168,4 +187,4 @@
   </div>
 </main>
 {% endblock %}
-{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/modules/settings.js') }}"></script>{% endblock %}
+{% block scripts %}<script type="module" src="{{ url_for('static', filename='js/modules/settings.js') }}"></script><script type="module" src="{{ url_for('static', filename='js/modules/settings-security.js') }}"></script>{% endblock %}
