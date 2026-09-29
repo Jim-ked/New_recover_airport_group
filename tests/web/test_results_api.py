@@ -151,7 +151,12 @@ class ResultsApiTests(unittest.TestCase):
         self._persist(config)
 
         multi = self.api.scenario_comparison(
-            {"run_ids": ["SCENE1", "SCENE2"]}, principal=self.u1
+            {
+                "run_ids": ["SCENE1", "SCENE2"],
+                "baseline_run_id": "SCENE2",
+                "comparison_run_id": "SCENE1",
+            },
+            principal=self.u1,
         )
         self.assertEqual(200, multi.status)
         self.assertEqual("multi_scenario", multi.body["mode"])
@@ -161,9 +166,15 @@ class ResultsApiTests(unittest.TestCase):
         self.assertIn("scheduled_total", multi.body["tasks"]["M1"]["SCENE1"])
         self.assertNotIn("best_run_id", multi.body)
         self.assertNotIn("recommendation", multi.body)
+        self.assertEqual("SCENE2", multi.body["focus_comparison"]["baseline_run_id"])
+        self.assertEqual("SCENE1", multi.body["focus_comparison"]["comparison_run_id"])
 
         cfg = self.api.configuration_comparison(
-            {"run_ids": ["SCENE1", "CONFIG"], "baseline_run_id": "SCENE1"},
+            {
+                "run_ids": ["SCENE1", "CONFIG"],
+                "baseline_run_id": "SCENE1",
+                "comparison_run_id": "CONFIG",
+            },
             principal=self.u1,
         )
         self.assertEqual(200, cfg.status)
@@ -176,6 +187,7 @@ class ResultsApiTests(unittest.TestCase):
             0.0,
             cfg.body["summary_deltas_vs_baseline"]["SCENE1"]["participating_airport_count_delta"],
         )
+        self.assertEqual("CONFIG", cfg.body["comparison_run_id"])
 
     def test_exploratory_and_object_comparison_endpoints_are_additive(self):
         base = make_snapshot(

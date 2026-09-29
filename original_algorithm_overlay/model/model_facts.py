@@ -96,10 +96,14 @@ def _type_weights(runtime: Mapping[str, Any], aircraft_types: Sequence[str]) -> 
     raw = runtime.get("aircraft_type_weight") or {}
     if not isinstance(raw, dict):
         raise ModelFactError("aircraft_type_weight must be object")
-    out = {f: 1.0 for f in aircraft_types}
+    unknown = sorted(set(raw) - set(aircraft_types))
+    if unknown:
+        raise ModelFactError(f"unknown aircraft_type_weight key: {unknown[0]}")
+    missing = sorted(set(aircraft_types) - set(raw))
+    if missing:
+        raise ModelFactError(f"aircraft_type_weight missing for aircraft type: {missing[0]}")
+    out: Dict[str, float] = {}
     for f, value in raw.items():
-        if f not in out:
-            raise ModelFactError(f"unknown aircraft_type_weight key: {f}")
         v = float(value)
         if v <= 0:
             raise ModelFactError(f"aircraft_type_weight must be positive: {f}")
@@ -231,10 +235,14 @@ def objective_coefficients(
 
     F1 is the actual sortie's aircraft-type weight. F2 is a per-resource weighted cost
     against experiment-fixed reference quantities. F3 is normalized absolute mission
-    completion time plus an optional tardiness surcharge. No coefficient depends on the
-    candidate cluster's path population or on damage-adjusted resource availability.
+    completion delay relative to the task's reference completion, plus an optional
+    tardiness surcharge. No coefficient depends on the candidate cluster's path
+    population or on damage-adjusted resource availability.
     """
-    types = sorted({p.aircraft_type_id for p in maps.path_records})
+    aircraft_cfg = run_params.get("aircrafts") or {}
+    if not isinstance(aircraft_cfg, dict):
+        raise ModelFactError("run_params.aircrafts must be an object")
+    types = sorted(str(key) for key in aircraft_cfg)
     type_w = _type_weights(runtime, types)
     references = _configured_positive_mapping(runtime, "f2_resource_reference_quantities")
     resource_weights = _configured_positive_mapping(runtime, "f2_resource_weights")
@@ -250,13 +258,15 @@ def objective_coefficients(
         runtime, "f3_tardiness_coefficient", positive=False
     )
 
-    range_start = int((ds.get("range") or (0,))[0])
-    mission_end: Dict[str, int] = {}
+    mission_windows: Dict[str, Tuple[int, int]] = {}
     for mission in ds["static"]["missions"]:
         duty = mission.get("_duty_window")
         if not isinstance(duty, (tuple, list)) or len(duty) != 2:
             raise ModelFactError(f"mission duty window missing/invalid: {mission.get('mission_id')}")
-        mission_end[str(mission["mission_id"])] = range_start + int(duty[1])
+        start, end = int(duty[0]), int(duty[1])
+        if end <= start:
+            raise ModelFactError(f"mission duty window missing/invalid: {mission.get('mission_id')}")
+        mission_windows[str(mission["mission_id"])] = (start, end)
 
     base_use = resource_use_by_path(maps, run_params)
     used_resource_ids = {row.resource_type_id for rows in base_use.values() for row in rows}
@@ -273,9 +283,14 @@ def objective_coefficients(
             / references[row.resource_type_id]
             for row in base_use[p.key]
         )
-        completion = range_start + p.mission_arrival_slot + p.tau_work_windows
-        tardiness = max(0, completion - mission_end[p.mission_id])
-        f3 = (completion + tardiness_coefficient * tardiness) / time_reference
+        window_start, window_end = mission_windows[p.mission_id]
+        completion = p.mission_arrival_slot + p.tau_work_windows
+        reference_completion = window_start + p.tau_work_windows
+        relative_completion_delay = max(0, completion - reference_completion)
+        tardiness = max(0, completion - window_end)
+        f3 = (
+            relative_completion_delay + tardiness_coefficient * tardiness
+        ) / time_reference
         out[p.key] = PathObjectiveCoefficient(p.key, f1, f2, f3)
     return out
 

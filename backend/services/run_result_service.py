@@ -377,6 +377,8 @@ class RunResultService:
         self,
         *,
         run_ids: Tuple[str, ...],
+        baseline_run_id: Optional[str] = None,
+        comparison_run_id: Optional[str] = None,
         actor_user_id: str,
         is_admin: bool = False,
     ) -> Dict[str, Any]:
@@ -387,7 +389,9 @@ class RunResultService:
             for rid in run_ids
         ]
         return build_multi_scenario_comparison(
-            [(bundle[1], bundle[3]) for bundle in bundles]
+            [(bundle[1], bundle[3]) for bundle in bundles],
+            baseline_run_id=baseline_run_id,
+            comparison_run_id=comparison_run_id,
         )
 
     def compare_configuration(
@@ -395,6 +399,7 @@ class RunResultService:
         *,
         run_ids: Tuple[str, ...],
         baseline_run_id: str,
+        comparison_run_id: Optional[str] = None,
         actor_user_id: str,
         is_admin: bool = False,
     ) -> Dict[str, Any]:
@@ -407,6 +412,7 @@ class RunResultService:
         return build_configuration_comparison(
             [(bundle[1], bundle[3]) for bundle in bundles],
             baseline_run_id=baseline_run_id,
+            comparison_run_id=comparison_run_id,
         )
 
     def compare_exploratory(

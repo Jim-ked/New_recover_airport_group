@@ -112,6 +112,7 @@ class RunConfig:
     """
 
     damage_scenario_id: Optional[str]
+    objective_profile_id: Optional[str]
     preference_mode: str
     alpha: Tuple[float, float, float]
     cluster_enabled: bool
@@ -132,7 +133,7 @@ class RunConfig:
         if not isinstance(raw, Mapping):
             _fail("run_config", "run_config must be an object")
         allowed = {
-            "damage_scenario_id", "preference_mode", "alpha", "cluster_enabled",
+            "damage_scenario_id", "objective_profile_id", "preference_mode", "alpha", "cluster_enabled",
             "cluster_size", "core_airports", "aircraft_type_weight", "mip_time_limit_s", "algorithm_seed",
             "f2_resource_reference_quantities", "f2_resource_weights",
             "f3_time_reference_slots", "f3_tardiness_coefficient",
@@ -212,6 +213,9 @@ class RunConfig:
 
         return cls(
             damage_scenario_id=_optional_id(raw.get("damage_scenario_id"), "damage_scenario_id"),
+            objective_profile_id=_optional_id(
+                raw.get("objective_profile_id"), "objective_profile_id"
+            ),
             preference_mode=str(mode),
             alpha=alpha,
             cluster_enabled=cluster_enabled,
@@ -260,8 +264,64 @@ class RunConfig:
 
         known_types = set(aircraft_type_ids)
         unknown_types = sorted({k for k, _ in self.aircraft_type_weights} - known_types)
+        if self.objective_profile_id == "research_objective_v1":
+            # The versioned profile freezes all established standard weights even when a
+            # particular Situation uses only a subset of those catalog rows.
+            unknown_types = sorted(set(unknown_types) - {"fighter", "bomber", "transport"})
         if unknown_types:
             _fail("aircraft_type_weight", f"unknown aircraft type weights: {unknown_types}")
+
+    def require_objective_calibration(
+        self,
+        *,
+        aircraft_type_ids: Sequence[str] = (),
+        resource_type_ids: Sequence[str] = (),
+    ) -> None:
+        if not self.f2_resource_reference_rows:
+            _fail(
+                "f2_resource_reference_quantities",
+                "f2_resource_reference_quantities is required before creating a Run",
+            )
+        if not self.f2_resource_weight_rows:
+            _fail(
+                "f2_resource_weights",
+                "f2_resource_weights is required before creating a Run",
+            )
+        references = dict(self.f2_resource_reference_rows)
+        weights = dict(self.f2_resource_weight_rows)
+        missing_resources = sorted(set(resource_type_ids) - set(references))
+        if missing_resources:
+            _fail(
+                f"f2_resource_reference_quantities.{missing_resources[0]}",
+                f"objective calibration is missing resource: {missing_resources[0]}",
+            )
+        missing_resource_weights = sorted(set(resource_type_ids) - set(weights))
+        if missing_resource_weights:
+            _fail(
+                f"f2_resource_weights.{missing_resource_weights[0]}",
+                f"objective calibration is missing resource weight: {missing_resource_weights[0]}",
+            )
+        configured_aircraft = dict(self.aircraft_type_weights)
+        missing_aircraft = sorted(set(aircraft_type_ids) - set(configured_aircraft))
+        if missing_aircraft:
+            _fail(
+                f"aircraft_type_weight.{missing_aircraft[0]}",
+                f"objective calibration is missing aircraft type: {missing_aircraft[0]}",
+            )
+        if self.f3_time_reference_slots is None:
+            _fail("f3_time_reference_slots", "f3_time_reference_slots is required before creating a Run")
+        if self.f3_tardiness_coefficient is None:
+            _fail(
+                "f3_tardiness_coefficient",
+                "f3_tardiness_coefficient is required before creating a Run",
+            )
+        if self.unmet_demand_penalty is None:
+            _fail("unmet_demand_penalty", "unmet_demand_penalty is required before creating a Run")
+        if self.cluster_enabled and self.core_airport_reward_weight is None:
+            _fail(
+                "core_airport_reward_weight",
+                "core_airport_reward_weight is required when clustering is enabled",
+            )
 
     @property
     def aircraft_type_weight(self) -> Dict[str, float]:
@@ -270,6 +330,7 @@ class RunConfig:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "damage_scenario_id": self.damage_scenario_id,
+            "objective_profile_id": self.objective_profile_id,
             "preference_mode": self.preference_mode,
             "alpha": [float(v) for v in self.alpha],
             "cluster_enabled": self.cluster_enabled,

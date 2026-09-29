@@ -35,10 +35,10 @@ class RunApiTests(unittest.TestCase):
             "arrival_capacity_occupancy_factor": 1.0,
         }))
         self.airports.save_resource_type(ResourceType.from_mapping({
-            "resource_type_id": "FUEL-1", "name": "Fuel", "category": "fuel", "unit": "t",
+            "resource_type_id": "fuel", "name": "Fuel", "category": "fuel", "unit": "t",
         }))
         self.airports.save_aircraft_resource_requirement(AircraftResourceRequirement.from_mapping({
-            "aircraft_type_id": "fighter", "resource_type_id": "FUEL-1",
+            "aircraft_type_id": "fighter", "resource_type_id": "fuel",
             "basis": "per_hour", "quantity": 1.5,
         }))
         airport = AirportBase.from_mapping({
@@ -49,7 +49,7 @@ class RunApiTests(unittest.TestCase):
         profile = AirportOperationalProfile(
             airport_id="A1", configuration_complete=True, capacity_per_window=8,
             support_level="L1", aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50),),
+            resource_stocks=(AirportResourceStock("fuel", 50),),
         )
         self.situations.save_situation(Situation(
             situation_id="S1", name="S1",
@@ -70,6 +70,7 @@ class RunApiTests(unittest.TestCase):
         self.admin = Principal("ADMIN", is_admin=True)
         self.config = {
             "damage_scenario_id": None,
+            "objective_profile_id": "research_objective_v1",
             "preference_mode": "sortie_max",
             "cluster_enabled": False,
             "cluster_size": None,
@@ -219,6 +220,15 @@ class RunApiTests(unittest.TestCase):
         self.assertEqual(422, invalid_config.status)
         self.assertEqual("RUN_VALIDATION_FAILED", invalid_config.body["error"]["code"])
         self.assertEqual("cluster_enabled", invalid_config.body["error"]["field"])
+
+        missing_profile_config = dict(self.config)
+        missing_profile_config.pop("objective_profile_id")
+        missing_profile = self.api.validate(
+            {"situation_id": "S1", "run_config": missing_profile_config},
+            principal=self.u1,
+        )
+        self.assertEqual(422, missing_profile.status)
+        self.assertEqual("objective_profile_id", missing_profile.body["error"]["field"])
 
         missing = self.api.validate(
             {"situation_id": "NOPE", "run_config": self.config}, principal=self.u1

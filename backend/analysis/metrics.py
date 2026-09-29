@@ -129,6 +129,78 @@ def _path_for_chain(
     return path
 
 
+_PHASE_FIELDS = ("departure", "mission", "return", "turnaround")
+
+
+def _phase_series(length: int) -> Dict[str, List[int]]:
+    return {field: _int_series(length) for field in _PHASE_FIELDS}
+
+
+def _build_phase_occupancy_metrics(
+    *,
+    chains_with_paths: Iterable[Tuple[SortieChain, SortiePath]],
+    airports: Iterable[str],
+    missions: Iterable[str],
+    aircraft_types: Iterable[str],
+    window_count: int,
+) -> Dict[str, Any]:
+    """Project frozen feasible paths into non-overlapping half-open phase intervals.
+
+    The path builder is the canonical source of mission arrival, work duration,
+    landing and ready times.  Airport scope follows operational responsibility:
+    the origin owns departure through landing, while the return airport owns
+    turnaround.  This avoids pretending an en-route phase has an airport location.
+    """
+
+    overall = _phase_series(window_count)
+    by_airport = {airport_id: _phase_series(window_count) for airport_id in airports}
+    by_mission = {mission_id: _phase_series(window_count) for mission_id in missions}
+    by_aircraft = {aircraft_id: _phase_series(window_count) for aircraft_id in aircraft_types}
+
+    for chain, path in chains_with_paths:
+        work_end = path.mission_arrival_slot + path.tau_work_windows
+        boundaries = (
+            path.depart_slot,
+            path.mission_arrival_slot,
+            work_end,
+            path.landing_slot,
+            path.ready_slot,
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in boundaries):
+            raise MetricsBuildError(f"path phase boundary is not an integer: {chain.path_id}")
+        if not (
+            0 <= path.depart_slot <= path.mission_arrival_slot <= work_end
+            <= path.landing_slot <= path.ready_slot <= window_count
+        ):
+            raise MetricsBuildError(f"path phase boundary is invalid: {chain.path_id}")
+        quantity = int(chain.sorties)
+        intervals = {
+            "departure": range(path.depart_slot, path.mission_arrival_slot),
+            "mission": range(path.mission_arrival_slot, work_end),
+            "return": range(work_end, path.landing_slot),
+            "turnaround": range(path.landing_slot, path.ready_slot),
+        }
+        for field, indexes in intervals.items():
+            airport_id = (
+                chain.return_airport_id if field == "turnaround" else chain.origin_airport_id
+            )
+            for index in indexes:
+                overall[field][index] += quantity
+                by_airport[airport_id][field][index] += quantity
+                by_mission[chain.mission_id][field][index] += quantity
+                by_aircraft[chain.aircraft_type][field][index] += quantity
+
+    return {
+        "verified": True,
+        "interval_model": "half_open_path_intervals",
+        "airport_scope": "origin_until_landing_return_airport_for_turnaround",
+        "all": overall,
+        "by_airport": by_airport,
+        "by_mission": by_mission,
+        "by_aircraft": by_aircraft,
+    }
+
+
 def _snapshot_resource_baseline(payload: Mapping[str, Any]) -> Dict[str, Dict[str, Dict[str, float]]]:
     """Frozen pre-damage stock baselines."""
 
@@ -727,6 +799,13 @@ def build_metrics_core(
         aircraft_types=aircraft_types,
         windows=windows,
     )
+    phase_occupancy = _build_phase_occupancy_metrics(
+        chains_with_paths=chain_paths,
+        airports=airports,
+        missions=missions,
+        aircraft_types=aircraft_types,
+        window_count=n,
+    )
 
     technical_block: Dict[str, Any] = {
         "snapshot_hash": snapshot.content_hash,
@@ -807,6 +886,7 @@ def build_metrics_core(
                 f: {"departures": by_aircraft_dep[f], "returns": by_aircraft_ret[f]}
                 for f in aircraft_types
             },
+            "phase_occupancy": phase_occupancy,
         },
         "airports": airport_metrics,
         "tasks": tasks,

@@ -206,7 +206,9 @@ class SnapshotOnlyRunnerTests(unittest.TestCase):
         # F2 is positive because it is weighted actual consumption/reference quantity.
         self.assertIsNone(snapshot.to_dict()["run_config"]["damage_scenario_id"])
         self.assertGreater(result.f2, 0.0)
-        self.assertGreater(result.f3, 0.0)
+        # The restored relative F3 is legitimately zero for completion at the task's
+        # reference completion; it remains a formal recorded objective component.
+        self.assertGreaterEqual(result.f3, 0.0)
         self.assertEqual(1.0, result.cluster_lp_objective)
 
     def test_noncluster_run_has_no_invented_cluster_lp_objective(self):

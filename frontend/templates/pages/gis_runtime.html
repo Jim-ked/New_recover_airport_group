@@ -18,37 +18,39 @@
     <div id="runtimeBadges" class="runtime-badges">读取 Run…</div>
   </header>
 
-  <button id="runtimeLayersToggle" class="runtime-panel-toggle runtime-layers-toggle runtime-overlay" type="button" aria-controls="runtimeLayerPanel" aria-expanded="false">图层</button>
-  <section id="runtimeLayerPanel" class="runtime-controls runtime-overlay" aria-label="图层" hidden>
-    <div class="overlay-title"><strong>图层</strong><span class="overlay-actions"><button id="fitRuntimeButton" type="button">运行区域</button><button id="fitAllRuntimeButton" type="button">全部机场</button></span></div>
-    <label><input type="checkbox" data-layer="airports" checked> 机场</label>
-    <label><input type="checkbox" data-layer="missions" checked> 任务</label>
-    <label><input type="checkbox" data-layer="routes" checked> 任务态势</label>
-    <label><input type="checkbox" data-layer="maintenance" checked> 整备量</label>
-    <div class="control-subrow"><label><input type="checkbox" data-layer="outbound" checked> 出动</label><label><input type="checkbox" data-layer="return" checked> 返航</label></div>
+  <nav id="runtimeViewSwitch" class="runtime-view-switch runtime-overlay" aria-label="运行态势视图">
+    <button type="button" data-runtime-view="execution" class="active">执行</button>
+    <button type="button" data-runtime-view="departure">出动</button>
+    <button type="button" data-runtime-view="landing">落地</button>
+    <button type="button" data-runtime-view="maintenance">整备</button>
+  </nav>
+
+  <button id="runtimeLayersToggle" class="runtime-panel-toggle runtime-layers-toggle runtime-overlay" type="button" aria-controls="runtimeLayerPanel" aria-expanded="false">筛选</button>
+  <section id="runtimeLayerPanel" class="runtime-controls runtime-overlay" aria-label="总体态势筛选" hidden>
+    <div class="overlay-title"><strong>总体态势筛选</strong><span class="overlay-actions"><button id="runtimeResetFilters" type="button">重置</button></span></div>
+    <div class="runtime-select-row"><label for="runtimeAirportScope">机场范围</label><select id="runtimeAirportScope" class="runtime-select"><option value="all">全部机场</option><option value="cluster">组群机场</option><option value="outside">群外机场</option></select></div>
+    <p id="runtimeScopeHint" class="runtime-filter-hint">执行与出动按出发机场筛选</p>
+    <div class="runtime-select-row"><label for="runtimeMissionFilter">任务</label><select id="runtimeMissionFilter" class="runtime-select"><option value="">全部任务</option></select></div>
+    <div class="runtime-select-row"><label for="runtimeAircraftFilter">机型</label><select id="runtimeAircraftFilter" class="runtime-select"><option value="">全部机型</option></select></div>
+    <details class="runtime-advanced-filter"><summary>高级筛选</summary>
+      <div class="runtime-select-row"><label for="runtimeReturnFilter">返回方式</label><select id="runtimeReturnFilter" class="runtime-select"><option value="all">全部</option><option value="same">返回原机场</option><option value="cross">跨机场返航</option></select></div>
+    </details>
     <div class="control-divider"></div>
-    <div class="control-group-title">视图</div>
-    <div class="runtime-select-row"><label for="runtimeSpeed">播放速度</label><select id="runtimeSpeed" class="runtime-select"><option value="1400">慢速</option><option value="900" selected>标准</option><option value="500">快速</option></select></div>
-    <div class="runtime-select-row"><label for="runtimeTrail">态势范围</label><select id="runtimeTrail" class="runtime-select"><option value="1" selected>当前时段</option><option value="3">最近 3 时段</option><option value="6">最近 6 时段</option><option value="all">截至当前</option></select></div>
-    <div class="control-divider"></div>
-    <div class="control-group-title">标识</div>
-    <label><input type="checkbox" data-layer="selected" checked> 组群机场</label>
-    <label><input type="checkbox" data-layer="participating" checked> 参与机场</label>
-    <label><input type="checkbox" data-layer="core" checked> 核心机场</label>
-    <label><input type="checkbox" data-layer="damage" checked> 损毁机场</label>
+    <div class="runtime-visibility-options"><label><input type="checkbox" data-layer="airports" checked> 机场</label><label><input type="checkbox" data-layer="missions" checked> 任务</label></div>
+    <div class="overlay-actions runtime-fit-actions"><button id="fitRuntimeButton" type="button">运行区域</button><button id="fitAllRuntimeButton" type="button">全部机场</button></div>
   </section>
 
   <button id="runtimeLegendToggle" class="runtime-panel-toggle runtime-legend-toggle runtime-overlay" type="button" aria-controls="runtimeLegendPanel" aria-expanded="false">图例</button>
   <section id="runtimeLegendPanel" class="runtime-legend runtime-overlay" aria-label="图例" hidden>
     <strong>图例</strong>
-    <div class="legend-group"><b>机场性质</b><span><i class="legend-airport airport-role-civil"></i>民用</span><span><i class="legend-airport airport-role-military"></i>军用</span><span><i class="legend-airport airport-role-joint"></i>军民两用</span></div>
-    <div class="legend-group"><b>运行状态</b><span><i class="legend-status core-dot"></i>核心</span><span><i class="legend-status cluster-dot"></i>组群</span><span><i class="legend-status participating-dot"></i>参与</span><span><i class="legend-ring damage-dot"></i>损毁</span></div>
-    <div class="legend-group"><b>任务态势</b><span><i class="legend-square mission-dot"></i>任务</span><span><i class="legend-line outbound-line"></i>出动</span><span><i class="legend-line return-line"></i>返航</span></div>
+    <div class="legend-group"><b>机场身份</b><span><i class="legend-airport cluster-airport-dot"></i>组群机场</span><span><i class="legend-airport participating-dot"></i>群外参与机场</span><span><i class="legend-airport ordinary-dot"></i>其他机场</span><span><i class="legend-square mission-dot"></i>任务</span></div>
+    <div class="legend-group"><b>当前状态</b><span><i class="legend-status damage-active-dot"></i>损毁</span><span><i class="legend-status damage-recovering-dot"></i>恢复中</span></div>
+    <div class="legend-group"><b>关系示意（非实际飞行轨迹）</b><span><i class="legend-line execution-line"></i>当前视图关系</span><span><i class="legend-line selected-line"></i>选中关系/航次</span></div>
   </section>
 
   <aside class="runtime-inspector runtime-overlay" aria-label="对象信息">
-    <div class="overlay-title"><strong id="inspectorTitle">当前状态</strong><span id="inspectorWindow">—</span></div>
-    <div id="runtimeInspectorBody" class="inspector-body">选择机场、任务或任务执行连接查看详情</div>
+    <div class="overlay-title"><strong id="inspectorTitle">总体运行态势</strong><span class="runtime-inspector-actions"><button id="runtimeInspectorBack" type="button" hidden>返回总体</button><span id="inspectorWindow">—</span></span></div>
+    <div id="runtimeInspectorBody" class="inspector-body">选择机场、任务或投入关系查看当前状态</div>
   </aside>
 
   <section class="runtime-timeline runtime-overlay" aria-label="运行时间轴">
@@ -57,22 +59,9 @@
       <button id="runtimePlayButton" type="button">播放</button>
       <button id="runtimeNextButton" type="button" aria-label="下一个时间窗">›</button>
       <strong id="runtimeWindowLabel">—</strong>
-      <span id="runtimeWindowFacts">—</span>
-      <span id="runtimeDamageStrip" class="damage-strip muted"></span>
+      <label class="runtime-speed-control" for="runtimeSpeed">速度 <select id="runtimeSpeed" class="runtime-select"><option value="1400">慢速</option><option value="900" selected>标准</option><option value="500">快速</option></select></label>
     </div>
     <input id="runtimeSlider" type="range" min="0" max="0" step="1" value="0" aria-label="选择运行时间窗">
-  </section>
-
-  <section id="runtimeDetailDock" class="runtime-detail-dock" aria-label="统一结果详情" aria-hidden="true">
-    <nav id="runtimeDetailTabs" class="runtime-detail-tabs">
-      <button type="button" data-tab="airport" class="active">机场保障</button>
-      <button type="button" data-tab="mission">任务调度</button>
-      <button type="button" data-tab="aircraft">机型投入</button>
-      <button type="button" data-tab="resource">资源保障</button>
-      <button type="button" data-tab="technical">技术信息</button>
-      <button id="runtimeDetailClose" type="button" class="dock-close" aria-label="关闭详情">×</button>
-    </nav>
-    <div id="runtimeDetailBody" class="runtime-detail-body">从地图选择对象后，在此查看该对象的详细结果。</div>
   </section>
 
   <div id="runtimeError" class="runtime-error hidden" role="alert"></div>

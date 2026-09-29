@@ -97,41 +97,38 @@ process.stdout.write(JSON.stringify({
         self.assertIn("state.run?.situation?.name", RUNTIME_JS)
         self.assertIn("state.runtime.time_axis.slot_minutes", RUNTIME_JS)
 
-    def test_activity_exposes_canonical_sorties_without_future_or_outside_trail(self) -> None:
+    def test_aggregate_relation_exposes_canonical_sorties_and_path_ids(self) -> None:
         result = run_module(
             "runtime-map-activity.js",
             """
-const frames = [
-  {departures:[{path_id:'old',sorties:2}],returns:[]},
-  {departures:[{path_id:'current-depart',sorties:4}],returns:[{path_id:'current-return',sorties:3}]},
-  {departures:[{path_id:'future',sorties:9}],returns:[]},
+const routes = [
+  {path_id:'p1',origin_airport_id:'A1',mission_id:'M1',return_airport_id:'A1',aircraft_type:'T1',sorties:2,depart_window:1,return_window:4,ready_window:6},
+  {path_id:'p2',origin_airport_id:'A1',mission_id:'M1',return_airport_id:'A2',aircraft_type:'T2',sorties:4,depart_window:2,return_window:5,ready_window:7},
+  {path_id:'future',origin_airport_id:'A1',mission_id:'M1',return_airport_id:'A1',aircraft_type:'T1',sorties:9,depart_window:7,return_window:8,ready_window:9},
 ];
-const activity = target.collectRuntimeActivity(frames, 1, 1);
-process.stdout.write(JSON.stringify({
-  departure:[...activity.departureSorties],
-  returns:[...activity.returnSorties],
-}));
+const relation = target.aggregateRuntimeRelations(routes, 'execution', 3)[0];
+process.stdout.write(JSON.stringify({sorties:relation.sorties,pathIds:relation.pathIds,aircraft:relation.aircraft}));
 """,
         )
-        self.assertEqual([["current-depart", 4]], result["departure"])
-        self.assertEqual([["current-return", 3]], result["returns"])
+        self.assertEqual(6, result["sorties"])
+        self.assertEqual(["p1", "p2"], result["pathIds"])
+        self.assertEqual({"T1": 2, "T2": 4}, result["aircraft"])
 
-    def test_connection_count_labels_follow_direction_switch_and_priority(self) -> None:
+    def test_aggregate_count_and_explicit_path_drilldown_are_separate(self) -> None:
         for token in (
-            "activity.departureSorties.get(route.path_id)",
-            "activity.returnSorties.get(route.path_id)",
-            "出动 ${sorties}",
-            "返航 ${sorties}",
-            "quadraticPointAt(points, 0.5)",
+            "aggregateRuntimeRelations",
+            "relation.pathIds.includes",
+            "selectPath(pathButton.dataset.pathId)",
+            "pointAt(points)",
             "interactive: false",
-            "current ? 68 : 45",
-            "layerEnabled('outbound') && activity.departures.has(route.path_id)",
-            "layerEnabled('return') && activity.returns.has(route.path_id)",
+            "drawSelectedPath()",
         ):
             self.assertIn(token, RUNTIME_JS)
-        self.assertIn("task-connection-count-outbound", RUNTIME_CSS)
-        self.assertIn("task-connection-count-return", RUNTIME_CSS)
-        self.assertIn("historical", RUNTIME_CSS)
+        self.assertIn("runtime-relation-count", RUNTIME_CSS)
+        self.assertIn("runtime-path-drilldown", RUNTIME_CSS)
+        self.assertNotIn("runtime-route-event-marker", RUNTIME_CSS)
+        self.assertNotIn("task-connection-count-outbound", RUNTIME_CSS)
+        self.assertNotIn("task-connection-count-return", RUNTIME_CSS)
 
 
 if __name__ == "__main__":

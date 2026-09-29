@@ -114,6 +114,22 @@ def as_archived_v5(snapshot: RunSnapshot) -> RunSnapshot:
     )
 
 
+def with_frozen_config(snapshot: RunSnapshot, *, run_id: str, **changes) -> RunSnapshot:
+    """Clone a frozen input while changing only explicit RunConfig facts for a test."""
+    payload = snapshot.to_dict()
+    payload["run_id"] = run_id
+    payload["run_config"].update(changes)
+    payload_json = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+    return RunSnapshot(
+        run_id=run_id,
+        situation_id=snapshot.situation_id,
+        content_hash=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+        payload_json=payload_json,
+    )
+
+
 class ComparisonTests(unittest.TestCase):
     def _roles(self):
         ds = scenario()
@@ -140,6 +156,22 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(check.comparable)
         self.assertIn("run_config.mip_time_limit_s differs", check.reasons)
 
+    def test_r0_r1_r2_locks_every_objective_calibration_fact(self):
+        r0, r1, r2 = self._roles()
+        changed = with_frozen_config(
+            r2,
+            run_id="R2-F2",
+            f2_resource_reference_quantities={"FUEL-A": 11.0, "MAT-1": 2.0},
+        )
+
+        check = check_r0_r1_r2(r0, r1, changed)
+
+        self.assertFalse(check.comparable)
+        self.assertIn(
+            "run_config.f2_resource_reference_quantities differs",
+            check.reasons,
+        )
+
     def test_archived_v5_roles_use_read_only_comparison_projection(self):
         r0, r1, r2 = (as_archived_v5(item) for item in self._roles())
 
@@ -162,7 +194,7 @@ class ComparisonTests(unittest.TestCase):
         self.assertFalse(check.comparable)
         self.assertIn("run_config.algorithm_seed differs", check.reasons)
 
-    def test_unused_damage_scenario_does_not_break_effective_input_comparability(self):
+    def test_appended_damage_scenario_is_rejected_when_it_changes_effective_time_range(self):
         base = make_snapshot(
             cluster_enabled=False,
             available_scenarios=(),
@@ -178,16 +210,14 @@ class ComparisonTests(unittest.TestCase):
             base.to_dict()["situation_content_hash"],
             appended.to_dict()["situation_content_hash"],
         )
-        self.assertTrue(
-            check_multi_scenario_comparable(base, appended).comparable,
-            check_multi_scenario_comparable(base, appended).reasons,
-        )
-        self.assertTrue(
-            check_configuration_comparable(base, appended).comparable,
-            check_configuration_comparable(base, appended).reasons,
-        )
+        multi = check_multi_scenario_comparable(base, appended)
+        configuration = check_configuration_comparable(base, appended)
+        self.assertFalse(multi.comparable)
+        self.assertIn("effective time range differs", multi.reasons)
+        self.assertFalse(configuration.comparable)
+        self.assertIn("effective time range differs", configuration.reasons)
 
-    def test_selected_damage_that_changes_effective_horizon_is_not_strictly_comparable(self):
+    def test_selecting_frozen_damage_is_comparable_when_effective_time_range_is_unchanged(self):
         damage = early_scenario()
         base = make_snapshot(
             cluster_enabled=False,
@@ -203,8 +233,7 @@ class ComparisonTests(unittest.TestCase):
 
         check = check_multi_scenario_comparable(base, changed)
 
-        self.assertFalse(check.comparable)
-        self.assertIn("effective time range differs", check.reasons)
+        self.assertTrue(check.comparable, check.reasons)
 
     def test_exploratory_comparison_accepts_task_pressure_change_and_lists_it(self):
         base = make_snapshot(
@@ -342,6 +371,43 @@ class ComparisonTests(unittest.TestCase):
         self.assertTrue(out["objective_comparable"])
         self.assertEqual([], out["objective_comparability_reasons"])
 
+        self.assertEqual({"damage", "cluster"}, set(out["comparisons"]))
+        self.assertEqual("R0", out["comparisons"]["damage"]["baseline_run_id"])
+        self.assertEqual("R1", out["comparisons"]["damage"]["comparison_run_id"])
+        self.assertEqual("R1-R0", out["comparisons"]["damage"]["relation"])
+        self.assertEqual("R1", out["comparisons"]["cluster"]["baseline_run_id"])
+        self.assertEqual("R2", out["comparisons"]["cluster"]["comparison_run_id"])
+        self.assertEqual("R2-R1", out["comparisons"]["cluster"]["relation"])
+        self.assertEqual(
+            sum(out["comparisons"]["damage"]["timeline"]["departures"]["delta"]),
+            out["comparisons"]["damage"]["timeline"]["departures"]["cumulative"]["delta"][-1],
+        )
+        self.assertEqual(
+            {"F1", "F2", "F3", "J"},
+            set(out["comparisons"]["damage"]["objective_components"]),
+        )
+        self.assertLessEqual(len(out["comparisons"]["damage"]["conclusions"]), 2)
+
+    def test_r0_r1_r2_rejects_different_formal_time_axes_instead_of_padding_zero(self):
+        r0, r1, r2 = self._roles()
+        _a0, m0 = solve(r0)
+        _a1, m1 = solve(r1)
+        _a2, m2 = solve(r2)
+        m2 = copy.deepcopy(m2)
+        m2["time_axis"]["windows"] = m2["time_axis"]["windows"][1:]
+        m2["timeline"]["departures_total"] = m2["timeline"]["departures_total"][1:]
+        m2["timeline"]["returns_total"] = m2["timeline"]["returns_total"][1:]
+
+        with self.assertRaisesRegex(ComparisonError, "time-axis windows differ"):
+            build_r0_r1_r2_comparison(
+                r0_snapshot=r0,
+                r0_metrics=m0,
+                r1_snapshot=r1,
+                r1_metrics=m1,
+                r2_snapshot=r2,
+                r2_metrics=m2,
+            )
+
     def test_all_comparison_modes_share_canonical_run_summaries_tasks_and_frozen_labels(self):
         r0, r1, r2 = self._roles()
         _a0, m0 = solve(r0)
@@ -464,6 +530,77 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(3.0, out["summary"]["additional_sorties_total"]["cluster_delta"])
         self.assertEqual(3.0, out["summary"]["scheduled_sorties_total"]["cluster_delta"])
 
+    def test_focus_conclusions_combine_overall_facts_and_rank_task_structure_changes(self):
+        r0, r1, r2 = self._roles()
+        _a0, m0 = solve(r0)
+        _a1, m1 = solve(r1)
+        _a2, m2 = solve(r2)
+        for metrics, fulfilled, unmet, scheduled, objective in (
+            (m0, 30, 0, 30, 100.0),
+            (m1, 30, 0, 29, 99.3232),
+            (m2, 30, 0, 47, 232.4642),
+        ):
+            metrics["summary"].update({
+                "fulfilled_sorties_total": fulfilled,
+                "unmet_sorties_total": unmet,
+                "scheduled_sorties_total": scheduled,
+            })
+            metrics["technical"]["objective"] = objective
+
+        m0["tasks"].update({
+            "M001": {"required_total": 20, "scheduled_total": 10},
+            "M002": {"required_total": 20, "scheduled_total": 19},
+            "M003": {"required_total": 20, "scheduled_total": 1},
+        })
+        m1["tasks"].update({
+            "M001": {"required_total": 20, "scheduled_total": 20},
+            "M002": {"required_total": 20, "scheduled_total": 0},
+            "M003": {"required_total": 20, "scheduled_total": 9},
+        })
+
+        out = build_r0_r1_r2_comparison(
+            r0_snapshot=r0, r0_metrics=m0,
+            r1_snapshot=r1, r1_metrics=m1,
+            r2_snapshot=r2, r2_metrics=m2,
+        )
+        focus = out["comparisons"]["damage"]
+
+        self.assertEqual(2, len(focus["conclusions"]))
+        overall = focus["conclusions"][0]
+        for text in ("履行", "缺口", "实际出动", "J", "0.6768"):
+            self.assertIn(text, overall)
+        self.assertLess(len(overall), 85)
+        structure = focus["conclusions"][1]
+        self.assertIn("任务分配结构", structure)
+        self.assertIn("M002", structure)
+        self.assertIn("减少19", structure)
+        self.assertIn("M001", structure)
+        self.assertIn("增加10", structure)
+        self.assertEqual(-19.0, focus["structural_changes"]["tasks"][0]["delta"])
+        self.assertEqual(10.0, focus["structural_changes"]["tasks"][1]["delta"])
+
+    def test_focus_conclusion_never_reports_an_illegal_objective_delta(self):
+        base = make_snapshot(
+            cluster_enabled=False, preference_mode="sortie_max", run_id="BASE"
+        )
+        changed = make_snapshot(
+            cluster_enabled=False, preference_mode="time_min", run_id="CHANGED"
+        )
+        _base_result, base_metrics = solve(base)
+        _changed_result, changed_metrics = solve(changed)
+        base_metrics["technical"]["objective"] = 10.0
+        changed_metrics["technical"]["objective"] = 999.0
+
+        focus = build_configuration_comparison(
+            [(base, base_metrics), (changed, changed_metrics)],
+            baseline_run_id="BASE",
+        )["focus_comparison"]
+
+        self.assertFalse(focus["objective_components"]["J"]["definition_comparable"])
+        self.assertIsNone(focus["objective_components"]["J"]["delta"])
+        self.assertIn("J定义不一致，不直接比较", focus["conclusions"][0])
+        self.assertNotIn("989", focus["conclusions"][0])
+
     def test_unmet_reduction_and_completion_improvement_are_explicit(self):
         r0, r1, r2 = self._roles()
         _a0, m0 = solve(r0)
@@ -563,7 +700,17 @@ class ComparisonTests(unittest.TestCase):
         m2["summary"]["participating_airport_count"] = (
             m1["summary"]["participating_airport_count"] + 1
         )
-        out = build_multi_scenario_comparison([(s1, m1), (s2, m2)])
+        m2["summary"]["scheduled_sorties_total"] = (
+            m1["summary"]["scheduled_sorties_total"] + 3
+        )
+        m2["summary"]["additional_sorties_total"] = (
+            m1["summary"]["additional_sorties_total"] + 3
+        )
+        out = build_multi_scenario_comparison(
+            [(s1, m1), (s2, m2)],
+            baseline_run_id="S2",
+            comparison_run_id="S1",
+        )
         self.assertEqual("multi_scenario", out["mode"])
         self.assertEqual(["S1", "S2"], out["run_ids"])
         self.assertEqual(
@@ -572,6 +719,38 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual({"A1", "A2"}, set(out["airports"]))
         self.assertNotIn("best_run_id", out)
         self.assertNotIn("recommendation", out)
+        self.assertEqual("S2", out["focus_comparison"]["baseline_run_id"])
+        self.assertEqual("S1", out["focus_comparison"]["comparison_run_id"])
+        self.assertEqual("S1-S2", out["focus_comparison"]["relation"])
+        self.assertEqual(2, len(out["conclusions"]))
+        self.assertIn("2 个选定Run", out["conclusions"][0])
+        self.assertIn("履行均为", out["conclusions"][0])
+        self.assertIn("实际出动范围", out["conclusions"][0])
+        self.assertNotIn("当前重点对照较基准任务履行保持不变", out["conclusions"][0])
+        self.assertLess(len(out["conclusions"][0]), 105)
+        self.assertEqual(
+            out["focus_comparison"]["conclusions"][1],
+            out["conclusions"][1],
+        )
+
+    def test_multi_scenario_accepts_six_strictly_comparable_runs(self):
+        base = make_snapshot(cluster_enabled=False, run_id="S0")
+        _result, metrics = solve(base)
+        rows = []
+        for index in range(6):
+            snapshot = with_frozen_config(base, run_id=f"S{index}")
+            item_metrics = copy.deepcopy(metrics)
+            item_metrics["run_id"] = snapshot.run_id
+            rows.append((snapshot, item_metrics))
+
+        out = build_multi_scenario_comparison(
+            rows,
+            baseline_run_id="S0",
+            comparison_run_id="S5",
+        )
+
+        self.assertEqual([f"S{index}" for index in range(6)], out["run_ids"])
+        self.assertEqual("S5", out["focus_comparison"]["comparison_run_id"])
 
     def test_configuration_builder_uses_explicit_baseline_for_all_deltas(self):
         ds = scenario()
@@ -589,7 +768,9 @@ class ComparisonTests(unittest.TestCase):
         )
         mc["airports"]["A2"]["departures_total"] = 4
         out = build_configuration_comparison(
-            [(base, mb), (changed, mc)], baseline_run_id="BASE"
+            [(base, mb), (changed, mc)],
+            baseline_run_id="BASE",
+            comparison_run_id="CHANGED",
         )
         self.assertEqual("configuration", out["mode"])
         self.assertEqual("BASE", out["baseline_run_id"])
@@ -599,6 +780,13 @@ class ComparisonTests(unittest.TestCase):
         )
         self.assertEqual(4.0, out["airports"]["A2"]["CHANGED"]["departures_total_delta"])
         self.assertEqual(0.0, out["airports"]["A2"]["BASE"]["departures_total_delta"])
+        self.assertEqual("BASE", out["focus_comparison"]["baseline_run_id"])
+        self.assertEqual("CHANGED", out["focus_comparison"]["comparison_run_id"])
+        self.assertIn("cluster_enabled", out["key_configuration_differences"])
+        self.assertLessEqual(len(out["conclusions"]), 2)
+        self.assertIn("主要配置差异", out["conclusions"][0])
+        self.assertIn("启用组群", out["conclusions"][0])
+        self.assertNotIn("因此", out["conclusions"][0])
 
     def test_solver_facts_and_maximization_bounds_are_compared_conservatively(self):
         base = make_snapshot(cluster_enabled=False, run_id="BASE")

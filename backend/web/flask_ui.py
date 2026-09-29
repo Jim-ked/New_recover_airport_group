@@ -72,7 +72,14 @@ def create_ui_blueprint():
         denied = _require_login()
         if denied is not None:
             return denied
-        return render_template("pages/run.html", session_user=session.get("user"), active_nav="run")
+        from backend.domain.objective_profile import objective_profile_public
+
+        return render_template(
+            "pages/run.html",
+            session_user=session.get("user"),
+            active_nav="run",
+            objective_profile=objective_profile_public(),
+        )
 
     @bp.get("/runs/<run_id>")
     def single_run_page(run_id: str):

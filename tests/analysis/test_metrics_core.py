@@ -256,6 +256,68 @@ class MetricsCoreTests(unittest.TestCase):
         self.assertEqual(1.0, aircraft["available_before_departure"][-1])
         self.assertEqual(1.0, aircraft["available_after_departure"][-1])
 
+    def test_verified_phase_occupancy_uses_non_overlapping_path_intervals(self):
+        snapshot = make_snapshot()
+        bundle = build_algorithm_input(snapshot)
+        t_min, t_max = bundle.ds["range"]
+        path = next(
+            row for row in build_base_path_map(bundle.ds, bundle.run_params).path_records
+            if row.origin_airport_id != row.return_airport_id
+            and row.tau_work_windows > 0
+            and row.tau_reset_windows > 0
+        )
+        chain = SortieChain(
+            path_id="P/phases",
+            origin_airport_id=path.origin_airport_id,
+            mission_id=path.mission_id,
+            return_airport_id=path.return_airport_id,
+            aircraft_type=path.aircraft_type_id,
+            depart_window=t_min + path.depart_slot,
+            return_window=t_min + path.landing_slot,
+            ready_window=t_min + path.ready_slot,
+            sorties=2,
+        )
+        solution = Solution.build(
+            run_id=snapshot.run_id,
+            selected_cluster=("A1", "A2"),
+            sortie_chains=(chain,),
+        )
+
+        metrics = build_metrics_core(snapshot, solution)
+        phase = metrics["timeline"]["phase_occupancy"]
+        self.assertTrue(phase["verified"])
+        self.assertEqual("half_open_path_intervals", phase["interval_model"])
+        self.assertEqual(
+            "origin_until_landing_return_airport_for_turnaround",
+            phase["airport_scope"],
+        )
+        expected_ranges = {
+            "departure": range(path.depart_slot, path.mission_arrival_slot),
+            "mission": range(
+                path.mission_arrival_slot,
+                path.mission_arrival_slot + path.tau_work_windows,
+            ),
+            "return": range(
+                path.mission_arrival_slot + path.tau_work_windows,
+                path.landing_slot,
+            ),
+            "turnaround": range(path.landing_slot, min(path.ready_slot, t_max - t_min + 1)),
+        }
+        for field, occupied in expected_ranges.items():
+            expected = [2 if index in occupied else 0 for index in range(t_max - t_min + 1)]
+            self.assertEqual(expected, phase["all"][field])
+            self.assertEqual(expected, phase["by_mission"][path.mission_id][field])
+            self.assertEqual(expected, phase["by_aircraft"][path.aircraft_type_id][field])
+
+        origin = phase["by_airport"][path.origin_airport_id]
+        returned = phase["by_airport"][path.return_airport_id]
+        self.assertEqual(phase["all"]["departure"], origin["departure"])
+        self.assertEqual(phase["all"]["mission"], origin["mission"])
+        self.assertEqual(phase["all"]["return"], origin["return"])
+        self.assertEqual([0] * len(metrics["time_axis"]["windows"]), origin["turnaround"])
+        self.assertEqual(phase["all"]["turnaround"], returned["turnaround"])
+        self.assertEqual([0] * len(metrics["time_axis"]["windows"]), returned["departure"])
+
     def test_ready_after_terminal_boundary_is_rejected_by_frozen_path_set(self):
         snapshot = make_snapshot()
         bundle = build_algorithm_input(snapshot)

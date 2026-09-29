@@ -61,6 +61,11 @@ class RunResultServiceTests(unittest.TestCase):
         self.assertEqual(result.solution.to_dict(), solution)
         self.assertEqual("metrics.v1", metrics["schema_version"])
         self.assertEqual("optimal", metrics["technical"]["solver_status"])
+        self.assertTrue(metrics["timeline"]["phase_occupancy"]["verified"])
+        self.assertEqual(
+            "half_open_path_intervals",
+            metrics["timeline"]["phase_occupancy"]["interval_model"],
+        )
         self.assertIsNone(metrics["technical"]["best_bound"])
         self.assertIsNone(metrics["technical"]["gap"])
         self.assertIsNone(metrics["technical"]["solve_time_s"])

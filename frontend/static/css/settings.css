@@ -1,8 +1,8 @@
 .settings-page{display:grid;grid-template-rows:48px minmax(0,1fr);overflow:hidden;background:var(--bg-canvas)}
-.settings-head{display:flex;align-items:center;gap:22px;padding:0 18px;border-bottom:1px solid var(--line-soft);background:#071925}
+.settings-head{display:flex;align-items:center;gap:22px;min-width:0;padding:0 18px;overflow:hidden;border-bottom:1px solid var(--line-soft);background:#071925}
 .settings-head h1{margin:0;font-size:18px;line-height:1;white-space:nowrap}
-.settings-tabs{align-self:stretch;display:flex;align-items:stretch;gap:22px}
-.settings-tab{position:relative;min-width:0;padding:0 2px;border:0;background:transparent;color:var(--text-muted);font-size:12px}
+.settings-tabs{align-self:stretch;display:flex;align-items:stretch;flex:1 1 auto;gap:22px;min-width:0}
+.settings-tab{position:relative;padding:0 2px;border:0;background:transparent;color:var(--text-muted);font-size:12px}
 .settings-tab:hover{color:var(--text-secondary)}
 .settings-tab.active{color:var(--text);font-weight:600}
 .settings-tab.active:after{content:"";position:absolute;right:0;bottom:0;left:0;height:2px;background:var(--accent)}

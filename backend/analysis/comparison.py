@@ -21,6 +21,19 @@ OBJECTIVE_DEFINITION_FIELDS = (
     "f3_tardiness_coefficient",
     "unmet_demand_penalty",
 )
+R0_R1_R2_LOCKED_CONFIG_FIELDS = (
+    "objective_profile_id",
+    *OBJECTIVE_DEFINITION_FIELDS,
+    "core_airport_reward_weight",
+    "mip_time_limit_s",
+    "algorithm_seed",
+)
+OBJECTIVE_COMPONENT_DEFINITION_FIELDS = {
+    "F1": ("aircraft_type_weight",),
+    "F2": ("f2_resource_reference_quantities", "f2_resource_weights"),
+    "F3": ("f3_time_reference_slots", "f3_tardiness_coefficient"),
+    "J": OBJECTIVE_DEFINITION_FIELDS,
+}
 
 
 class ComparisonError(ValueError):
@@ -415,18 +428,7 @@ def check_r0_r1_r2(r0: RunSnapshot, r1: RunSnapshot, r2: RunSnapshot) -> Compara
     if not bool(c2.get("cluster_enabled")):
         reasons.append("R2 must have clustering enabled")
 
-    reasons.extend(
-        _same_fields(
-            [c0, c1, c2],
-            (
-                "preference_mode",
-                "alpha",
-                "aircraft_type_weight",
-                "mip_time_limit_s",
-                "algorithm_seed",
-            ),
-        )
-    )
+    reasons.extend(_same_fields([c0, c1, c2], R0_R1_R2_LOCKED_CONFIG_FIELDS))
     # Stable/deterministic error order without hiding duplicate root causes.
     reasons = list(dict.fromkeys(reasons))
     return ComparabilityCheck(not reasons, tuple(reasons))
@@ -482,30 +484,24 @@ def build_r0_r1_r2_comparison(
     check.require()
     for snap, metrics in ((r0_snapshot, r0_metrics), (r1_snapshot, r1_metrics), (r2_snapshot, r2_metrics)):
         _ensure_metrics(snap, metrics)
-    metric_schemas = {
-        str(m.get("schema_version") or "")
-        for m in (r0_metrics, r1_metrics, r2_metrics)
-    }
-    if len(metric_schemas) != 1 or "" in metric_schemas:
-        raise ComparisonError("Metrics schema_version differs or is missing")
-    slot_minutes = {
-        int((m.get("time_axis") or {}).get("slot_minutes") or 0)
-        for m in (r0_metrics, r1_metrics, r2_metrics)
-    }
-    if len(slot_minutes) != 1 or 0 in slot_minutes:
-        raise ComparisonError("Metrics time-axis slot size differs or is missing")
-
-    windows = sorted(
-        set(r0_metrics["time_axis"].get("windows") or [])
-        | set(r1_metrics["time_axis"].get("windows") or [])
-        | set(r2_metrics["time_axis"].get("windows") or [])
-    )
-    d0 = _aligned_series(r0_metrics, "departures_total", windows)
-    d1 = _aligned_series(r1_metrics, "departures_total", windows)
-    d2 = _aligned_series(r2_metrics, "departures_total", windows)
-    ret0 = _aligned_series(r0_metrics, "returns_total", windows)
-    ret1 = _aligned_series(r1_metrics, "returns_total", windows)
-    ret2 = _aligned_series(r2_metrics, "returns_total", windows)
+    comparison_rows = [
+        (r0_snapshot, r0_metrics),
+        (r1_snapshot, r1_metrics),
+        (r2_snapshot, r2_metrics),
+    ]
+    slot_minutes_value, windows = _require_common_metrics_contract(comparison_rows)
+    d0 = list((r0_metrics.get("timeline") or {}).get("departures_total") or [])
+    d1 = list((r1_metrics.get("timeline") or {}).get("departures_total") or [])
+    d2 = list((r2_metrics.get("timeline") or {}).get("departures_total") or [])
+    ret0 = list((r0_metrics.get("timeline") or {}).get("returns_total") or [])
+    ret1 = list((r1_metrics.get("timeline") or {}).get("returns_total") or [])
+    ret2 = list((r2_metrics.get("timeline") or {}).get("returns_total") or [])
+    for field, values in (
+        ("departures_total", (d0, d1, d2)),
+        ("returns_total", (ret0, ret1, ret2)),
+    ):
+        if any(len(series) != len(windows) for series in values):
+            raise ComparisonError(f"timeline.{field} length mismatch")
 
     def summary_metric(key: str) -> Dict[str, Any]:
         return _scalar_delta(
@@ -590,8 +586,6 @@ def build_r0_r1_r2_comparison(
         r2_snapshot.run_id: _run_summary_projection(r2_metrics),
     }
     objective_check = check_objective_comparable(r0_snapshot, r1_snapshot, r2_snapshot)
-    slot_minutes_value = next(iter(slot_minutes))
-
     peak_window = _scalar_delta(
         role_summaries["R0"].get("peak_window"),
         role_summaries["R1"].get("peak_window"),
@@ -631,6 +625,21 @@ def build_r0_r1_r2_comparison(
         for role, metrics in (("R0", r0_metrics), ("R1", r1_metrics), ("R2", r2_metrics))
     }
 
+    damage_comparison = _build_focus_comparison(
+        comparison_rows,
+        baseline_run_id=r0_snapshot.run_id,
+        comparison_run_id=r1_snapshot.run_id,
+        relation="R1-R0",
+        conclusion_subject="损毁后",
+    )
+    cluster_comparison = _build_focus_comparison(
+        comparison_rows,
+        baseline_run_id=r1_snapshot.run_id,
+        comparison_run_id=r2_snapshot.run_id,
+        relation="R2-R1",
+        conclusion_subject="启用组群后",
+    )
+
     return {
         "schema_version": COMPARISON_SCHEMA_VERSION,
         "roles": {
@@ -642,6 +651,12 @@ def build_r0_r1_r2_comparison(
             "damage_delta": "R1-R0",
             "cluster_delta": "R2-R1",
         },
+        "comparisons": {
+            "damage": damage_comparison,
+            "cluster": cluster_comparison,
+        },
+        "focus_comparison": damage_comparison,
+        "conclusions": damage_comparison["conclusions"],
         "objective_comparable": objective_check.comparable,
         "objective_comparability_reasons": list(objective_check.reasons),
         "solver_comparison": _solver_comparison(
@@ -932,6 +947,456 @@ def _solver_comparison(
             "available": False,
             "reason": "independent verification result is not stored in ordinary Metrics",
         },
+    }
+
+
+def _cumulative(values: Sequence[float]) -> List[float]:
+    total = 0.0
+    output: List[float] = []
+    for value in values:
+        total += float(value)
+        output.append(total)
+    return output
+
+
+def _component_comparability(
+    snapshots: Sequence[RunSnapshot], component: str
+) -> ComparabilityCheck:
+    fields = OBJECTIVE_COMPONENT_DEFINITION_FIELDS[component]
+    configs = [_config(_payload(snapshot)) for snapshot in snapshots]
+    reasons = _same_fields(configs, fields)
+    return ComparabilityCheck(not reasons, tuple(reasons))
+
+
+def _assurance_projection(metrics: Mapping[str, Any]) -> Dict[str, Any]:
+    """Small, unit-safe operational facts for the comparison landing surface."""
+
+    capacity_rows: List[Dict[str, Any]] = []
+    for airport_id, airport in sorted((metrics.get("airports") or {}).items()):
+        capacity = (airport or {}).get("capacity") or {}
+        available = list(capacity.get("available") or [])
+        used = list(capacity.get("used_total") or [])
+        if len(available) != len(used):
+            continue
+        valid = [index for index, value in enumerate(available) if _numeric(value) is not None and float(value) > 0]
+        denominator = sum(float(available[index]) for index in valid)
+        numerator = sum(float(used[index]) for index in valid)
+        capacity_rows.append({
+            "airport_id": str(airport_id),
+            "period_utilization": (numerator / denominator) if denominator > 0 else None,
+            "valid_window_count": len(valid),
+            "unavailable_window_count": sum(
+                1 for value in available if _numeric(value) is not None and float(value) == 0
+            ),
+        })
+
+    inventory = (metrics.get("aircraft_inventory") or {}).get("by_airport") or {}
+    peak_in_use = 0.0
+    ready_releases = 0.0
+    end_available = 0.0
+    window_count = 0
+    series_rows = []
+    for airport in inventory.values():
+        for row in (airport or {}).values():
+            in_use = list((row or {}).get("in_use") or [])
+            ready = list((row or {}).get("ready_releases") or [])
+            available = list((row or {}).get("available_after_departure") or [])
+            window_count = max(window_count, len(in_use))
+            series_rows.append(in_use)
+            ready_releases += sum(float(value) for value in ready)
+            if available:
+                end_available += float(available[-1])
+    for index in range(window_count):
+        peak_in_use = max(
+            peak_in_use,
+            sum(float(row[index]) for row in series_rows if index < len(row)),
+        )
+
+    resource_rows: List[Dict[str, Any]] = []
+    resources = metrics.get("resources") or {}
+    metadata = resources.get("resource_types") or {}
+    for airport_id, airport in sorted((resources.get("by_airport") or {}).items()):
+        for resource_id, row in sorted((airport or {}).items()):
+            remaining = list((row or {}).get("remaining") or [])
+            resource_rows.append({
+                "airport_id": str(airport_id),
+                "resource_type_id": str(resource_id),
+                "unit": ((metadata.get(resource_id) or {}).get("unit")),
+                "consumed_total": sum(float(value) for value in ((row or {}).get("consumed_increment") or [])),
+                "replenishment_actual_total": sum(float(value) for value in ((row or {}).get("replenishment_actual") or [])),
+                "ending_remaining": float(remaining[-1]) if remaining else None,
+            })
+    return {
+        "capacity_by_airport": capacity_rows,
+        "aircraft": {
+            "peak_in_use": peak_in_use,
+            "ready_releases_total": ready_releases,
+            "ending_available": end_available,
+        },
+        "resources": resource_rows,
+    }
+
+
+def _ranked_object_changes(
+    baseline_metrics: Mapping[str, Any],
+    current_metrics: Mapping[str, Any],
+    *,
+    block_name: str,
+    value_field: str,
+) -> List[Dict[str, Any]]:
+    """Return a complete, missing-safe object delta list ranked by absolute change."""
+
+    baseline_block = baseline_metrics.get(block_name) or {}
+    current_block = current_metrics.get(block_name) or {}
+    object_ids = sorted(set(baseline_block) | set(current_block))
+    rows: List[Dict[str, Any]] = []
+    for object_id in object_ids:
+        baseline = (baseline_block.get(object_id) or {}).get(value_field)
+        current = (current_block.get(object_id) or {}).get(value_field)
+        rows.append({
+            "object_id": str(object_id),
+            "baseline": baseline,
+            "current": current,
+            "delta": _delta_from_baseline(current, baseline),
+        })
+    return sorted(
+        rows,
+        key=lambda row: (
+            row["delta"] is None,
+            -abs(float(row["delta"])) if row["delta"] is not None else 0,
+            row["object_id"],
+        ),
+    )
+
+
+def _structural_changes(
+    baseline_metrics: Mapping[str, Any],
+    current_metrics: Mapping[str, Any],
+) -> Dict[str, Any]:
+    baseline_summary = _comparison_summary(baseline_metrics)
+    current_summary = _comparison_summary(current_metrics)
+    return {
+        "tasks": _ranked_object_changes(
+            baseline_metrics,
+            current_metrics,
+            block_name="tasks",
+            value_field="scheduled_total",
+        ),
+        "airports": _ranked_object_changes(
+            baseline_metrics,
+            current_metrics,
+            block_name="airports",
+            value_field="departures_total",
+        ),
+        "aircraft": _ranked_object_changes(
+            baseline_metrics,
+            current_metrics,
+            block_name="aircraft",
+            value_field="scheduled_total",
+        ),
+        "collaboration": {
+            "participating_airport_count": {
+                "baseline": baseline_summary.get("participating_airport_count"),
+                "current": current_summary.get("participating_airport_count"),
+                "delta": _delta_from_baseline(
+                    current_summary.get("participating_airport_count"),
+                    baseline_summary.get("participating_airport_count"),
+                ),
+            },
+            "cross_return_ratio": {
+                "baseline": baseline_summary.get("cross_return_ratio"),
+                "current": current_summary.get("cross_return_ratio"),
+                "delta": _delta_from_baseline(
+                    current_summary.get("cross_return_ratio"),
+                    baseline_summary.get("cross_return_ratio"),
+                ),
+            },
+        },
+    }
+
+
+def _difference_phrase(label: str, baseline: Any, current: Any) -> Optional[str]:
+    base_value = _numeric(baseline)
+    current_value = _numeric(current)
+    if base_value is None or current_value is None:
+        return None
+    delta = current_value - base_value
+    if delta == 0:
+        return f"{label}保持不变（{current_value:g}架次）"
+    direction = "增加" if delta > 0 else "减少"
+    return f"{label}{direction}{abs(delta):g}架次"
+
+
+def _object_change_conclusion(structural_changes: Mapping[str, Any]) -> str:
+    for key, label in (
+        ("tasks", "任务分配结构"),
+        ("airports", "机场承接结构"),
+        ("aircraft", "机型投入结构"),
+    ):
+        rows = structural_changes.get(key) or []
+        changed = [row for row in rows if _numeric(row.get("delta")) not in (None, 0.0)]
+        if changed:
+            details = []
+            for row in changed[:2]:
+                delta = float(row["delta"])
+                direction = "增加" if delta > 0 else "减少"
+                details.append(f"{row['object_id']}{direction}{abs(delta):g}架次")
+            return f"{label}发生调整：{'，'.join(details)}。"
+
+    collaboration = structural_changes.get("collaboration") or {}
+    collaboration_details: List[str] = []
+    airport_delta = _numeric(
+        (collaboration.get("participating_airport_count") or {}).get("delta")
+    )
+    if airport_delta not in (None, 0.0):
+        direction = "增加" if airport_delta > 0 else "减少"
+        collaboration_details.append(f"参与机场{direction}{abs(airport_delta):g}个")
+    return_delta = _numeric(
+        (collaboration.get("cross_return_ratio") or {}).get("delta")
+    )
+    if return_delta not in (None, 0.0):
+        direction = "上升" if return_delta > 0 else "下降"
+        collaboration_details.append(f"跨机场返航占比{direction}{abs(return_delta) * 100:.1f}个百分点")
+    if collaboration_details:
+        return f"机场协同结构发生变化：{'，'.join(collaboration_details)}。"
+
+    recorded = any(
+        row.get("delta") is not None
+        for key in ("tasks", "airports", "aircraft")
+        for row in (structural_changes.get(key) or [])
+    )
+    if recorded:
+        return "当前正式数据未记录到任务、机场或机型结构变化。"
+    return "正式对象级数据不足，无法形成结构变化结论。"
+
+
+def _focus_conclusions(
+    baseline: Mapping[str, Any],
+    current: Mapping[str, Any],
+    *,
+    subject: str,
+    objective_components: Mapping[str, Any],
+    structural_changes: Mapping[str, Any],
+) -> List[str]:
+    overall_parts: List[str] = []
+    fulfilled_base = _numeric(baseline.get("fulfilled_sorties_total"))
+    fulfilled_current = _numeric(current.get("fulfilled_sorties_total"))
+    unmet_base = _numeric(baseline.get("unmet_sorties_total"))
+    unmet_current = _numeric(current.get("unmet_sorties_total"))
+    if (
+        fulfilled_base is not None
+        and fulfilled_current is not None
+        and unmet_base is not None
+        and unmet_current is not None
+        and fulfilled_base == fulfilled_current
+        and unmet_base == unmet_current
+    ):
+        overall_parts.append(
+            f"履行{fulfilled_current:g}架次、缺口{unmet_current:g}架次均未变化"
+        )
+    else:
+        for label, base_value, current_value in (
+            ("履行", fulfilled_base, fulfilled_current),
+            ("缺口", unmet_base, unmet_current),
+        ):
+            phrase = _difference_phrase(label, base_value, current_value)
+            if phrase:
+                overall_parts.append(phrase)
+
+    scheduled_phrase = _difference_phrase(
+        "实际出动",
+        baseline.get("scheduled_sorties_total"),
+        current.get("scheduled_sorties_total"),
+    )
+    if scheduled_phrase:
+        overall_parts.append(scheduled_phrase)
+    objective = objective_components.get("J") or {}
+    if objective.get("recorded") and objective.get("definition_comparable"):
+        delta = _numeric(objective.get("delta"))
+        if delta == 0:
+            overall_parts.append("J保持不变")
+        elif delta is not None:
+            direction = "上升" if delta > 0 else "下降"
+            overall_parts.append(f"J{direction}{abs(delta):.4f}")
+    elif objective.get("recorded") and not objective.get("definition_comparable"):
+        overall_parts.append("J定义不一致，不直接比较")
+
+    comparable_components = []
+    for name in ("F1", "F2", "F3"):
+        component = objective_components.get(name) or {}
+        delta = _numeric(component.get("delta"))
+        if component.get("recorded") and component.get("definition_comparable") and delta not in (None, 0.0):
+            comparable_components.append((abs(delta), name, delta))
+    if comparable_components and not objective.get("definition_comparable"):
+        _magnitude, name, delta = max(comparable_components)
+        direction = "上升" if delta > 0 else "下降"
+        overall_parts.append(f"{name}{direction}{abs(delta):.4f}")
+
+    overall = (
+        f"{subject}{'；'.join(overall_parts)}。"
+        if overall_parts
+        else f"{subject}缺少完整的正式汇总记录，无法形成总体差值结论。"
+    )
+    return [overall, _object_change_conclusion(structural_changes)]
+
+
+def _focus_brief(focus: Mapping[str, Any]) -> Optional[str]:
+    facts: List[str] = []
+    values = focus.get("values") or {}
+    for label, field in (
+        ("履行", "fulfilled_sorties_total"),
+        ("缺口", "unmet_sorties_total"),
+        ("实际出动", "scheduled_sorties_total"),
+    ):
+        delta = _numeric((values.get(field) or {}).get("delta"))
+        if delta in (None, 0.0):
+            continue
+        direction = "增加" if delta > 0 else "减少"
+        facts.append(f"{label}{direction}{abs(delta):g}架次")
+    objective = (focus.get("objective_components") or {}).get("J") or {}
+    delta = _numeric(objective.get("delta"))
+    if objective.get("recorded") and objective.get("definition_comparable") and delta not in (None, 0.0):
+        direction = "上升" if delta > 0 else "下降"
+        facts.append(f"J{direction}{abs(delta):.4f}")
+    return "，".join(facts[:3]) if facts else None
+
+
+def _distribution_fact(
+    label: str,
+    values: Mapping[str, Any],
+    *,
+    include_equal: bool = True,
+) -> Optional[str]:
+    numbers = [_numeric(value) for value in values.values()]
+    if not numbers or any(value is None for value in numbers):
+        return None
+    low = min(numbers)
+    high = max(numbers)
+    if low == high:
+        return f"{label}均为{low:g}架次" if include_equal else None
+    return f"{label}范围{low:g}–{high:g}架次"
+
+
+def _configuration_conclusion_prefix(differences: Mapping[str, Any]) -> Optional[str]:
+    labels = {
+        "cluster_enabled": "启用组群",
+        "cluster_size": "组群规模",
+        "core_airports": "核心机场",
+        "preference_mode": "优化偏好",
+        "alpha": "目标权重α",
+    }
+    changed = [labels[field] for field in labels if field in differences]
+    if not changed:
+        return None
+    return f"当前对照包含{len(changed)}项主要配置差异：{'、'.join(changed)}"
+
+
+def _build_focus_comparison(
+    rows: Sequence[Tuple[RunSnapshot, Mapping[str, Any]]],
+    *,
+    baseline_run_id: str,
+    comparison_run_id: str,
+    relation: Optional[str] = None,
+    conclusion_subject: str = "当前对照较基准",
+) -> Dict[str, Any]:
+    by_id = {snapshot.run_id: (snapshot, metrics) for snapshot, metrics in rows}
+    if baseline_run_id not in by_id or comparison_run_id not in by_id:
+        raise ComparisonError("focus comparison Run IDs must be present in the comparison set")
+    if baseline_run_id == comparison_run_id:
+        raise ComparisonError("focus comparison requires two distinct Run IDs")
+    slot_minutes, windows = _require_common_metrics_contract(rows)
+    baseline_snapshot, baseline_metrics = by_id[baseline_run_id]
+    comparison_snapshot, comparison_metrics = by_id[comparison_run_id]
+    baseline_summary = _comparison_summary(baseline_metrics)
+    comparison_summary = _comparison_summary(comparison_metrics)
+
+    values: Dict[str, Any] = {}
+    for field in (
+        "required_sorties_total",
+        "fulfilled_sorties_total",
+        "unmet_sorties_total",
+        "additional_sorties_total",
+        "scheduled_sorties_total",
+        "completion_ratio",
+    ):
+        base_value = baseline_summary.get(field)
+        current_value = comparison_summary.get(field)
+        values[field] = {
+            "baseline": base_value,
+            "current": current_value,
+            "delta": _delta_from_baseline(current_value, base_value),
+        }
+
+    objective_components: Dict[str, Any] = {}
+    baseline_technical = baseline_metrics.get("technical") or {}
+    comparison_technical = comparison_metrics.get("technical") or {}
+    component_metric = {"F1": "f1", "F2": "f2", "F3": "f3", "J": "objective"}
+    pair_snapshots = (baseline_snapshot, comparison_snapshot)
+    for component, metric_name in component_metric.items():
+        check = _component_comparability(pair_snapshots, component)
+        base_value = baseline_technical.get(metric_name)
+        current_value = comparison_technical.get(metric_name)
+        recorded = _numeric(base_value) is not None and _numeric(current_value) is not None
+        objective_components[component] = {
+            "baseline": base_value,
+            "current": current_value,
+            "delta": (
+                _delta_from_baseline(current_value, base_value)
+                if check.comparable and recorded
+                else None
+            ),
+            "definition_comparable": check.comparable,
+            "recorded": recorded,
+            "reasons": list(check.reasons),
+        }
+
+    structural_changes = _structural_changes(
+        baseline_metrics,
+        comparison_metrics,
+    )
+
+    timeline: Dict[str, Any] = {"windows": windows, "slot_minutes": slot_minutes}
+    for public_name, metrics_name in (
+        ("departures", "departures_total"),
+        ("returns", "returns_total"),
+    ):
+        baseline_values = list((baseline_metrics.get("timeline") or {}).get(metrics_name) or [])
+        comparison_values = list((comparison_metrics.get("timeline") or {}).get(metrics_name) or [])
+        if len(baseline_values) != len(windows) or len(comparison_values) != len(windows):
+            raise ComparisonError(f"timeline.{metrics_name} length mismatch")
+        delta = _delta(baseline_values, comparison_values)
+        timeline[public_name] = {
+            "baseline": baseline_values,
+            "current": comparison_values,
+            "delta": delta,
+            "cumulative": {
+                "baseline": _cumulative(baseline_values),
+                "current": _cumulative(comparison_values),
+                "delta": _cumulative(delta),
+            },
+        }
+
+    return {
+        "baseline_run_id": baseline_run_id,
+        "comparison_run_id": comparison_run_id,
+        "relation": relation or f"{comparison_run_id}-{baseline_run_id}",
+        "eligible": True,
+        "reasons": [],
+        "values": values,
+        "objective_components": objective_components,
+        "structural_changes": structural_changes,
+        "timeline": timeline,
+        "assurance": {
+            "baseline": _assurance_projection(baseline_metrics),
+            "current": _assurance_projection(comparison_metrics),
+        },
+        "conclusions": _focus_conclusions(
+            baseline_summary,
+            comparison_summary,
+            subject=conclusion_subject,
+            objective_components=objective_components,
+            structural_changes=structural_changes,
+        ),
     }
 
 
@@ -1365,6 +1830,9 @@ def _timeline_object_rows(
 
 def build_multi_scenario_comparison(
     runs: Sequence[Tuple[RunSnapshot, Mapping[str, Any]]],
+    *,
+    baseline_run_id: Optional[str] = None,
+    comparison_run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build deterministic facts for the 2–6 Run multi-scenario workspace.
 
@@ -1377,6 +1845,16 @@ def build_multi_scenario_comparison(
     run_ids = [snapshot.run_id for snapshot, _metrics in rows]
     if len(set(run_ids)) != len(run_ids):
         raise ComparisonError("multi-scenario comparison requires distinct Run IDs")
+    focus_baseline = baseline_run_id or run_ids[0]
+    focus_current = comparison_run_id or next(
+        run_id for run_id in run_ids if run_id != focus_baseline
+    )
+    if focus_baseline not in run_ids:
+        raise ComparisonError("baseline_run_id must be one of run_ids")
+    if focus_current not in run_ids:
+        raise ComparisonError("comparison_run_id must be one of run_ids")
+    if focus_baseline == focus_current:
+        raise ComparisonError("comparison_run_id must differ from baseline_run_id")
 
     base_snapshot = rows[0][0]
     for snapshot, _metrics in rows[1:]:
@@ -1447,10 +1925,44 @@ def build_multi_scenario_comparison(
     scheduled_totals = {rid: row.get("scheduled_sorties_total") for rid, row in summaries.items()}
     completion_ratios = {rid: row.get("completion_ratio") for rid, row in summaries.items()}
 
+    focus = _build_focus_comparison(
+        rows,
+        baseline_run_id=focus_baseline,
+        comparison_run_id=focus_current,
+    )
+    distribution_facts = [
+        fact
+        for fact in (
+            _distribution_fact("履行", fulfilled_totals),
+            _distribution_fact("缺口", unmet_totals),
+            _distribution_fact("实际出动", scheduled_totals, include_equal=False),
+            _distribution_fact("额外调度", additional_totals, include_equal=False),
+        )
+        if fact
+    ]
+    distribution_conclusion = (
+        f"{len(rows)} 个选定Run的{'，'.join(distribution_facts)}。"
+        if distribution_facts
+        else None
+    )
+    focus_brief = _focus_brief(focus)
+    conclusions = [
+        (
+            f"{distribution_conclusion.rstrip('。')}；当前重点对照{focus_brief}。"
+            if distribution_conclusion and focus_brief
+            else distribution_conclusion or focus["conclusions"][0]
+        ),
+        focus["conclusions"][1],
+    ]
+
     return {
         "schema_version": COMPARISON_SCHEMA_VERSION,
         "mode": "multi_scenario",
         "run_ids": run_ids,
+        "baseline_run_id": focus_baseline,
+        "comparison_run_id": focus_current,
+        "focus_comparison": focus,
+        "conclusions": conclusions,
         "configurations": configurations,
         "objective_comparable": objective_check.comparable,
         "objective_comparability_reasons": list(objective_check.reasons),
@@ -1499,6 +2011,7 @@ def build_configuration_comparison(
     runs: Sequence[Tuple[RunSnapshot, Mapping[str, Any]]],
     *,
     baseline_run_id: str,
+    comparison_run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build 2–5 Run configuration comparison facts relative to one real baseline Run."""
     rows = list(runs)
@@ -1509,6 +2022,13 @@ def build_configuration_comparison(
         raise ComparisonError("configuration comparison requires distinct Run IDs")
     if baseline_run_id not in run_ids:
         raise ComparisonError("baseline_run_id must be one of run_ids")
+    focus_current = comparison_run_id or next(
+        run_id for run_id in run_ids if run_id != baseline_run_id
+    )
+    if focus_current not in run_ids:
+        raise ComparisonError("comparison_run_id must be one of run_ids")
+    if focus_current == baseline_run_id:
+        raise ComparisonError("comparison_run_id must differ from baseline_run_id")
 
     by_id = {snapshot.run_id: (snapshot, metrics) for snapshot, metrics in rows}
     baseline_snapshot, baseline_metrics = by_id[baseline_run_id]
@@ -1661,11 +2181,43 @@ def build_configuration_comparison(
             }
         resource_rows[category] = by_run
 
+    focus = _build_focus_comparison(
+        rows,
+        baseline_run_id=baseline_run_id,
+        comparison_run_id=focus_current,
+    )
+    baseline_config = _config(baseline_snapshot.to_dict())
+    current_config = _config(by_id[focus_current][0].to_dict())
+    key_configuration_differences = {
+        field: {
+            "baseline": baseline_config.get(field),
+            "current": current_config.get(field),
+        }
+        for field in (
+            "cluster_enabled",
+            "cluster_size",
+            "core_airports",
+            "preference_mode",
+            "alpha",
+        )
+        if _canon(baseline_config.get(field)) != _canon(current_config.get(field))
+    }
+    configuration_prefix = _configuration_conclusion_prefix(
+        key_configuration_differences
+    )
+    conclusions = list(focus["conclusions"])
+    if configuration_prefix:
+        conclusions[0] = f"{configuration_prefix}；{conclusions[0]}"
+
     return {
         "schema_version": COMPARISON_SCHEMA_VERSION,
         "mode": "configuration",
         "baseline_run_id": baseline_run_id,
+        "comparison_run_id": focus_current,
         "run_ids": run_ids,
+        "focus_comparison": focus,
+        "key_configuration_differences": key_configuration_differences,
+        "conclusions": conclusions,
         "configurations": {
             snapshot.run_id: _config(snapshot.to_dict()) for snapshot, _metrics in rows
         },

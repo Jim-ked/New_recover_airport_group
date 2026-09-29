@@ -3,7 +3,9 @@
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/run.css') }}">{% endblock %}
 
 {% block content %}
-<main class="runpage" id="runPage">
+<main class="runpage" id="runPage"
+      data-objective-profile-id="{{ objective_profile.profile_id }}"
+      data-objective-aircraft-weights='{{ objective_profile.aircraft_type_weight | tojson }}'>
   <section class="config-panel" aria-labelledby="runConfigTitle">
     <div class="panel-title" id="runConfigTitle">运行配置</div>
     <div class="config-body">
@@ -72,7 +74,7 @@
             <span>高级设置</span><span>⌄</span>
           </button>
         </div>
-        <div id="advancedSummary" class="fold-summary">120秒 · 机型权重默认1.0</div>
+        <div id="advancedSummary" class="fold-summary">求解时限 120秒</div>
         <div id="advancedOptions" class="fold-body" aria-hidden="true">
           <div class="field required">
             <label for="mipTimeLimit">求解时限（秒）</label>
@@ -80,8 +82,8 @@
           </div>
 
           <div class="field">
-            <label>机型权重覆盖</label>
-            <div id="aircraftWeightOptions" class="weight-grid empty-box">选择情境后按涉及机型生成；留空表示 1.0</div>
+            <label>机型权重</label>
+            <div id="aircraftWeightOptions" class="weight-grid empty-box">选择情境后检查是否需要补充</div>
           </div>
         </div>
       </section>
@@ -94,14 +96,14 @@
         </div>
         <div id="validationSummary" class="fold-summary validation-dirty">尚未校验</div>
         <div id="validationChecks" class="fold-body validation-list" aria-hidden="true">
-          <div class="empty-box">点击“校验运行条件”后显示后端 preflight 结果。</div>
+          <div class="empty-box">点击“校验运行条件”查看检查结果。</div>
         </div>
       </section>
     </div>
 
     <div class="config-actions">
       <button id="validateButton" class="btn" type="button">校验运行条件</button>
-      <button id="submitButton" class="btn primary" type="button" disabled>开始运行</button>
+      <button id="submitButton" class="btn primary" type="button" disabled title="请先校验运行条件">开始运行</button>
     </div>
   </section>
 
@@ -128,7 +130,7 @@
               <div class="stage pending"><div class="stage-circle">2</div><strong>2. 候选搜索</strong><span>未开始</span></div>
               <div class="stage pending"><div class="stage-circle">3</div><strong>3. 快速评估</strong><span>未开始</span></div>
               <div class="stage pending"><div class="stage-circle">4</div><strong>4. 精确求解</strong><span>未开始</span></div>
-              <div class="stage pending"><div class="stage-circle">5</div><strong>5. 结果持久化</strong><span>未开始</span></div>
+              <div class="stage pending"><div class="stage-circle">5</div><strong>5. 结果保存</strong><span>未开始</span></div>
             </div>
             <div id="activityBar" class="activity-bar"><span>尚未开始运行</span><button id="viewLogButton" class="link-button" type="button">查看运行日志</button></div>
             <div id="currentActions" class="current-actions"></div>

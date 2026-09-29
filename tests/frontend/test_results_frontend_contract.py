@@ -9,14 +9,11 @@ ROOT = Path(__file__).resolve().parents[2]
 JS = (ROOT / "frontend/static/js/modules/results.js").read_text(encoding="utf-8")
 HTML = (ROOT / "frontend/templates/pages/results.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend/static/css/results.css").read_text(encoding="utf-8")
-UI = (ROOT / "backend/web/flask_ui.py").read_text(encoding="utf-8")
-FLASK_RESULTS = (ROOT / "backend/web/flask_results.py").read_text(encoding="utf-8")
-BASE = (ROOT / "frontend/templates/base.html").read_text(encoding="utf-8")
 
 
 def extract_function(source: str, name: str) -> str:
     start = source.index(f"function {name}(")
-    body_start = source.index("{", start)
+    body_start = source.index(") {", start) + 2
     depth = 0
     for index in range(body_start, len(source)):
         if source[index] == "{":
@@ -29,447 +26,222 @@ def extract_function(source: str, name: str) -> str:
 
 
 class ResultsFrontendContractTests(unittest.TestCase):
-    def test_explicit_view_state_authority_keeps_workspace_shell_stable(self):
-        for state_name in ("ZERO_RESULTS", "NO_COMPARABLE_SET", "READY_TO_SELECT", "HAS_COMPARISON"):
-            self.assertIn(state_name, JS)
-        self.assertIn("function deriveViewState", JS)
-        self.assertIn("function renderViewState", JS)
-        self.assertIn("function renderWorkbenchState", JS)
-        for element_id in ("resultsMain", "resultsBottom", "resultsMetrics", "resultsConditionActions", "resultsExport"):
-            self.assertIn(f'id="{element_id}"', HTML)
-        self.assertNotIn('id="resultsMain" class="results-main hidden"', HTML)
-        self.assertNotIn('id="resultsBottom" class="results-bottom hidden"', HTML)
-        render = extract_function(JS, "renderViewState")
-        self.assertNotIn("refs.main.classList.toggle('hidden'", render)
-        self.assertNotIn("refs.bottom.classList.toggle('hidden'", render)
-
-    def test_view_state_priority_uses_data_not_dom_state(self):
-        derive = extract_function(JS, "deriveViewState")
-        current = extract_function(JS, "currentCandidateState")
-        script = f"""
-const VIEW_STATE = {{ LOADING:'LOADING', ERROR:'ERROR', ZERO_RESULTS:'ZERO_RESULTS', NO_COMPARABLE_SET:'NO_COMPARABLE_SET', READY_TO_SELECT:'READY_TO_SELECT', HAS_COMPARISON:'HAS_COMPARISON' }};
-const state = {{ workspace:'damage', runs:[], runsStatus:'loading', payload:null, candidates:{{damage:{{status:'idle',items:[]}}}} }};
-{current}
-{derive}
-const values = [];
-values.push(deriveViewState());
-state.runsStatus = 'error'; values.push(deriveViewState());
-state.runsStatus = 'ready'; values.push(deriveViewState());
-state.runs = [{{run_id:'R1'}}]; state.candidates.damage.status = 'ready'; values.push(deriveViewState());
-state.candidates.damage.items = [{{id:'candidate'}}]; values.push(deriveViewState());
-state.payload = {{roles:{{}}}}; values.push(deriveViewState());
-process.stdout.write(JSON.stringify(values));
-"""
-        completed = subprocess.run(
-            ["node", "--input-type=module", "--eval", script],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        self.assertEqual(
-            ["LOADING", "ERROR", "ZERO_RESULTS", "NO_COMPARABLE_SET", "READY_TO_SELECT", "HAS_COMPARISON"],
-            json.loads(completed.stdout),
-        )
-
-    def test_view_capabilities_show_only_actions_meaningful_to_each_state(self):
-        capabilities = extract_function(JS, "viewCapabilities")
-        script = f"""
-const VIEW_STATE = {{ LOADING:'LOADING', ERROR:'ERROR', ZERO_RESULTS:'ZERO_RESULTS', NO_COMPARABLE_SET:'NO_COMPARABLE_SET', READY_TO_SELECT:'READY_TO_SELECT', HAS_COMPARISON:'HAS_COMPARISON' }};
-{capabilities}
-const states = Object.values(VIEW_STATE);
-const values = Object.fromEntries(states.map((name) => [name, viewCapabilities(name, true)]));
-process.stdout.write(JSON.stringify(values));
-"""
-        completed = subprocess.run(
-            ["node", "--input-type=module", "--eval", script],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        values = json.loads(completed.stdout)
-        self.assertEqual(
-            {"run": True, "rules": False, "select": False, "change": False, "export": False, "retry": False, "chart": False},
-            values["ZERO_RESULTS"],
-        )
-        self.assertEqual(
-            {"run": True, "rules": True, "select": False, "change": False, "export": False, "retry": False, "chart": False},
-            values["NO_COMPARABLE_SET"],
-        )
-        self.assertTrue(values["READY_TO_SELECT"]["select"])
-        self.assertFalse(values["READY_TO_SELECT"]["chart"])
-        self.assertTrue(values["HAS_COMPARISON"]["change"])
-        self.assertTrue(values["HAS_COMPARISON"]["export"])
-        self.assertTrue(values["HAS_COMPARISON"]["chart"])
-        self.assertTrue(values["ERROR"]["retry"])
-        self.assertFalse(values["LOADING"]["chart"])
-
-    def test_zero_results_short_circuits_candidate_loading_and_keeps_run_cta(self):
-        load_initial = extract_function(JS, "loadInitial")
-        self.assertIn("state.runs.length === 0", load_initial)
-        self.assertLess(load_initial.index("state.runs.length === 0"), load_initial.index("ensureWorkspaceCandidates"))
-        self.assertIn('id="resultsRunLink"', HTML)
-        self.assertIn('href="/run"', HTML)
-        self.assertNotIn("results-state-icon", JS)
-
-    def test_empty_candidate_error_and_ready_states_are_distinct(self):
-        self.assertIn("runsStatus: 'loading'", JS)
-        self.assertIn("runsStatus === 'error'", JS)
-        self.assertIn("candidate.status === 'error'", JS)
-        self.assertIn("candidate.items.length === 0", JS)
-        self.assertIn("openRules", JS)
-        self.assertNotIn("renderEmpty();openOverlay()", JS.replace(" ", ""))
-
-    def test_bottom_secondary_control_is_scoped_to_airports_and_export_to_payload(self):
-        self.assertIn('id="resultsAirportValueControls"', HTML)
-        render_bottom = extract_function(JS, "renderBottom")
-        self.assertIn("deriveViewState() !== VIEW_STATE.HAS_COMPARISON", render_bottom)
-        self.assertIn("state.bottomMode !== 'airports'", render_bottom)
-        self.assertIn("state.payload=payload", JS.replace(" ", ""))
-        self.assertIn("!state.payload", JS)
-
-    def test_non_comparison_states_fill_the_stable_panels_without_data_controls(self):
-        render = extract_function(JS, "renderWorkbenchState")
-        for text in (
-            "当前暂无可用比较结果",
-            "请先完成相应的算法运行",
-            "选择比较条件后显示时序比较",
-            "等待比较结果",
-            "等待有效比较条件",
-            "暂无比较结果",
-            "暂时无法读取结果数据",
-        ):
-            self.assertIn(text, render)
-        self.assertIn("refs.legend.innerHTML=''", render.replace(" ", ""))
-        self.assertNotIn("<svg", render)
-
-    def test_four_workspaces_and_overlay_are_real(self):
-        for label in ("严格损毁对照", "严格多损毁对照", "严格配置对照", "跨条件描述性探索", "修改比较条件"):
+    def test_workspace_has_three_independent_user_facing_modes(self):
+        for mode, label in (("damage", "损毁与组群"), ("multi", "多损毁"), ("configuration", "方案配置")):
+            self.assertIn(f'data-workspace="{mode}"', HTML)
             self.assertIn(label, HTML)
-        self.assertIn('@bp.get("/results")', UI)
-        self.assertIn("ui_v1.results_page", BASE)
+            self.assertIn(f"{mode}: createWorkspaceState()", JS)
+        self.assertNotIn('data-workspace="exploratory"', HTML)
+        self.assertNotIn("跨条件探索", HTML)
+        self.assertNotIn("exploratory-comparison", JS)
 
-    def test_frontend_consumes_only_canonical_comparison_endpoints(self):
-        for endpoint in (
-            "/api/results/damage-candidates",
-            "/api/results/damage-comparison",
-            "/api/results/scenario-comparison",
-            "/api/results/config-comparison",
-            "/api/results/comparable-runs",
-            "/api/results/exploratory-comparison",
-            "/api/results/object-comparison",
-        ):
-            self.assertIn(endpoint, JS)
-        for forbidden in ("/api/results/summary", "/api/results/compare", "/api/results/run_detail", "/api/scenes", "scene_file"):
-            self.assertNotIn(forbidden, JS)
+    def test_damage_mode_keeps_both_stage_summaries_and_one_active_focus(self):
+        self.assertIn('id="damageStageSummary"', HTML)
+        self.assertIn('data-damage-stage="damage"', HTML)
+        self.assertIn('data-damage-stage="cluster"', HTML)
+        render = extract_function(JS, "renderDamageStageSummary")
+        self.assertIn("payload.comparisons", render)
+        self.assertIn(".stage-facts", render)
+        self.assertIn("R0→R1", HTML)
+        self.assertIn("R1→R2", HTML)
+        self.assertIn("损毁影响", HTML)
+        self.assertIn("组群调整", HTML)
+        self.assertIn("activeDamageStage", JS)
 
-    def test_damage_roles_are_selected_from_backend_approved_triples(self):
-        self.assertIn("damageCandidates", JS)
-        self.assertIn("/api/results/damage-candidates", JS)
-        self.assertIn("r0_run_id", extract_function(JS, "renderDamageOverlay"))
-        self.assertIn("r1_run_id", extract_function(JS, "renderDamageOverlay"))
-        self.assertIn("r2_run_id", extract_function(JS, "renderDamageOverlay"))
-        self.assertIn('@bp.get("/results/damage-candidates")', FLASK_RESULTS)
-        self.assertNotIn("findBest", JS)
-        self.assertNotIn("autoBest", JS)
+    def test_multi_keeps_all_run_overview_and_focus_pair(self):
+        self.assertIn('id="multiOverview"', HTML)
+        self.assertIn('id="focusBaselineRun"', HTML)
+        self.assertIn('id="focusComparisonRun"', HTML)
+        render = extract_function(JS, "renderMultiOverview")
+        self.assertIn("payload.run_ids", render)
+        self.assertIn("run_summaries", render)
+        self.assertIn("objective", render)
+        self.assertIn("multi-overview-grid", render)
+        request = extract_function(JS, "requestComparison")
+        self.assertIn("baseline_run_id", request)
+        self.assertIn("comparison_run_id", request)
 
-    def test_main_chart_supports_all_airport_mission_aircraft_without_topn(self):
-        for mode in ('data-chart-mode="all"', 'data-chart-mode="airport"', 'data-chart-mode="mission"', 'data-chart-mode="aircraft"'):
-            self.assertIn(mode, HTML)
-        self.assertIn("by_airport", JS)
-        self.assertIn("by_mission", JS)
-        self.assertIn("by_aircraft", JS)
-        for forbidden in ("TopN", "topN", "slice(0,", "其他机场"):
-            self.assertNotIn(forbidden, JS)
+    def test_run_identity_uses_short_mode_names_and_keeps_full_id_in_title(self):
+        identity = extract_function(JS, "runIdentity")
+        for token in ("payload?.roles", "D${index}", "基准方案", "方案${alternativeIndex + 2}"):
+            self.assertIn(token, identity)
+        self.assertIn("damage_scenario?.name", identity)
+        self.assertIn("cluster_enabled", identity)
+        condition = extract_function(JS, "renderCondition")
+        self.assertIn('class="run-identity"', condition)
+        self.assertIn('title="${esc(id)}"', condition)
+        self.assertIn("selectionLabel", condition)
+        self.assertIn("refs.focusBaseline.title", condition)
+        self.assertIn("refs.focusComparison.title", condition)
 
-    def test_chart_supports_departures_and_returns_for_every_payload_shape(self):
-        self.assertIn('data-series-kind="departures"', HTML)
-        self.assertIn('data-series-kind="returns"', HTML)
-        self.assertIn("seriesKind: 'departures'", JS)
-        self.assertIn("t[state.seriesKind]?.[role]", JS)
-        self.assertIn("t[state.seriesKind]?.[id]?.values", JS)
-        self.assertIn("t[state.seriesKind]?.[id]", JS)
-        self.assertIn("row[id]?.[state.seriesKind]", JS)
-
-    def test_chart_validation_preserves_zero_and_rejects_invalid_series(self):
-        normalize = extract_function(JS, "normalizeChartValue")
-        validate = extract_function(JS, "validateChartData")
+    def test_damage_stage_summary_prioritizes_changes_and_preserves_display_states(self):
+        summary = extract_function(JS, "stageSummary")
+        compact = extract_function(JS, "compactStageFacts")
+        for token in ("fulfilled_sorties_total", "unmet_sorties_total", "scheduled_sorties_total", "objective_components?.J"):
+            self.assertIn(token, compact)
+        self.assertIn("compactStageFacts", summary)
+        self.assertIn("stage-metrics", summary)
+        self.assertIn("stage-heading", HTML)
         script = f"""
-const reported = [];
-console.error = (...args) => reported.push(args);
-{normalize}
-{validate}
-const context = {{ workspace: 'damage', series: 'departures' }};
-const valid = validateChartData([0, 1], [{{ id: 'R0', values: [0, 2] }}], context);
-const nullValue = validateChartData([0], [{{ id: 'R0', values: [null] }}], context);
-const badString = validateChartData([0], [{{ id: 'R0', values: ['bad'] }}], context);
-const mismatch = validateChartData([0, 1], [{{ id: 'R0', values: [1] }}], context);
+{extract_function(JS, "number")}
+{compact}
+const base = {{
+  values: {{
+    fulfilled_sorties_total: {{delta: 0}},
+    unmet_sorties_total: {{delta: 0}},
+    scheduled_sorties_total: {{delta: 0}},
+  }},
+  objective_components: {{J: {{recorded: true, definition_comparable: true, delta: 0}}}},
+}};
+const changed = structuredClone(base);
+changed.values.scheduled_sorties_total.delta = 18;
+changed.objective_components.J.delta = 133.141;
+const missing = structuredClone(base);
+missing.values.fulfilled_sorties_total.delta = null;
+missing.objective_components.J = {{recorded: true, definition_comparable: false, delta: null}};
+const unrecorded = structuredClone(base);
+unrecorded.objective_components.J = {{recorded: false, definition_comparable: true, delta: null}};
 process.stdout.write(JSON.stringify({{
-  valid: valid.ok,
-  zero: valid.series[0].values[0],
-  nullValue: {{ ok: nullValue.ok, message: nullValue.message }},
-  badString: {{ ok: badString.ok, message: badString.message }},
-  mismatch: {{ ok: mismatch.ok, message: mismatch.message }},
-  reports: reported.length,
+  zero: compactStageFacts(base),
+  changed: compactStageFacts(changed),
+  missing: compactStageFacts(missing),
+  unrecorded: compactStageFacts(unrecorded),
 }}));
 """
-        completed = subprocess.run(
-            ["node", "--input-type=module", "--eval", script],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        result = json.loads(completed.stdout)
-        self.assertTrue(result["valid"])
-        self.assertEqual(0, result["zero"])
-        self.assertFalse(result["nullValue"]["ok"])
-        self.assertFalse(result["badString"]["ok"])
-        self.assertEqual("时序数据无效，无法绘制比较图表。", result["nullValue"]["message"])
-        self.assertFalse(result["mismatch"]["ok"])
-        self.assertEqual("比较时序轴不一致，无法绘制。", result["mismatch"]["message"])
-        self.assertEqual(3, result["reports"])
-        self.assertNotIn("Number(v)||0", JS.replace(" ", ""))
-        self.assertNotIn("Number(v||0)", JS.replace(" ", ""))
-
-    def test_condition_drawer_search_and_single_run_drilldown_are_present(self):
-        self.assertIn('id="resultsRunSearch"', HTML)
-        self.assertIn("runMatchesSearch", JS)
-        self.assertIn("/runs/${encodeURIComponent(id)}", JS)
-        self.assertIn("查看单次结果", JS)
-        self.assertIn("尚未选择比较条件", JS)
-        self.assertIn("选择比较条件", HTML)
-
-    def test_default_workspace_uses_a_real_backend_approved_damage_candidate(self):
-        for token in (
-            "defaultDamageCandidate",
-            "autoApplyDefaultComparison",
-            "await ensureWorkspaceCandidates('damage')",
-            "requestComparison('damage',selection)",
-        ):
-            self.assertIn(token, JS)
-        self.assertNotIn("payload={", extract_function(JS, "autoApplyDefaultComparison").replace(" ", ""))
-
-    def test_multi_and_configuration_workspaces_auto_apply_backend_approved_defaults(self):
-        discover = extract_function(JS, "discoverComparableCandidates")
-        auto = extract_function(JS, "autoApplyDefaultComparison")
-        for token in (
-            "rankedBaseRuns",
-            "loadComparable(run.run_id,mode)",
-            "items.length>=3",
-        ):
-            self.assertIn(token, discover.replace(" ", ""))
-        for token in (
-            "autoApplyWorkspaceDefault('damage')",
-            "autoApplyWorkspaceDefault('multi')",
-            "autoApplyWorkspaceDefault('configuration')",
-        ):
-            self.assertIn(token, auto.replace(" ", ""))
-        self.assertIn("requestComparison('multi',selection)", JS.replace(" ", ""))
-        self.assertIn("requestComparison('configuration',selection)", JS.replace(" ", ""))
-        self.assertIn("damageView.selection?.r1_run_id", JS)
-        self.assertIn("damageView.selection?.r2_run_id", JS)
-        self.assertNotIn("RUN-00fa756e", JS)
-
-    def test_default_base_ranking_follows_the_current_damage_workspace_without_ids(self):
-        helpers = "\n".join(extract_function(JS, name) for name in (
-            "runSituationId", "runCreatedAt", "rankedBaseRuns",
-        ))
-        script = f"""
-const runs = [
-  {{run_id:'HIGH-R2',created_at:'2026-08-19T10:03:00Z',situation:{{situation_id:'ST002'}},run_config:{{damage_scenario_id:'HIGH',cluster_enabled:true}}}},
-  {{run_id:'LOW-R1',created_at:'2026-08-19T10:02:00Z',situation:{{situation_id:'ST002'}},run_config:{{damage_scenario_id:'LOW',cluster_enabled:false}}}},
-  {{run_id:'R0',created_at:'2026-08-19T10:01:00Z',situation:{{situation_id:'ST002'}},run_config:{{damage_scenario_id:null,cluster_enabled:false}}}},
-  {{run_id:'OTHER',created_at:'2026-08-19T10:04:00Z',situation:{{situation_id:'ST003'}},run_config:{{damage_scenario_id:null,cluster_enabled:false}}}},
-];
-const state = {{runs,runById:new Map(runs.map((run)=>[run.run_id,run])),workspaceStates:{{damage:{{selection:{{r0_run_id:'R0',r1_run_id:'LOW-R1',r2_run_id:'HIGH-R2'}}}}}}}};
-{helpers}
-process.stdout.write(JSON.stringify({{
-  multi: rankedBaseRuns('multi').map((run)=>run.run_id),
-  configuration: rankedBaseRuns('configuration').map((run)=>run.run_id),
-}}));
-"""
-        completed = subprocess.run(
+        result = subprocess.run(
             ["node", "--input-type=module", "--eval", script], cwd=ROOT,
             check=True, capture_output=True, text=True, encoding="utf-8",
         )
-        ranked = json.loads(completed.stdout)
-        self.assertEqual("R0", ranked["multi"][0])
-        self.assertEqual("LOW-R1", ranked["configuration"][0])
+        facts = json.loads(result.stdout)
+        self.assertIn("履行、缺口、出动均未变化", [item["text"] for item in facts["zero"]])
+        self.assertEqual("出动 +18", facts["changed"][0]["text"])
+        self.assertEqual("J +133.14", facts["changed"][1]["text"])
+        self.assertNotIn("履行、缺口、出动均未变化", [item["text"] for item in facts["missing"]])
+        self.assertIn("履行 未记录", [item["text"] for item in facts["missing"]])
+        self.assertIn("J 不可比", [item["text"] for item in facts["missing"]])
+        self.assertIn("J 未记录", [item["text"] for item in facts["unrecorded"]])
 
-    def test_compact_empty_state_keeps_run_entry_point(self):
-        self.assertIn('当前暂无可用比较结果', JS)
-        self.assertIn('请先完成相应的算法运行', JS)
-        self.assertIn('id="resultsRunLink"', HTML)
-
-    def test_workspace_state_and_export_stay_scoped_to_current_comparison(self):
-        self.assertIn("const requestWorkspace=state.workspace", JS)
-        self.assertGreaterEqual(JS.count("if(state.workspace!==requestWorkspace)return"), 2)
-        self.assertGreaterEqual(JS.count("const requestDraft=state.draft"), 2)
-        self.assertGreaterEqual(JS.count("state.draft!==requestDraft"), 2)
-        for token in (
-            "workspaceStates", "payload", "draft", "baseRunId", "selectedRunIds",
-            "chartMode", "chartObjectId", "seriesKind", "bottomMode", "airportValue",
-        ):
-            self.assertIn(token, JS)
-        self.assertIn("permissions?.includes('results.export')", JS)
-        self.assertIn("/api/results/export-file", JS)
-        switch = extract_function(JS, "setWorkspace")
-        self.assertNotIn("state.payload=null", switch.replace(" ", ""))
-        self.assertNotIn("openOverlay()", switch)
-
-    def test_workspace_state_round_trip_preserves_each_comparison_and_ui_selection(self):
-        capture = extract_function(JS, "captureWorkspaceState")
-        activate = extract_function(JS, "activateWorkspaceState")
-        script = f"""
-const blank = () => ({{payload:null,selection:null,draft:{{name:'blank'}},chartMode:'all',chartObjectId:null,seriesKind:'departures',bottomMode:'airports',airportValue:'sorties'}});
-const state = {{
-  workspace:'damage', payload:{{id:'D'}}, selection:{{r0_run_id:'R0'}}, draft:{{name:'damage'}},
-  chartMode:'mission', chartObjectId:'M1', seriesKind:'returns', bottomMode:'scheme', airportValue:'share',
-  workspaceStates:{{damage:blank(),multi:blank(),configuration:blank()}},
-}};
-{capture}
-{activate}
-captureWorkspaceState();
-state.workspace='multi'; activateWorkspaceState('multi');
-state.payload={{id:'M'}}; state.selection={{run_ids:['A','B']}}; state.draft={{name:'multi'}};
-state.chartMode='airport'; state.chartObjectId='A1'; state.bottomMode='resources';
-captureWorkspaceState();
-state.workspace='damage'; activateWorkspaceState('damage');
-process.stdout.write(JSON.stringify({{payload:state.payload,selection:state.selection,draft:state.draft,chartMode:state.chartMode,chartObjectId:state.chartObjectId,seriesKind:state.seriesKind,bottomMode:state.bottomMode,airportValue:state.airportValue,multi:state.workspaceStates.multi}}));
-"""
-        completed = subprocess.run(
-            ["node", "--input-type=module", "--eval", script],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        result = json.loads(completed.stdout)
-        self.assertEqual("D", result["payload"]["id"])
-        self.assertEqual("damage", result["draft"]["name"])
-        self.assertEqual("mission", result["chartMode"])
-        self.assertEqual("M1", result["chartObjectId"])
-        self.assertEqual("returns", result["seriesKind"])
-        self.assertEqual("scheme", result["bottomMode"])
-        self.assertEqual("share", result["airportValue"])
-        self.assertEqual("M", result["multi"]["payload"]["id"])
-        self.assertEqual("resources", result["multi"]["bottomMode"])
-
-    def test_session_storage_is_user_scoped_and_never_persists_comparison_payload(self):
-        self.assertIn("sessionStorage", JS)
-        self.assertIn("user_id", JS)
-        self.assertIn("results.workspace", JS)
-        saved = extract_function(JS, "buildSessionState")
-        self.assertIn("selection", saved)
-        self.assertIn("chartMode", saved)
-        self.assertIn("bottomMode", saved)
-        self.assertNotIn("payload", saved)
-        self.assertIn("restoreSavedComparisons", JS)
-        self.assertIn("getAccount", JS)
-
-    def test_bottom_tabs_keep_full_airport_resource_and_scheme_views(self):
-        for label in ("全机场承接", "资源变化", "方案结构", "出动架次", "承接占比"):
-            self.assertIn(label, HTML)
-        self.assertNotIn("累计承接占比", HTML + JS)
-        self.assertIn("Object.keys(state.payload.airports", JS)
-
-    def test_metric_strip_uses_only_unified_canonical_run_summaries(self):
-        for label in ("需求", "实际履行", "当前缺口", "额外调度", "参与机场", "求解状态"):
-            self.assertIn(label, JS)
-        for field in (
-            "required_sorties_total",
-            "fulfilled_sorties_total",
-            "unmet_sorties_total",
-            "additional_sorties_total",
-            "participating_airport_count",
-            "solver_status",
-        ):
+    def test_configuration_mode_renders_only_key_configuration_differences(self):
+        self.assertIn('id="configurationDifferences"', HTML)
+        render = extract_function(JS, "renderConfigurationDifferences")
+        self.assertIn("key_configuration_differences", render)
+        for field in ("cluster_enabled", "cluster_size", "core_airports", "preference_mode", "alpha"):
             self.assertIn(field, JS)
-        self.assertIn("run_summaries", JS)
-        self.assertIn("difference_overview", JS)
-        self.assertIn("summary_deltas_vs_baseline", JS)
-        self.assertIn("row.departure_share", JS)
-        self.assertIn("objective_comparable", JS)
 
-    def test_condition_matrix_precedes_differences_and_marks_comparison_scope(self):
-        self.assertIn('id="resultsConditionMatrix"', HTML)
-        render = extract_function(JS, "renderConditionMatrix")
-        for token in ("comparability", "strict_modes", "differences", "time_axes", "descriptive_only"):
+    def test_one_chart_switches_event_and_observation_without_duplicate_charts(self):
+        self.assertEqual(1, HTML.count('id="resultsChart"'))
+        for token in ('data-series-kind="departures"', 'data-series-kind="returns"', 'data-observation="trend"', 'data-observation="delta"', 'data-observation="cumulative"', 'id="resultsTimeNavigation"'):
+            self.assertIn(token, HTML)
+        chart = extract_function(JS, "renderChart")
+        self.assertIn("currentFocus()", chart)
+        self.assertIn("focus_comparison", extract_function(JS, "currentFocus"))
+        self.assertIn("cumulative", extract_function(JS, "timelineSeries"))
+        self.assertIn("visibleWindowCount", chart)
+        self.assertNotIn("run_ids.slice(0,", JS)
+
+    def test_chart_legend_uses_short_labels_independent_from_condition_identity(self):
+        legend = extract_function(JS, "legendLabel")
+        for token in ("R0 基准", "R1 损毁", "R2 组群", "D${index}", "基准"):
+            self.assertIn(token, legend)
+        timeline = extract_function(JS, "timelineSeries")
+        self.assertIn("legendLabel", timeline)
+        self.assertNotIn("runLabel", timeline)
+
+    def test_precise_result_table_includes_solver_and_objective_components(self):
+        self.assertIn('id="resultsValueComparison"', HTML)
+        render = extract_function(JS, "renderValueComparison")
+        for token in ("任务需求", "实际履行", "任务缺口", "额外调度", "F1", "F2", "F3", "J"):
             self.assertIn(token, render)
-        self.assertIn("仅描述，不作因果归因", JS)
-        comparison = extract_function(JS, "renderComparison")
-        self.assertLess(comparison.index("renderConditionMatrix()"), comparison.index("renderMetrics()"))
+        self.assertIn("solverStatusSummary", render)
+        self.assertNotIn("非最优终止时为已取得可行值", render)
+        self.assertIn("definition_comparable", render)
+        self.assertIn("未记录", JS)
 
-    def test_solver_interval_uses_formal_bounds_and_never_infers_optimality(self):
-        self.assertIn('id="resultsSolverComparison"', HTML)
-        render = extract_function(JS, "renderSolverComparison")
-        for token in ("solver_comparison", "objective", "best_bound", "gap", "solve_time_s", "f1", "f2", "f3", "cluster_lp_objective"):
-            self.assertIn(token, JS)
-        self.assertIn("proven_strict_orderings", render)
-        self.assertIn("未记录", render)
-        self.assertIn("可行下界", render)
-        self.assertIn("对偶上界", render)
-        self.assertIn("不是五维综合评价", render)
-
-    def test_object_drilldown_uses_second_stage_endpoint_for_all_supported_types(self):
-        for element_id in ("resultsObjectType", "resultsObjectId", "resultsObjectAirport", "resultsObjectResource", "resultsObjectAircraft", "resultsObjectDetail"):
-            self.assertIn(f'id="{element_id}"', HTML)
-        request = extract_function(JS, "requestObjectComparison")
-        self.assertIn("/api/results/object-comparison", request)
-        for object_type in ("task", "airport", "resource", "aircraft", "collaboration"):
-            self.assertIn(f"'{object_type}'", JS)
-        self.assertIn("delta_vs_baseline", JS)
-        self.assertIn("chain_changes", JS)
-        self.assertIn("origin_airport_id", JS)
-        self.assertIn("return_airport_id", JS)
-        self.assertIn("depart_window", JS)
-        self.assertIn("return_window", JS)
-
-    def test_missing_zero_and_not_applicable_are_distinct_display_states(self):
-        display = extract_function(JS, "displayValue")
+    def test_solver_status_is_short_with_detail_in_title(self):
+        status = extract_function(JS, "solverStatusSummary")
         script = f"""
-{display}
+{extract_function(JS, "number")}
+{status}
 process.stdout.write(JSON.stringify([
-  displayValue(null), displayValue(undefined), displayValue(0), displayValue(null, {{notApplicable:true}})
+  solverStatusSummary({{solver_status:'optimal', gap:0}}),
+  solverStatusSummary({{solver_status:'gaplimit', gap:0.0041}}),
+  solverStatusSummary({{solver_status:'timelimit', gap:null}}),
+  solverStatusSummary({{}}),
 ]));
 """
-        completed = subprocess.run(
+        result = subprocess.run(
             ["node", "--input-type=module", "--eval", script], cwd=ROOT,
             check=True, capture_output=True, text=True, encoding="utf-8",
         )
-        self.assertEqual(["未记录", "未记录", "0", "不适用"], json.loads(completed.stdout))
+        values = json.loads(result.stdout)
+        self.assertEqual("已证最优", values[0]["text"])
+        self.assertEqual("可行解，未证最优", values[1]["text"])
+        self.assertIn("Gap", values[1]["detail"])
+        self.assertEqual("可行解，未证最优", values[2]["text"])
+        self.assertEqual("求解状态未记录", values[3]["text"])
 
-    def test_exploratory_selection_is_not_limited_by_chart_readability(self):
-        overlay = extract_function(JS, "renderComparableOverlay")
-        self.assertIn("mode==='exploratory'?50", overlay.replace(" ", ""))
-        self.assertIn("表格保留全部 Run", JS)
-        self.assertIn("图表仅显示前", JS)
+    def test_chart_subtitle_is_contextual_not_a_permanent_defensive_explanation(self):
+        self.assertNotIn("完整时间范围累计，不受可视窗口影响", HTML + JS)
+        chart = extract_function(JS, "renderChart")
+        self.assertIn("refs.chartSubtitle", chart)
+        self.assertIn("完整正式时间范围", chart)
 
-    def test_frozen_labels_drive_airport_mission_and_aircraft_display(self):
-        self.assertIn("state.payload.labels", JS)
-        self.assertIn("labelFor", JS)
-        self.assertIn("airports", extract_function(JS, "labelFor"))
-        self.assertIn("missions", extract_function(JS, "labelFor"))
-        self.assertIn("aircraft", extract_function(JS, "labelFor"))
-        self.assertIn("airportDisplayLabel", JS)
-        self.assertIn("shortRunId", JS)
-        self.assertNotIn("`${label} · ${id}`", extract_function(JS, "labelFor"))
+    def test_lower_area_has_exactly_three_summary_themes_and_no_object_drilldown(self):
+        for theme, label in (("tasks", "任务与机型"), ("airports", "机场与协同"), ("assurance", "运行保障")):
+            self.assertIn(f'data-analysis-theme="{theme}"', HTML)
+            self.assertIn(label, HTML)
+        self.assertNotIn("对象级下钻", HTML)
+        self.assertNotIn("object-comparison", JS)
+        self.assertIn("renderAssuranceTheme", extract_function(JS, "renderTheme"))
 
-    def test_visual_geometry_keeps_main_compare_and_overlay(self):
-        self.assertIn("grid-template-columns:minmax(0,3fr) minmax(280px,1fr)", CSS)
-        self.assertIn("overflow:auto", CSS)
-        self.assertIn("overflow:hidden", CSS)
-        self.assertIn("grid-template-rows", CSS)
-        self.assertIn("position:fixed", CSS)
-        self.assertIn("width:min(390px", CSS)
-        self.assertIn("results-chart-tooltip", CSS)
-        self.assertIn("results-hover-line", JS)
+    def test_task_theme_adds_one_inline_positive_negative_contribution_view(self):
+        render = extract_function(JS, "renderTaskTheme")
+        self.assertIn("structural_changes?.tasks", render)
+        self.assertIn("differenceBar", render)
+        self.assertIn("difference-bar", CSS)
+        self.assertNotIn('id="resultsChart2"', HTML)
+
+    def test_conclusions_are_backend_bound_and_limited_to_two(self):
+        render = extract_function(JS, "renderConclusions")
+        self.assertIn("slice(0, 2)", render)
+        self.assertIn("focus?.conclusions", render)
+        self.assertNotIn("因为", render)
+
+    def test_export_preserves_current_mode_and_focus_relation(self):
+        export_body = extract_function(JS, "exportRequestBody")
+        for token in ("damage_comparison", "scenario_comparison", "configuration_comparison"):
+            self.assertIn(token, export_body)
+        self.assertIn("baseline_run_id", export_body)
+        self.assertIn("comparison_run_id", export_body)
+        self.assertIn("/api/results/export-file", JS)
+
+    def test_missing_zero_and_not_comparable_are_distinct(self):
+        function = extract_function(JS, "displayValue")
+        script = f"""
+{function}
+process.stdout.write(JSON.stringify([
+  displayValue(null), displayValue(0), displayValue(4, {{ comparable:false }}),
+  displayValue(null, {{ notApplicable:true }})
+]));
+"""
+        result = subprocess.run(["node", "--input-type=module", "--eval", script], cwd=ROOT, check=True, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(["未记录", "0", "不可直接比较", "不适用"], json.loads(result.stdout))
+
+    def test_responsive_geometry_keeps_primary_analysis_in_first_view(self):
+        self.assertIn("grid-template-columns:minmax(0,1.65fr) minmax(300px,.75fr)", CSS)
+        self.assertIn("@media(max-width:1366px)", CSS)
+        self.assertIn("@media(max-height:800px)", CSS)
+        self.assertIn("@media(max-width:1100px)", CSS)
+        self.assertIn("overflow-x:auto", CSS)
+        self.assertIn("max-height", CSS)
+
+    def test_workspace_persistence_never_serializes_payload(self):
+        saved = extract_function(JS, "buildSessionState")
+        self.assertIn("selection", saved)
+        self.assertIn("activeDamageStage", saved)
+        self.assertIn("observation", saved)
+        self.assertNotIn("payload", saved)
+        self.assertIn("sessionStorage", JS)
 
 
 if __name__ == "__main__":

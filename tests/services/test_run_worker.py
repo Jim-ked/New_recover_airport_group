@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.algorithm.runner import AlgorithmRunResult, run_once
+from backend.algorithm.runner import AlgorithmConfigurationError, AlgorithmRunResult, run_once
 from backend.services.run_result_service import RunResultService
 from backend.services.run_service import RunService
 from backend.services.run_worker import RunWorker
@@ -165,6 +165,22 @@ class RunWorkerTests(unittest.TestCase):
         internal = [e.payload.get("internal_stage") for e in self.runs.list_events("R1")]
         self.assertNotIn("cluster", internal)
         self.assertNotIn("quick_evaluation", [e.stage for e in self.runs.list_events("R1")])
+
+    def test_model_configuration_error_is_not_misreported_as_persistence_failure(self):
+        self._queue()
+
+        def broken_configuration(_snapshot, **_kwargs):
+            raise AlgorithmConfigurationError(
+                "f2_resource_weights.fuel is missing",
+                stage="exact_optimization",
+            )
+
+        record = self._worker(algorithm_runner=broken_configuration).execute("R1")
+        self.assertEqual("failed", record.status)
+        self.assertEqual("MODEL_CONFIGURATION_ERROR", record.failure_code)
+        event = self.runs.list_events("R1")[-1]
+        self.assertEqual("exact_optimization", event.stage)
+        self.assertEqual("MODEL_CONFIGURATION_ERROR", event.payload["failure_code"])
 
 
 if __name__ == "__main__":

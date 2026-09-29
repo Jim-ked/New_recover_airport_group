@@ -122,6 +122,44 @@ def build_tidy_rows(report_data: Mapping[str, Any]) -> list[Dict[str, str]]:
                         rows.extend(_flatten_scalar_map(kind, "sortie_chains", chain, entity_type="sortie_chain", entity_id=str(chain.get("path_id") or idx)))
     else:
         # comparison.v1: keep every comparison number tied to role/series/time window.
+        focus = data.get("focus_comparison") or {}
+        if isinstance(focus, Mapping):
+            for key in ("baseline_run_id", "comparison_run_id", "relation", "eligible"):
+                rows.append(_row(kind, "focus", key, focus.get(key)))
+            values = focus.get("values") or {}
+            if isinstance(values, Mapping):
+                for metric, facts in values.items():
+                    if isinstance(facts, Mapping):
+                        for series in ("baseline", "current", "delta"):
+                            rows.append(_row(kind, "focus_values", str(metric), facts.get(series), series=series))
+            components = focus.get("objective_components") or {}
+            if isinstance(components, Mapping):
+                for component, facts in components.items():
+                    if not isinstance(facts, Mapping):
+                        continue
+                    for field in ("baseline", "current", "delta", "definition_comparable", "recorded"):
+                        rows.append(_row(kind, "objective_components", f"{component}.{field}", facts.get(field)))
+            focus_timeline = focus.get("timeline") or {}
+            focus_windows = list(focus_timeline.get("windows") or []) if isinstance(focus_timeline, Mapping) else []
+            if isinstance(focus_timeline, Mapping):
+                for metric in ("departures", "returns"):
+                    fact = focus_timeline.get(metric) or {}
+                    if not isinstance(fact, Mapping):
+                        continue
+                    for series in ("baseline", "current", "delta"):
+                        values = fact.get(series)
+                        if isinstance(values, list) and len(values) == len(focus_windows):
+                            for t, value in zip(focus_windows, values):
+                                rows.append(_row(kind, "focus_timeline", metric, value, series=series, time_window=t))
+                    cumulative = fact.get("cumulative") or {}
+                    if isinstance(cumulative, Mapping):
+                        for series in ("baseline", "current", "delta"):
+                            values = cumulative.get(series)
+                            if isinstance(values, list) and len(values) == len(focus_windows):
+                                for t, value in zip(focus_windows, values):
+                                    rows.append(_row(kind, "focus_cumulative", metric, value, series=series, time_window=t))
+            for index, conclusion in enumerate(focus.get("conclusions") or [], start=1):
+                rows.append(_row(kind, "conclusions", f"conclusion_{index}", conclusion))
         for section in ("difference_overview", "summary", "collaboration"):
             payload = data.get(section) or {}
             if isinstance(payload, Mapping):
@@ -211,8 +249,8 @@ class ResultExportService:
         story = [Paragraph("机场群顽存能力仿真结果报告", title)]
         labels = {
             "single_run": "单次运行",
-            "damage_comparison": "损毁影响与优化效果比较",
-            "scenario_comparison": "多场景比较",
+            "damage_comparison": "损毁与组群比较",
+            "scenario_comparison": "多损毁比较",
             "configuration_comparison": "方案配置比较",
         }
         story.append(Paragraph(f"报告类型：{labels.get(kind, kind)}", body))

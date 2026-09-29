@@ -1,13 +1,13 @@
 import { apiFetch, ApiError, saveBlob } from './api-client.js';
 import { getAccount } from './account-context.js';
-import { formatInteger, formatPercent, formatSeconds } from './number-display.js';
+import { formatDecimal, formatInteger, formatPercent } from './number-display.js';
 
 const STAGE_GROUPS = [
   { key: 'data_preparation', label: '数据准备' },
   { key: 'candidate_generation', label: '候选搜索' },
   { key: 'quick_evaluation', label: '快速评估' },
   { key: 'exact_optimization', label: '精确求解' },
-  { key: 'persistence', label: '结果持久化' },
+  { key: 'persistence', label: '结果保存' },
 ];
 
 const VALIDATION_LABELS = {
@@ -29,8 +29,8 @@ const ACTIVITY_LABELS = {
   solve: '正在执行精确求解',
   solution: '正在校验并整理求解结果',
   complete: '算法求解完成',
-  worker_started: 'Worker 已接收运行任务',
-  run_succeeded: '结果已生成并完成持久化',
+  worker_started: '运行服务已接收任务',
+  run_succeeded: '结果已生成并保存',
   run_cancelled: '运行已取消',
   run_failed: '运行失败',
 };
@@ -43,7 +43,7 @@ const PREFERENCE_LABELS = {
 };
 
 const STATUS_LABELS = {
-  queued: '等待 Worker',
+  queued: '等待运行',
   running: '运行中',
   succeeded: '运行完成',
   failed: '运行失败',
@@ -78,6 +78,11 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const runPage = $('runPage');
+const objectiveProfile = {
+  id: runPage?.dataset.objectiveProfileId || '',
+  aircraftWeights: JSON.parse(runPage?.dataset.objectiveAircraftWeights || '{}'),
+};
 const refs = {
   pageMessage: $('pageMessage'),
   situation: $('situationSelect'),
@@ -151,7 +156,9 @@ function applyRunPermissionState() {
     refs.submitButton.title = '当前账号只有查看权限';
   } else {
     refs.validateButton.removeAttribute('title');
-    refs.submitButton.removeAttribute('title');
+    refs.submitButton.disabled = !state.validation?.can_submit;
+    if (refs.submitButton.disabled) refs.submitButton.title = '请先校验运行条件';
+    else refs.submitButton.removeAttribute('title');
   }
 }
 
@@ -170,6 +177,7 @@ function selectedCoreAirports() {
 function aircraftWeights() {
   const result = {};
   refs.aircraftWeightOptions.querySelectorAll('input[data-aircraft-weight]').forEach((input) => {
+    if (input.disabled) return;
     const text = input.value.trim();
     if (!text) return;
     const value = Number(text);
@@ -190,6 +198,7 @@ function buildRunConfig() {
   const clusterEnabled = refs.clusterEnabled.checked;
   const config = {
     damage_scenario_id: refs.damage.value || null,
+    objective_profile_id: objectiveProfile.id,
     preference_mode: mode,
     cluster_enabled: clusterEnabled,
     cluster_size: null,
@@ -230,6 +239,7 @@ function invalidateValidation() {
   state.validation = null;
   state.validationFingerprint = null;
   refs.submitButton.disabled = true;
+  refs.submitButton.title = '请先校验运行条件';
   refs.validationSummary.textContent = '配置已修改，待重新校验';
   refs.validationSummary.className = 'fold-summary validation-dirty';
 }
@@ -314,12 +324,16 @@ function renderSituationDetail(situation) {
 
   refs.aircraftWeightOptions.replaceChildren();
   const types = collectAircraftTypes(situation);
+  const configurableTypes = types.filter((id) => !Object.hasOwn(objectiveProfile.aircraftWeights, id));
   if (!types.length) {
     refs.aircraftWeightOptions.className = 'weight-grid empty-box';
-    refs.aircraftWeightOptions.textContent = '当前情境没有可配置机型';
+    refs.aircraftWeightOptions.textContent = '当前情境未涉及机型';
+  } else if (!configurableTypes.length) {
+    refs.aircraftWeightOptions.className = 'weight-grid empty-box';
+    refs.aircraftWeightOptions.textContent = '当前情境无需补充机型权重';
   } else {
     refs.aircraftWeightOptions.className = 'weight-grid';
-    for (const id of types) {
+    for (const id of configurableTypes) {
       const row = document.createElement('label');
       row.className = 'weight-row';
       const text = document.createElement('span');
@@ -329,8 +343,8 @@ function renderSituationDetail(situation) {
       input.type = 'number';
       input.min = '0.000001';
       input.step = '0.1';
-      input.placeholder = '1.0';
       input.dataset.aircraftWeight = id;
+      input.placeholder = '请输入正数';
       input.addEventListener('input', () => { invalidateValidation(); updateAdvancedSummary(); });
       row.append(text, input);
       refs.aircraftWeightOptions.append(row);
@@ -369,7 +383,8 @@ async function onSituationChanged() {
   if (!id) {
     refs.damage.innerHTML = '<option value="">请先选择情境</option>';
     refs.coreAirportOptions.textContent = '选择情境后可设置';
-    refs.aircraftWeightOptions.textContent = '选择情境后按涉及机型生成；留空表示 1.0';
+    refs.aircraftWeightOptions.className = 'weight-grid empty-box';
+    refs.aircraftWeightOptions.textContent = '选择情境后检查是否需要补充';
     updateClusterSummary();
     return;
   }
@@ -416,8 +431,9 @@ function onClusterEnabledChanged() {
 
 function updateAdvancedSummary() {
   const time = refs.mipTimeLimit.value.trim() || '120';
-  const weights = [...refs.aircraftWeightOptions.querySelectorAll('input[data-aircraft-weight]')].filter((x) => x.value.trim()).length;
-  refs.advancedSummary.textContent = `${formatSeconds(Number(time))} · ${weights ? `${formatInteger(weights)}个机型权重覆盖` : '机型权重默认1.0'}`;
+  const extensions = [...refs.aircraftWeightOptions.querySelectorAll('input[data-aircraft-weight]')]
+    .filter((input) => !input.disabled && input.value.trim()).length;
+  refs.advancedSummary.textContent = `求解时限 ${formatDecimal(Number(time))}秒${extensions ? ` · ${formatInteger(extensions)}个机型权重` : ''}`;
 }
 
 function renderValidation(result) {
@@ -440,13 +456,17 @@ function renderValidation(result) {
     refs.validationChecks.append(row);
   }
   const summary = result.input_summary || {};
-  const facts = `${summary.airport_count ?? 0}机场 · ${summary.mission_count ?? 0}任务 · ${summary.od_pair_count ?? 0} OD`;
+  const facts = `${summary.airport_count ?? 0}机场 · ${summary.mission_count ?? 0}任务`;
   const hasWarning = (result.checks || []).some((check) => check.status === 'warning');
   const failedCount = (result.checks || []).filter((check) => check.status === 'failed').length;
   const label = !result.can_submit ? `× ${failedCount}项未通过` : hasWarning ? '! 校验通过，有提示' : '✓ 运行条件通过';
   refs.validationSummary.textContent = `${label} · ${facts}`;
   refs.validationSummary.className = `fold-summary ${!result.can_submit ? 'validation-failed' : hasWarning ? 'validation-warning' : 'validation-ok'}`;
-  refs.submitButton.disabled = !result.can_submit || (state.accountReady && !can('runs.execute'));
+  const permissionDenied = state.accountReady && !can('runs.execute');
+  refs.submitButton.disabled = !result.can_submit || permissionDenied;
+  refs.submitButton.title = !result.can_submit
+    ? '运行条件未通过'
+    : permissionDenied ? '当前账号无运行权限' : '';
   const open = !result.can_submit;
   applyFoldState('validationFold', open);
 }
@@ -484,7 +504,7 @@ async function submitRun() {
   const validatedInputHash = state.validation?.validated_input_hash;
   if (typeof validatedInputHash !== 'string' || validatedInputHash.length !== 64) {
     invalidateValidation();
-    showMessage('校验结果缺少服务器输入指纹，请重新校验后再运行', 'warning');
+    showMessage('校验结果已失效，请重新校验后再运行', 'warning');
     return;
   }
   body.expected_input_hash = validatedInputHash;
@@ -572,7 +592,7 @@ function stageProgress(run, events) {
   const clusterDisabled = run?.run_config?.cluster_enabled === false;
   let phase = !run
     ? { position: '尚未开始', label: '尚未开始' }
-    : { position: '等待 Worker', label: '尚未进入运行阶段' };
+    : { position: '等待运行', label: '尚未进入运行阶段' };
 
   if (run && clusterDisabled) {
     stages[1] = 'skipped';
@@ -580,7 +600,7 @@ function stageProgress(run, events) {
   }
 
   if (run?.status === 'queued') {
-    phase = { position: '等待 Worker', label: '尚未进入运行阶段' };
+    phase = { position: '等待运行', label: '尚未进入运行阶段' };
   } else if (internalStage === 'prepare') {
     stages[0] = 'active';
     phase = { position: '当前阶段 1 / 5', label: '数据准备' };
@@ -609,17 +629,17 @@ function stageProgress(run, events) {
     stages.fill('done', 0, 4);
     if (clusterDisabled) { stages[1] = 'skipped'; stages[2] = 'skipped'; }
     stages[4] = 'active';
-    phase = { position: '当前阶段 5 / 5', label: '结果持久化' };
+    phase = { position: '当前阶段 5 / 5', label: '结果保存' };
   } else if (internalStage === 'complete') {
     stages.fill('done');
     if (clusterDisabled) { stages[1] = 'skipped'; stages[2] = 'skipped'; }
-    phase = { position: '阶段 5 / 5', label: '结果持久化' };
+    phase = { position: '阶段 5 / 5', label: '结果保存' };
   }
 
   if (run?.status === 'succeeded') {
     stages.fill('done');
     if (clusterDisabled) { stages[1] = 'skipped'; stages[2] = 'skipped'; }
-    phase = { position: '运行完成', label: '结果已持久化' };
+    phase = { position: '运行完成', label: '结果已保存' };
   } else if (run?.status === 'failed' || run?.status === 'cancelled') {
     const halted = run.status === 'failed' ? 'failed' : 'cancelled';
     const activeIndex = stages.findIndex((status) => status === 'active');
@@ -670,8 +690,8 @@ function renderStages(run, events) {
 
 function currentActivity(run, events) {
   if (!run) return '尚未开始运行';
-  if (run.status === 'queued') return state.workerStatus.connected ? '运行任务已进入队列，等待 Worker 接收。' : 'Worker 未连接/未运行，任务仍在队列中。';
-  if (run.status === 'succeeded') return '运行完成，结果已持久化';
+  if (run.status === 'queued') return state.workerStatus.connected ? '运行任务已进入队列，等待运行服务接收。' : '运行服务当前不可用，任务仍在队列中。';
+  if (run.status === 'succeeded') return '运行完成，结果已保存';
   if (run.status === 'failed') return '运行失败';
   if (run.status === 'cancelled') return '运行已取消';
   const latest = events[events.length - 1];
@@ -759,7 +779,7 @@ function timestamp(value) {
 }
 
 function elapsedText(run) {
-  if (!run?.started_at) return run?.status === 'queued' ? '等待 Worker' : '—';
+  if (!run?.started_at) return run?.status === 'queued' ? '等待运行' : '—';
   const start = timestamp(run.started_at);
   const end = run.finished_at ? timestamp(run.finished_at) : new Date();
   if (!start || !end) return '—';
@@ -895,7 +915,7 @@ function renderHistory() {
     if (run.status === 'failed' && can('runs.execute')) {
       const retryButton = document.createElement('button');
       retryButton.type = 'button'; retryButton.className = 'link-button'; retryButton.textContent = '重试';
-      retryButton.title = '复制该失败 Run 的不可变冻结输入并创建新 Run';
+      retryButton.title = '使用该失败运行的原始输入创建新运行';
       retryButton.addEventListener('click', () => retryFailedRun(run));
       actions.append(retryButton);
     }

@@ -17,6 +17,51 @@ from tests.algorithm.test_runner import RunnerFakeModel
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
 
+class ComparisonExportRowsTests(unittest.TestCase):
+    def test_comparison_export_preserves_focus_relation_components_and_full_timeline(self):
+        source = {
+            "schema_version": "report-data.v1",
+            "kind": "scenario_comparison",
+            "source_run_ids": ["BASE", "CURRENT"],
+            "data": {
+                "focus_comparison": {
+                    "baseline_run_id": "BASE",
+                    "comparison_run_id": "CURRENT",
+                    "relation": "CURRENT-BASE",
+                    "values": {
+                        "unmet_sorties_total": {"baseline": 4, "current": 2, "delta": -2},
+                    },
+                    "objective_components": {
+                        "F1": {"baseline": 10, "current": 11, "delta": 1, "definition_comparable": True},
+                    },
+                    "timeline": {
+                        "windows": [0, 1],
+                        "departures": {
+                            "baseline": [1, 2], "current": [2, 2], "delta": [1, 0],
+                            "cumulative": {"baseline": [1, 3], "current": [2, 4], "delta": [1, 1]},
+                        },
+                        "returns": {
+                            "baseline": [0, 1], "current": [0, 2], "delta": [0, 1],
+                            "cumulative": {"baseline": [0, 1], "current": [0, 2], "delta": [0, 1]},
+                        },
+                    },
+                    "conclusions": ["缺口减少2架次。"],
+                },
+            },
+        }
+
+        rows = build_tidy_rows(source)
+
+        self.assertTrue(any(row["metric"] == "relation" and row["value"] == "CURRENT-BASE" for row in rows))
+        self.assertTrue(any(row["section"] == "objective_components" and row["metric"] == "F1.delta" for row in rows))
+        self.assertEqual(2, len([row for row in rows if row["section"] == "focus_timeline" and row["metric"] == "departures" and row["series"] == "delta"]))
+        exporter = ResultExportService()
+        csv_text = exporter.render_csv(source).content.decode("utf-8-sig")
+        self.assertIn("CURRENT-BASE", csv_text)
+        self.assertIn("objective_components", csv_text)
+        self.assertTrue(exporter.render_pdf(source).content.startswith(b"%PDF-"))
+
+
 class ResultExportServiceTests(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()

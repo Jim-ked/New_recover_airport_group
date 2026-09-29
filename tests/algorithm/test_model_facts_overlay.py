@@ -120,7 +120,14 @@ class ModelFactsOverlayTests(unittest.TestCase):
         with self.assertRaisesRegex(mf.ModelFactError, "f3_time_reference_slots is required"):
             mf.objective_coefficients(b.ds, maps, b.run_params, runtime)
 
-    def test_f3_is_completion_time_cost_and_is_monotone_for_later_completion(self):
+    def test_missing_aircraft_weight_is_an_explicit_error_not_a_worker_default(self):
+        b, maps = self._fixture()
+        runtime = dict(b.runtime)
+        runtime["aircraft_type_weight"] = {}
+        with self.assertRaisesRegex(mf.ModelFactError, "aircraft_type_weight missing"):
+            mf.objective_coefficients(b.ds, maps, b.run_params, runtime)
+
+    def test_f3_is_relative_completion_delay_with_separate_tardiness(self):
         b, maps = self._fixture()
         paths = sorted(
             (
@@ -132,11 +139,12 @@ class ModelFactsOverlayTests(unittest.TestCase):
         early, late = paths[0], paths[-1]
         rows = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)
         self.assertGreaterEqual(rows[late.key].f3, rows[early.key].f3)
-        completion_abs = b.ds["range"][0] + early.mission_arrival_slot + early.tau_work_windows
-        window_end_abs = b.ds["range"][0] + b.ds["static"]["missions"][0]["_duty_window"][1]
+        window_start, window_end = b.ds["static"]["missions"][0]["_duty_window"]
+        completion = early.mission_arrival_slot + early.tau_work_windows
+        reference_completion = window_start + early.tau_work_windows
         expected = (
-            completion_abs
-            + 1.5 * max(0, completion_abs - window_end_abs)
+            max(0, completion - reference_completion)
+            + 1.5 * max(0, completion - window_end)
         ) / 20.0
         self.assertAlmostEqual(expected, rows[early.key].f3)
 
@@ -197,7 +205,7 @@ class ModelFactsOverlayTests(unittest.TestCase):
         )
         p_yes = next(
             x for x in maps_yes.path_records
-            if x.origin_airport_id == "A1" and x.return_airport_id == "A1" and x.depart_slot == 0
+            if x.origin_airport_id == "A1" and x.return_airport_id == "A1" and x.depart_slot == 1
         )
         mf.validate_schedule_base(supplied.ds, maps_yes, supplied.run_params, {p_yes.key: 2})
 

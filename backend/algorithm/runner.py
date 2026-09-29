@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 from backend.domain.run_snapshot import RunSnapshot
 from backend.domain.solution import Solution
-from backend.algorithm.snapshot_adapter import build_algorithm_input
+from backend.algorithm.snapshot_adapter import AlgorithmInputError, build_algorithm_input
 from original_algorithm_overlay.model.cluster_selector import select_cluster
 from original_algorithm_overlay.model.decision_vars import build_base_path_map, build_path_map_from_base
 from original_algorithm_overlay.model.model_builder import build_model
@@ -21,6 +21,12 @@ from original_algorithm_overlay.utils.solution_dump import SolutionDumpError, bu
 
 class AlgorithmRunError(RuntimeError):
     pass
+
+
+class AlgorithmConfigurationError(AlgorithmRunError):
+    def __init__(self, message: str, *, stage: str) -> None:
+        super().__init__(message)
+        self.stage = stage
 
 
 class AlgorithmInfeasibleError(AlgorithmRunError):
@@ -196,7 +202,10 @@ def run_once(
         raise TypeError("run_once requires RunSnapshot")
 
     _emit(event_cb, stage="prepare", progress=0.05, message="Build immutable algorithm input")
-    bundle = build_algorithm_input(snapshot)
+    try:
+        bundle = build_algorithm_input(snapshot)
+    except AlgorithmInputError as exc:
+        raise AlgorithmConfigurationError(str(exc), stage="data_preparation") from exc
     ds, run_params, runtime = bundle.ds, bundle.run_params, bundle.runtime
 
     cluster_result = None
@@ -205,14 +214,17 @@ def run_once(
         if isinstance(K, bool) or not isinstance(K, int) or K <= 0:
             raise AlgorithmRunError("canonical cluster_size is missing/invalid")
         _emit(event_cb, stage="cluster", progress=0.20, message="Evaluate airport clusters")
-        cluster_result = cluster_selector_fn(
-            ds=ds,
-            run_params=run_params,
-            runtime=runtime,
-            K=K,
-            random_seed=int(runtime["algorithm_seed"]),
-            trace_level=0,
-        )
+        try:
+            cluster_result = cluster_selector_fn(
+                ds=ds,
+                run_params=run_params,
+                runtime=runtime,
+                K=K,
+                random_seed=int(runtime["algorithm_seed"]),
+                trace_level=0,
+            )
+        except ModelFactError as exc:
+            raise AlgorithmConfigurationError(str(exc), stage="candidate_generation") from exc
         cluster_cfg = cluster_result.get("cluster_cfg")
         if not isinstance(cluster_cfg, dict) or not cluster_cfg.get("S"):
             raise AlgorithmRunError("cluster selector returned no selected cluster")
@@ -233,7 +245,10 @@ def run_once(
     }
     if model_factory is not None:
         kwargs["model_factory"] = model_factory
-    model, pack = model_builder_fn(**kwargs)
+    try:
+        model, pack = model_builder_fn(**kwargs)
+    except ModelFactError as exc:
+        raise AlgorithmConfigurationError(str(exc), stage="exact_optimization") from exc
 
     _emit(event_cb, stage="solve", progress=0.75, message="Solve MIP")
     try:
@@ -273,7 +288,10 @@ def run_once(
     except SolutionDumpError as exc:
         raise AlgorithmRunError(str(exc)) from exc
 
-    coefficients = objective_coefficients(ds, maps, run_params, runtime)
+    try:
+        coefficients = objective_coefficients(ds, maps, run_params, runtime)
+    except ModelFactError as exc:
+        raise AlgorithmConfigurationError(str(exc), stage="exact_optimization") from exc
     components, unmet_total, unmet_penalty = _solution_objective_components(
         model, pack, coefficients
     )
@@ -315,6 +333,7 @@ def run_once(
 
 __all__ = [
     "AlgorithmRunError",
+    "AlgorithmConfigurationError",
     "AlgorithmInfeasibleError",
     "AlgorithmRunResult",
     "run_once",

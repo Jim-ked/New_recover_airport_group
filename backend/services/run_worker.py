@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from backend.algorithm.runner import (
+    AlgorithmConfigurationError,
     AlgorithmInfeasibleError,
     AlgorithmRunError,
     AlgorithmRunResult,
@@ -218,6 +219,27 @@ class RunWorker:
                     "gap": exc.gap,
                     "solve_time_s": exc.solve_time_s,
                 },
+            )
+            return record
+
+        except AlgorithmConfigurationError as exc:
+            if self.run_service.worker_cancel_requested(run_id):
+                record = self.run_service.mark_cancelled_by_worker(run_id)
+                self._append(
+                    run_id, level="WARNING", stage="persistence", event="run_cancelled",
+                    message="Run cancelled after algorithm returned",
+                )
+                return record
+            record = self.run_service.mark_failed_by_worker(
+                run_id, message=str(exc), code="MODEL_CONFIGURATION_ERROR"
+            )
+            self._append(
+                run_id,
+                level="ERROR",
+                stage=exc.stage,
+                event="run_failed",
+                message=str(exc),
+                payload={"failure_code": "MODEL_CONFIGURATION_ERROR"},
             )
             return record
 

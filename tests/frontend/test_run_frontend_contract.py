@@ -117,9 +117,9 @@ class RunFrontendContractTests(unittest.TestCase):
         self.assertIn("terminalFailureStageIndex(events)", RUN_JS)
         self.assertIn("group.key === event.stage", RUN_JS)
         for label in (
-            "Worker 未连接/未运行",
-            "运行任务已进入队列，等待 Worker 接收。",
-            "运行完成，结果已持久化",
+            "运行服务当前不可用",
+            "运行任务已进入队列，等待运行服务接收。",
+            "运行完成，结果已保存",
             "运行失败",
             "运行已取消",
         ):
@@ -131,6 +131,23 @@ class RunFrontendContractTests(unittest.TestCase):
         mip_match = re.search(r'id="mipTimeLimit"[^>]*', RUN_HTML)
         self.assertIsNotNone(mip_match)
         self.assertIn('value="120"', mip_match.group(0))
+
+    def test_versioned_objective_profile_is_submitted_but_not_presented_as_help_copy(self):
+        self.assertIn('data-objective-profile-id="{{ objective_profile.profile_id }}"', RUN_HTML)
+        self.assertIn("objective_profile_id: objectiveProfile.id", RUN_JS)
+        for internal_copy in (
+            "目标参数配置",
+            "{{ objective_profile.label }}",
+            "研究目标函数 v1",
+            "固定15分钟时间粒度",
+            "research_objective_v1",
+            "preflight",
+        ):
+            self.assertNotIn(internal_copy, RUN_HTML)
+        self.assertNotIn("objectiveProfile.id}", RUN_JS)
+        self.assertNotIn("'等待 Worker'", RUN_JS)
+        self.assertNotIn("持久化", RUN_JS)
+        self.assertIn("求解时限 ${formatDecimal(Number(time))}秒", RUN_JS)
 
     def test_custom_alpha_is_conditional(self):
         self.assertIn("if (mode === 'custom')", RUN_JS)
@@ -225,6 +242,10 @@ console.log(JSON.stringify({{
         self.assertRegex(RUN_CSS, r"\.runpage\s*\{[^}]*overflow-x:\s*hidden;")
         self.assertRegex(RUN_CSS, r"\.runtime\s*\{[^}]*overflow:\s*hidden;")
         self.assertRegex(RUN_CSS, r"\.current-pane\s*\{[^}]*height:\s*2[3-8]\dpx;")
+        self.assertRegex(
+            RUN_CSS,
+            r"@media\s*\(max-width:\s*1180px\)\s*\{[^@]*\.runpage\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);",
+        )
 
     def test_successful_history_run_navigates_to_single_run_page(self):
         self.assertIn("window.location.assign(`/runs/${encodeURIComponent(run.run_id)}`)", RUN_JS)
@@ -234,7 +255,7 @@ console.log(JSON.stringify({{
     def test_failed_history_run_has_snapshot_retry_and_log_tools(self):
         self.assertIn("/retry", RUN_JS)
         self.assertIn("retryFailedRun", RUN_JS)
-        self.assertIn("不可变冻结输入", RUN_JS)
+        self.assertIn("使用该失败运行的原始输入创建新运行", RUN_JS)
         for label in ("自动滚动", "回到最新", "复制", "导出日志"):
             self.assertIn(label, RUN_HTML)
 

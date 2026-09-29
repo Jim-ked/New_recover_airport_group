@@ -292,10 +292,16 @@ def build_base_path_map(ds: Dict[str, Any], run_params: Dict[str, Any]) -> BaseM
                     for t_dep in range(T):
                         r_out = _delay_at((tv.get("radar_out_delay") or {}).get(j), t_dep)
                         t_arr = t_dep + of + r_out
-                        if duty[h] is not None and t_arr < duty[h][0]:
-                            # Waiting at the mission is not modelled. An earlier departure
-                            # is valid only when its actual arrival reaches the window.
-                            continue
+                        if duty[h] is not None:
+                            window_start, window_end = duty[h]
+                            if t_arr < window_start:
+                                # Waiting at the mission is not modelled. An earlier
+                                # departure is valid only when arrival reaches the window.
+                                continue
+                            if t_arr >= window_end:
+                                # Arrival uses the canonical half-open task window. Work
+                                # may still finish later; no completion deadline is added.
+                                continue
                         after_return_flight = t_arr + tw + rf
                         if after_return_flight >= T:
                             continue

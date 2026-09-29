@@ -142,6 +142,52 @@ class RunConfigTests(unittest.TestCase):
                 "f2_resource_reference_quantities": {"fuel": 12.0},
             })
 
+    def test_objective_calibration_requires_actual_aircraft_and_resources_but_accepts_zero_lambda(self):
+        cfg = RunConfig.from_mapping({
+            "damage_scenario_id": None,
+            "objective_profile_id": "research_objective_v1",
+            "preference_mode": "sortie_max",
+            "cluster_enabled": True,
+            "cluster_size": 2,
+            "core_airports": [],
+            "aircraft_type_weight": {"fighter": 1.0},
+            "mip_time_limit_s": 120,
+            "f2_resource_reference_quantities": {"fuel": 1.5625},
+            "f2_resource_weights": {"fuel": 1 / 3},
+            "f3_time_reference_slots": 16,
+            "f3_tardiness_coefficient": 1,
+            "unmet_demand_penalty": 3,
+            "core_airport_reward_weight": 0,
+        })
+        cfg.require_objective_calibration(
+            aircraft_type_ids=["fighter"], resource_type_ids=["fuel"]
+        )
+        with self.assertRaisesRegex(RunConfigValidationError, "new-aircraft"):
+            cfg.require_objective_calibration(
+                aircraft_type_ids=["fighter", "new-aircraft"], resource_type_ids=["fuel"]
+            )
+        with self.assertRaisesRegex(RunConfigValidationError, "NEW-RESOURCE"):
+            cfg.require_objective_calibration(
+                aircraft_type_ids=["fighter"], resource_type_ids=["fuel", "NEW-RESOURCE"]
+            )
+
+    def test_profile_use_is_not_hardcoded_to_six_airports_three_missions_or_cluster_four(self):
+        cfg = RunConfig.from_mapping({
+            "damage_scenario_id": None,
+            "objective_profile_id": "research_objective_v1",
+            "preference_mode": "time_min",
+            "cluster_enabled": True,
+            "cluster_size": 2,
+            "core_airports": ["A1"],
+            "aircraft_type_weight": {"fighter": 1, "bomber": 1, "transport": 0.9},
+            "mip_time_limit_s": 120,
+        })
+        cfg.validate_against(
+            airport_ids=["A1", "A2", "A3", "A4", "A5", "A6", "A7"],
+            damage_scenario_ids=[],
+            aircraft_type_ids=["fighter"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

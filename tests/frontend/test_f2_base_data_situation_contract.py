@@ -11,6 +11,10 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         cls.ui = (ROOT / "backend/web/flask_ui.py").read_text(encoding="utf-8")
         cls.bd_html = (ROOT / "frontend/templates/pages/base_data.html").read_text(encoding="utf-8")
         cls.bd_js = (ROOT / "frontend/static/js/modules/base-data.js").read_text(encoding="utf-8")
+        cls.bd_css = (ROOT / "frontend/static/css/base-data.css").read_text(encoding="utf-8")
+        cls.settings_html = (ROOT / "frontend/templates/pages/settings.html").read_text(encoding="utf-8")
+        cls.settings_css = (ROOT / "frontend/static/css/settings.css").read_text(encoding="utf-8")
+        cls.components_css = (ROOT / "frontend/static/css/components.css").read_text(encoding="utf-8")
         cls.sit_html = (ROOT / "frontend/templates/pages/situations.html").read_text(encoding="utf-8")
         cls.sit_main = (ROOT / "frontend/static/js/modules/situations.js").read_text(encoding="utf-8")
         cls.sit_map = (ROOT / "frontend/static/js/modules/situation-map.js").read_text(encoding="utf-8")
@@ -37,6 +41,21 @@ class F2BaseDataSituationContractTests(unittest.TestCase):
         self.assertIn("以一个事务替换", self.bd_html)
         self.assertIn("不生成可选择的历史版本", self.bd_html)
         self.assertNotIn("/api/scenes", self.bd_js)
+
+    def test_horizontal_page_tabs_scroll_without_shrinking_or_wrapping_labels(self):
+        self.assertIn('class="data-tabs scrollable-tabs"', self.bd_html)
+        self.assertIn('class="settings-tabs scrollable-tabs"', self.settings_html)
+        self.assertRegex(
+            self.components_css,
+            r"\.scrollable-tabs\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;",
+        )
+        self.assertRegex(
+            self.components_css,
+            r"\.scrollable-tabs\s*>\s*button\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*white-space:\s*nowrap;",
+        )
+        self.assertRegex(self.bd_css, r"\.workspace-navigation\s*\{[^}]*overflow:\s*hidden;")
+        self.assertRegex(self.bd_css, r"\.data-tabs\s*\{[^}]*flex:\s*1\s+1\s+auto;")
+        self.assertRegex(self.settings_css, r"\.settings-tabs\s*\{[^}]*flex:\s*1\s+1\s+auto;")
 
     def test_situation_keeps_one_working_copy_and_whole_aggregate_save(self):
         self.assertIn("expected_content_hash", self.sit_js)

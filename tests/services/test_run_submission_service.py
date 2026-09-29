@@ -43,11 +43,11 @@ class RunSubmissionServiceTests(unittest.TestCase):
             "arrival_capacity_occupancy_factor": 1.0,
         }))
         self.airports.save_resource_type(ResourceType.from_mapping({
-            "resource_type_id": "FUEL-1", "name": "Fuel", "category": "fuel", "unit": "t",
+            "resource_type_id": "fuel", "name": "Fuel", "category": "fuel", "unit": "t",
         }))
         self.airports.save_aircraft_resource_requirement(AircraftResourceRequirement.from_mapping({
             "aircraft_type_id": "fighter",
-            "resource_type_id": "FUEL-1",
+            "resource_type_id": "fuel",
             "basis": "per_hour",
             "quantity": 1.5,
         }))
@@ -61,7 +61,7 @@ class RunSubmissionServiceTests(unittest.TestCase):
             airport_id="A1", configuration_complete=True, capacity_per_window=8,
             support_level="L1",
             aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50),),
+            resource_stocks=(AirportResourceStock("fuel", 50),),
         )
         situation = Situation(
             situation_id="S1", name="S1",
@@ -89,6 +89,7 @@ class RunSubmissionServiceTests(unittest.TestCase):
         )
         self.config = {
             "damage_scenario_id": None,
+            "objective_profile_id": "research_objective_v1",
             "preference_mode": "sortie_max",
             "cluster_enabled": False,
             "cluster_size": None,
@@ -105,12 +106,22 @@ class RunSubmissionServiceTests(unittest.TestCase):
         self.assertEqual("S1", result.situation_id)
         self.assertEqual(1, result.od_pair_count)
         self.assertEqual(42, result.run_config["algorithm_seed"])
+        self.assertEqual("research_objective_v1", result.run_config["objective_profile_id"])
+        self.assertEqual(16.0, result.run_config["f3_time_reference_slots"])
+        self.assertEqual(0.0, result.run_config["core_airport_reward_weight"])
         self.assertIsNone(self.runs.get("RUN-VALIDATION"))
         self.assertIsNone(self.snapshots.get("RUN-VALIDATION"))
 
     def test_submit_persists_exact_snapshot_without_client_od_payload(self):
+        validation = self.service.validate(
+            owner_user_id="U1", situation_id="S1", run_config=self.config
+        )
         record = self.service.submit(
-            run_id="RUN-1", owner_user_id="U1", situation_id="S1", run_config=self.config
+            run_id="RUN-1",
+            owner_user_id="U1",
+            situation_id="S1",
+            run_config=self.config,
+            expected_input_hash=validation.validated_input_hash,
         )
         self.assertEqual("queued", record.status)
         frozen = self.snapshots.get("RUN-1")
@@ -119,6 +130,7 @@ class RunSubmissionServiceTests(unittest.TestCase):
         self.assertEqual(1, len(payload["od_distances"]))
         self.assertAlmostEqual(118.2362089185, payload["od_distances"][0]["distance_km"], places=6)
         self.assertEqual(record.snapshot_hash, frozen.content_hash)
+        self.assertEqual(validation.run_config, payload["run_config"])
 
     def test_missing_situation_is_explicit_not_validation_guess(self):
         with self.assertRaises(RunSubmissionSituationNotFoundError):

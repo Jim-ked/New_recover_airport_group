@@ -92,31 +92,23 @@ process.stdout.write(JSON.stringify({priority, forced:[...forced.classes], displ
         self.assertIn("priority", source)
         self.assertIn("forceVisible", source)
 
-    def test_runtime_activity_respects_current_three_six_all_and_never_future(self) -> None:
+    def test_runtime_views_use_only_the_requested_time_boundary(self) -> None:
         result = run_module(
             "runtime-map-activity.js",
             """
-const frames = Array.from({length:8}, (_, index) => ({departures:[], returns:[]}));
-for (let index = 0; index < 8; index += 1) frames[index].departures.push({path_id:`p${index}`});
-for (const index of [0,2,4,6,7]) frames[index].returns.push({path_id:`r${index}`});
-const view = (trail) => {
-  const result = target.collectRuntimeActivity(frames, 6, trail);
-  return {
-    departures:[...result.departures], returns:[...result.returns],
-    currentDepartures:[...result.currentDepartures], currentReturns:[...result.currentReturns],
-  };
-};
-process.stdout.write(JSON.stringify({current:view(1), three:view(3), six:view(6), all:view(Infinity)}));
+const routes = [
+  {path_id:'past',origin_airport_id:'A1',mission_id:'M1',return_airport_id:'A1',aircraft_type:'T1',sorties:2,depart_window:1,return_window:3,ready_window:4},
+  {path_id:'current',origin_airport_id:'A1',mission_id:'M1',return_airport_id:'A2',aircraft_type:'T1',sorties:4,depart_window:3,return_window:6,ready_window:8},
+  {path_id:'future',origin_airport_id:'A1',mission_id:'M1',return_airport_id:'A1',aircraft_type:'T1',sorties:9,depart_window:7,return_window:8,ready_window:9},
+];
+const ids = (view, window) => target.filterRuntimeRoutes(routes, view, window).map((item) => item.path_id);
+process.stdout.write(JSON.stringify({departure:ids('departure',3), execution:ids('execution',4), landing:ids('landing',3), maintenance:ids('maintenance',3)}));
 """,
         )
-        self.assertEqual(["p6"], result["current"]["departures"])
-        self.assertEqual(["r6"], result["current"]["returns"])
-        self.assertEqual(["p4", "p5", "p6"], result["three"]["departures"])
-        self.assertEqual(["r4", "r6"], result["three"]["returns"])
-        self.assertEqual(["p1", "p2", "p3", "p4", "p5", "p6"], result["six"]["departures"])
-        self.assertEqual(["p0", "p1", "p2", "p3", "p4", "p5", "p6"], result["all"]["departures"])
-        self.assertNotIn("p7", result["all"]["departures"])
-        self.assertNotIn("r7", result["all"]["returns"])
+        self.assertEqual(["current"], result["departure"])
+        self.assertEqual(["current"], result["execution"])
+        self.assertEqual(["past"], result["landing"])
+        self.assertEqual(["past"], result["maintenance"])
 
     def test_situation_preserves_business_layers_and_label_priorities(self) -> None:
         source = SITUATION_JS.read_text(encoding="utf-8")
@@ -141,41 +133,42 @@ process.stdout.write(JSON.stringify({current:view(1), three:view(3), six:view(6)
         catalog = source[source.index("export async function setCatalogLayer"):source.index("export async function initMap")]
         self.assertNotIn("permanent: true", catalog)
 
-    def test_runtime_marker_statuses_are_orthogonal_and_maintenance_is_filtered(self) -> None:
+    def test_runtime_marker_statuses_are_orthogonal_and_maintenance_uses_return_airport(self) -> None:
         source = RUNTIME_JS.read_text(encoding="utf-8")
         for token in (
-            "airportRoleClass(item.role)", "'ordinary'", "'participating'", "'selected-cluster'", "'core'",
-            "'selected-object'", "'damage'", "important && maintenance > 0",
-            "selected: 100", "core: 90", "selectedCluster: 80", "participating: 70", "mission: 60",
+            "'ordinary'", "'participating'", "'selected-cluster'", "'core'",
+            "'selected-object'", "'damage'", "drawMaintenanceCount",
+            "summarizeRuntimeRouteState",
+            "selected: 110", "core: 90", "selectedCluster: 82", "participating: 72", "mission: 60",
         ):
             self.assertIn(token, source)
+        self.assertNotIn("airportRoleClass(item.role)", source)
         self.assertNotIn("/api/airports", source)
         for forbidden in ("military-core", "joint-participating", "civil-core", "military-selected-cluster"):
             self.assertNotIn(forbidden, source)
 
-    def test_runtime_draws_only_activity_sets_with_separate_outbound_and_return_switches(self) -> None:
+    def test_runtime_aggregates_current_view_and_preserves_explicit_path_drilldown(self) -> None:
         source = RUNTIME_JS.read_text(encoding="utf-8")
-        self.assertIn("activity.departures.has(route.path_id)", source)
-        self.assertIn("activity.returns.has(route.path_id)", source)
-        self.assertIn("activity.currentDepartures.has(route.path_id)", source)
-        self.assertIn("activity.currentReturns.has(route.path_id)", source)
-        self.assertIn("layerEnabled('outbound')", source)
-        self.assertIn("layerEnabled('return')", source)
+        activity = (MODULES / "runtime-map-activity.js").read_text(encoding="utf-8")
+        self.assertIn("aggregateRuntimeRelations", source)
+        self.assertIn("filters: currentFilters()", source)
+        self.assertIn("function drawSelectedPath()", source)
+        self.assertIn("pathIds", activity)
+        self.assertIn("routes: relation.routes.slice()", activity)
+        self.assertNotIn("buildRuntimePathActivities", source)
 
-    def test_css_uses_small_role_shapes_and_mission_is_not_joint(self) -> None:
+    def test_runtime_css_uses_unified_circle_while_situation_keeps_role_shapes(self) -> None:
         runtime = "".join(RUNTIME_CSS.read_text(encoding="utf-8").split())
         situation = "".join(SITUATION_CSS.read_text(encoding="utf-8").split())
-        for css in (runtime, situation):
-            self.assertIn(".airport-role-civil", css)
-            self.assertIn(".airport-role-military", css)
-            self.assertIn(".airport-role-joint", css)
-            self.assertIn(".airport-role-unknown", css)
-        for token in ("width:7px;height:7px", "width:9px;height:9px", "width:10px;height:10px", "width:11px;height:11px"):
+        for token in (".airport-role-civil", ".airport-role-military", ".airport-role-joint", ".airport-role-unknown"):
+            self.assertIn(token, situation)
+            self.assertNotIn(token, runtime)
+        for token in ("display:block;box-sizing:border-box", "width:14px;height:14px", "border-radius:50%", ".runtime-airport-marker.selected-cluster::before"):
             self.assertIn(token, runtime)
         for token in ("width:13px;height:13px", "width:11px;height:11px", "width:8px;height:8px"):
             self.assertIn(token, situation)
-        self.assertIn("width:8px;height:8px", runtime)
-        self.assertNotIn("runtime-route", runtime)
+        self.assertNotIn(".runtime-airport-marker>span{width:7px;height:7px", runtime)
+        self.assertIn("runtime-relation-count", runtime)
 
     def test_situation_airport_marker_spec_has_distinct_sizes_colors_and_legend(self) -> None:
         source = "".join(SITUATION_JS.read_text(encoding="utf-8").split())
@@ -204,7 +197,7 @@ process.stdout.write(JSON.stringify({current:view(1), three:view(3), six:view(6)
         source = RUNTIME_JS.read_text(encoding="utf-8")
         html = RUNTIME_HTML.read_text(encoding="utf-8")
         self.assertNotIn("航线", source + html)
-        for token in ("任务态势", "出动", "返航", "态势范围", "任务执行连接"):
+        for token in ("总体态势筛选", "执行态势", "出动态势", "落地态势", "整备态势", "完整业务链"):
             self.assertIn(token, source + html)
 
 

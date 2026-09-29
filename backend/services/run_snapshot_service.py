@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence, Union
 
+from backend.domain.objective_profile import (
+    RESEARCH_OBJECTIVE_SLOT_MINUTES,
+    resolve_objective_profile,
+    validate_research_profile_semantics,
+)
 from backend.domain.run_config import RunConfig
 from backend.domain.run_snapshot import ODDistance, RunSnapshot
 from backend.storage.airport_repository import AirportRepository
@@ -49,13 +54,46 @@ class RunSnapshotService:
         if situation is None:
             raise RunSnapshotServiceError(f"situation not found: {situation_id}")
 
-        canonical_config = run_config if isinstance(run_config, RunConfig) else RunConfig.from_mapping(run_config)
+        aircraft_types = self.airports.list_aircraft_types()
+        resource_types = self.airports.list_resource_types()
+        requirements = self.airports.list_aircraft_resource_requirements()
+
+        # New Runs resolve the named server-owned profile before canonicalization.  A
+        # pre-built RunConfig is retained only for trusted lower-level/historical callers;
+        # it still has to pass the same completeness and semantic checks below.
+        canonical_config = (
+            run_config
+            if isinstance(run_config, RunConfig)
+            else RunConfig.from_mapping(resolve_objective_profile(run_config))
+        )
+        used_aircraft = sorted({
+            row.aircraft_type_id
+            for mission in situation.missions
+            for row in mission.aircraft_requirements
+        })
+        used_aircraft_set = set(used_aircraft)
+        used_resources = sorted({
+            row.resource_type_id
+            for row in requirements
+            if row.aircraft_type_id in used_aircraft_set and float(row.quantity) > 0
+        })
+        canonical_config.require_objective_calibration(
+            aircraft_type_ids=used_aircraft,
+            resource_type_ids=used_resources,
+        )
+        validate_research_profile_semantics(
+            profile_id=canonical_config.objective_profile_id,
+            resource_types=resource_types,
+            requirements=requirements,
+            used_aircraft_type_ids=used_aircraft,
+            slot_minutes=RESEARCH_OBJECTIVE_SLOT_MINUTES,
+        )
         return RunSnapshot.build(
             run_id=run_id,
             situation=situation,
-            aircraft_types=self.airports.list_aircraft_types(),
-            resource_types=self.airports.list_resource_types(),
-            aircraft_resource_requirements=self.airports.list_aircraft_resource_requirements(),
+            aircraft_types=aircraft_types,
+            resource_types=resource_types,
+            aircraft_resource_requirements=requirements,
             od_distances=od_distances,
             run_config=canonical_config,
         )

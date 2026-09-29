@@ -42,14 +42,14 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
             "arrival_capacity_occupancy_factor": 1.0,
         }))
         self.airports.save_resource_type(ResourceType.from_mapping({
-            "resource_type_id": "FUEL-1",
+            "resource_type_id": "fuel",
             "name": "Fuel",
             "category": "fuel",
             "unit": "t",
         }))
         self.airports.save_aircraft_resource_requirement(AircraftResourceRequirement.from_mapping({
             "aircraft_type_id": "fighter",
-            "resource_type_id": "FUEL-1",
+            "resource_type_id": "fuel",
             "basis": "per_hour",
             "quantity": 1.5,
         }))
@@ -72,7 +72,7 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
             capacity_per_window=8,
             support_level="L1",
             aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50),),
+            resource_stocks=(AirportResourceStock("fuel", 50),),
         )
         self.airports.save_airport(self.base_airport)
         self.airports.save_operational_profile(self.base_profile)
@@ -107,6 +107,7 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
             situation_id="S1",
             run_config={
                 "damage_scenario_id": None,
+                "objective_profile_id": "research_objective_v1",
                 "preference_mode": "sortie_max",
                 "cluster_enabled": False,
                 "cluster_size": None,
@@ -129,7 +130,7 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
             capacity_per_window=99,
             support_level="L9",
             aircraft_support=(AirportAircraftSupport("fighter", 20, 5),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 999),),
+            resource_stocks=(AirportResourceStock("fuel", 999),),
         )
         self.airports.save_airport(changed_base)
         self.airports.save_operational_profile(changed_profile)
@@ -159,7 +160,10 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
         self.assertEqual(0.2, payload["catalogs"]["aircraft_types"][0]["reserve_ratio"])
         self.assertEqual("sortie_max", payload["run_config"]["preference_mode"])
         self.assertEqual([0.8, 0.1, 0.1], payload["run_config"]["alpha"])
-        self.assertEqual({"fighter": 1.0}, payload["run_config"]["aircraft_type_weight"])
+        self.assertEqual(
+            {"fighter": 1.0, "bomber": 1.0, "transport": 0.9},
+            payload["run_config"]["aircraft_type_weight"],
+        )
         self.assertEqual(original.content_hash(), payload["situation_content_hash"])
 
     def test_damage_scenario_storage_and_selected_run_snapshot_are_isolated(self) -> None:
@@ -192,7 +196,8 @@ class DataLifecycleIntegrationTests(unittest.TestCase):
         snapshot = service.create_snapshot(
             run_id="R-DS", situation_id="S1",
             run_config={
-                "damage_scenario_id": "DS1", "preference_mode": "time_min",
+                "damage_scenario_id": "DS1", "objective_profile_id": "research_objective_v1",
+                "preference_mode": "time_min",
                 "cluster_enabled": False, "cluster_size": None, "core_airports": [],
                 "aircraft_type_weight": {}, "mip_time_limit_s": 60,
             },

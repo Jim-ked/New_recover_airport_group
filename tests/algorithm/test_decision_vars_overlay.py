@@ -105,6 +105,12 @@ class DecisionVarsOverlayTests(unittest.TestCase):
         )
         self.assertLess(row.depart_slot, 3)
 
+    def test_arrival_at_half_open_window_end_is_excluded(self):
+        ds, rp = self._input()
+        ds["static"]["missions"][0]["_duty_window"] = (1, 3)
+        bm = mod.build_base_path_map(ds, rp)
+        self.assertFalse(any(p.mission_arrival_slot >= 3 for p in bm.path_records))
+
     def test_window_start_does_not_add_finish_by_deadline_constraint_yet(self):
         ds, rp = self._input()
         ds["static"]["missions"][0]["_duty_window"] = (1, 3)

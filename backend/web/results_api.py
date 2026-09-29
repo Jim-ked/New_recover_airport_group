@@ -96,13 +96,34 @@ class ResultsApi:
         def action() -> ApiResponse:
             principal.require_permission("results.read")
             body = require_object(raw_body)
-            reject_unknown(body, {"run_ids"})
+            reject_unknown(body, {"run_ids", "baseline_run_id", "comparison_run_id"})
             run_ids = required_nonblank_string_list(
                 body, "run_ids", minimum=2, maximum=6, unique=True
             )
+            baseline_run_id = (
+                required_nonblank_string(body, "baseline_run_id")
+                if "baseline_run_id" in body else None
+            )
+            comparison_run_id = (
+                required_nonblank_string(body, "comparison_run_id")
+                if "comparison_run_id" in body else None
+            )
+            for field, run_id in (
+                ("baseline_run_id", baseline_run_id),
+                ("comparison_run_id", comparison_run_id),
+            ):
+                if run_id is not None and run_id not in run_ids:
+                    raise ApiInputError(f"{field} must be one of run_ids", field=field)
+            if baseline_run_id is not None and baseline_run_id == comparison_run_id:
+                raise ApiInputError(
+                    "comparison_run_id must differ from baseline_run_id",
+                    field="comparison_run_id",
+                )
             return ApiResponse(
                 self.results.compare_multi_scenario(
                     run_ids=tuple(run_ids),
+                    baseline_run_id=baseline_run_id,
+                    comparison_run_id=comparison_run_id,
                     actor_user_id=principal.user_id,
                     is_admin=principal.is_admin,
                 ),
@@ -114,7 +135,7 @@ class ResultsApi:
         def action() -> ApiResponse:
             principal.require_permission("results.read")
             body = require_object(raw_body)
-            reject_unknown(body, {"run_ids", "baseline_run_id"})
+            reject_unknown(body, {"run_ids", "baseline_run_id", "comparison_run_id"})
             run_ids = required_nonblank_string_list(
                 body, "run_ids", minimum=2, maximum=5, unique=True
             )
@@ -123,10 +144,24 @@ class ResultsApi:
                 raise ApiInputError(
                     "baseline_run_id must be one of run_ids", field="baseline_run_id"
                 )
+            comparison_run_id = (
+                required_nonblank_string(body, "comparison_run_id")
+                if "comparison_run_id" in body else None
+            )
+            if comparison_run_id is not None and comparison_run_id not in run_ids:
+                raise ApiInputError(
+                    "comparison_run_id must be one of run_ids", field="comparison_run_id"
+                )
+            if comparison_run_id == baseline_run_id:
+                raise ApiInputError(
+                    "comparison_run_id must differ from baseline_run_id",
+                    field="comparison_run_id",
+                )
             return ApiResponse(
                 self.results.compare_configuration(
                     run_ids=tuple(run_ids),
                     baseline_run_id=baseline_run_id,
+                    comparison_run_id=comparison_run_id,
                     actor_user_id=principal.user_id,
                     is_admin=principal.is_admin,
                 ),
@@ -256,20 +291,30 @@ class ResultsApi:
                 )
                 source_ids = [r0, r1, r2]
             elif kind == "scenario_comparison":
-                reject_unknown(body, {"kind", "run_ids"})
+                reject_unknown(body, {
+                    "kind", "run_ids", "baseline_run_id", "comparison_run_id"
+                })
                 run_ids = required_nonblank_string_list(body, "run_ids", minimum=2, maximum=6, unique=True)
+                baseline = required_nonblank_string(body, "baseline_run_id") if "baseline_run_id" in body else None
+                comparison = required_nonblank_string(body, "comparison_run_id") if "comparison_run_id" in body else None
                 data = self.results.compare_multi_scenario(
-                    run_ids=tuple(run_ids), actor_user_id=principal.user_id, is_admin=principal.is_admin
+                    run_ids=tuple(run_ids), baseline_run_id=baseline,
+                    comparison_run_id=comparison, actor_user_id=principal.user_id,
+                    is_admin=principal.is_admin,
                 )
                 source_ids = run_ids
             elif kind == "configuration_comparison":
-                reject_unknown(body, {"kind", "run_ids", "baseline_run_id"})
+                reject_unknown(body, {
+                    "kind", "run_ids", "baseline_run_id", "comparison_run_id"
+                })
                 run_ids = required_nonblank_string_list(body, "run_ids", minimum=2, maximum=5, unique=True)
                 baseline = required_nonblank_string(body, "baseline_run_id")
                 if baseline not in run_ids:
                     raise ApiInputError("baseline_run_id must be one of run_ids", field="baseline_run_id")
+                comparison = required_nonblank_string(body, "comparison_run_id") if "comparison_run_id" in body else None
                 data = self.results.compare_configuration(
                     run_ids=tuple(run_ids), baseline_run_id=baseline,
+                    comparison_run_id=comparison,
                     actor_user_id=principal.user_id, is_admin=principal.is_admin,
                 )
                 source_ids = run_ids
