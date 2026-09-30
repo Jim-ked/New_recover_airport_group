@@ -209,6 +209,24 @@ class RunIndicatorAssessmentServiceTests(unittest.TestCase):
         self.assertIn("resource", result.unavailable_reason)
         self.assertEqual([result], captured.saved)
 
+    def test_missing_weight_source_persists_unavailable_without_fake_equal_weights(self) -> None:
+        service, captured = self.build_service()
+        service.indicators.published_weights = lambda _set_id: {
+            "version": "run-assessment.v1",
+            "status": "unavailable",
+            "weight_source": "expert",
+            "trace": {},
+            "items": [],
+        }
+
+        result = service.evaluate("RUN-1")
+
+        self.assertEqual("unavailable", result.status)
+        self.assertIsNone(result.support_index)
+        self.assertIn("weights", result.unavailable_reason.lower())
+        self.assertEqual([], list(result.indicators))
+        self.assertEqual([result], captured.saved)
+
     def test_failed_or_cancelled_run_never_enters_assessment(self) -> None:
         for status in ("failed", "cancelled"):
             service, captured = self.build_service(status=status)
