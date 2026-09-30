@@ -14,7 +14,13 @@ from backend.storage.security_repository import SecurityRepository
 
 
 ROOT = Path(__file__).resolve().parents[2]
-V5_DATABASE = ROOT / "runtime" / "v5-rebuild-20260930" / "db" / "jiangsu-six-airport-v5-rebuilt.sqlite3"
+V5_DATABASE = (
+    ROOT
+    / "runtime"
+    / "v5-rebuild-20260930"
+    / "db"
+    / "jiangsu-six-airport-v5-inventory-repaired.sqlite3"
+)
 MANIFEST = ROOT / "resources" / "experiments" / "jiangsu_six_airport_v5.json"
 EXPECTED = ROOT / "resources" / "experiments" / "jiangsu_six_airport_v5_assessment_index.json"
 

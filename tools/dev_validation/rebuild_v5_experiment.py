@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sqlite3
 import sys
 from contextlib import closing
@@ -65,6 +66,9 @@ class ArchiveBundle:
     snapshots: Mapping[str, RunSnapshot]
     solutions: Mapping[str, Mapping[str, Any]]
     metrics: Mapping[str, Mapping[str, Any]]
+
+
+InventoryFacts = Dict[str, Dict[str, Dict[str, Dict[str, float]]]]
 
 
 def _require_text(value: Any, field: str) -> str:
@@ -272,6 +276,229 @@ def verify_archive(
     return ArchiveBundle(snapshots=snapshots, solutions=solutions, metrics=metrics)
 
 
+def _frozen_nonnegative_number(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ExperimentDefinitionError(f"{field} must be a finite nonnegative number")
+    canonical = float(value)
+    if not math.isfinite(canonical) or canonical < 0:
+        raise ExperimentDefinitionError(f"{field} must be a finite nonnegative number")
+    return canonical
+
+
+def _snapshot_inventory_facts(snapshot: RunSnapshot) -> Dict[str, Dict[str, Dict[str, float]]]:
+    payload = snapshot.to_dict()
+    situation = payload.get("situation")
+    if not isinstance(situation, Mapping):
+        raise ExperimentDefinitionError(f"{snapshot.run_id}.situation must be an object")
+    dynamic_inventory = payload.get("dynamic_inventory")
+    if not isinstance(dynamic_inventory, Mapping):
+        raise ExperimentDefinitionError(
+            f"{snapshot.run_id}.dynamic_inventory must be an object"
+        )
+    frozen_storage = dynamic_inventory.get("storage_capacity")
+    if not isinstance(frozen_storage, Mapping):
+        raise ExperimentDefinitionError(
+            f"{snapshot.run_id}.dynamic_inventory.storage_capacity must be an object"
+        )
+
+    facts: Dict[str, Dict[str, Dict[str, float]]] = {}
+    for airport_index, item in enumerate(situation.get("airports") or []):
+        if not isinstance(item, Mapping):
+            raise ExperimentDefinitionError(
+                f"{snapshot.run_id}.situation.airports[{airport_index}] must be an object"
+            )
+        airport = item.get("airport")
+        profile = item.get("operational_profile")
+        if not isinstance(airport, Mapping) or not isinstance(profile, Mapping):
+            raise ExperimentDefinitionError(
+                f"{snapshot.run_id}.situation.airports[{airport_index}] is incomplete"
+            )
+        airport_id = _require_text(
+            airport.get("airport_id"),
+            f"{snapshot.run_id}.situation.airports[{airport_index}].airport_id",
+        )
+        if airport_id in facts:
+            raise ExperimentDefinitionError(
+                f"{snapshot.run_id} has duplicate airport inventory facts: {airport_id}"
+            )
+        dynamic_rows = frozen_storage.get(airport_id)
+        if not isinstance(dynamic_rows, Mapping):
+            raise ExperimentDefinitionError(
+                f"{snapshot.run_id}.dynamic_inventory.storage_capacity.{airport_id} is missing"
+            )
+        facts[airport_id] = {}
+        for stock_index, stock in enumerate(profile.get("resource_stocks") or []):
+            if not isinstance(stock, Mapping):
+                raise ExperimentDefinitionError(
+                    f"{snapshot.run_id}.{airport_id}.resource_stocks[{stock_index}] must be an object"
+                )
+            resource_id = _require_text(
+                stock.get("resource_type_id"),
+                f"{snapshot.run_id}.{airport_id}.resource_stocks[{stock_index}].resource_type_id",
+            )
+            if resource_id in facts[airport_id]:
+                raise ExperimentDefinitionError(
+                    f"{snapshot.run_id} has duplicate inventory facts: {airport_id}/{resource_id}"
+                )
+            initial = _frozen_nonnegative_number(
+                stock.get("initial_quantity"),
+                f"{snapshot.run_id}.{airport_id}.{resource_id}.initial_quantity",
+            )
+            replenishment = _frozen_nonnegative_number(
+                stock.get("replenishment_capacity_per_window"),
+                f"{snapshot.run_id}.{airport_id}.{resource_id}.replenishment_capacity_per_window",
+            )
+            storage = _frozen_nonnegative_number(
+                stock.get("storage_capacity"),
+                f"{snapshot.run_id}.{airport_id}.{resource_id}.storage_capacity",
+            )
+            if initial > storage + 1e-9:
+                raise ExperimentDefinitionError(
+                    f"{snapshot.run_id} initial inventory exceeds storage_capacity: "
+                    f"{airport_id}/{resource_id}"
+                )
+            dynamic_storage = _frozen_nonnegative_number(
+                dynamic_rows.get(resource_id),
+                f"{snapshot.run_id}.dynamic_inventory.storage_capacity."
+                f"{airport_id}.{resource_id}",
+            )
+            if abs(dynamic_storage - storage) > 1e-9:
+                raise ExperimentDefinitionError(
+                    f"{snapshot.run_id} storage_capacity sources disagree: "
+                    f"{airport_id}/{resource_id}"
+                )
+            facts[airport_id][resource_id] = {
+                "initial_quantity": initial,
+                "replenishment_capacity_per_window": replenishment,
+                "storage_capacity": storage,
+            }
+    if not facts:
+        raise ExperimentDefinitionError(f"{snapshot.run_id} has no frozen inventory facts")
+    return facts
+
+
+def extract_frozen_inventory_facts(
+    bundle: ArchiveBundle,
+    definition: ExperimentDefinition,
+) -> InventoryFacts:
+    """Recover V5 base inventory only when every frozen Snapshot agrees."""
+
+    by_situation: InventoryFacts = {}
+    source_run: Dict[str, str] = {}
+    for run in definition.runs:
+        snapshot = bundle.snapshots.get(run.run_id)
+        if snapshot is None:
+            raise ExperimentDefinitionError(f"archive is missing Snapshot {run.run_id}")
+        if snapshot.situation_id != run.situation_id:
+            raise ExperimentDefinitionError(
+                f"snapshot Situation mismatch for {run.run_id}"
+            )
+        facts = _snapshot_inventory_facts(snapshot)
+        existing = by_situation.get(run.situation_id)
+        if existing is not None and existing != facts:
+            raise ExperimentDefinitionError(
+                "inconsistent frozen inventory facts for Situation "
+                f"{run.situation_id}: {source_run[run.situation_id]} vs {run.run_id}"
+            )
+        by_situation[run.situation_id] = facts
+        source_run.setdefault(run.situation_id, run.run_id)
+    missing = sorted(set(definition.situations) - set(by_situation))
+    if missing:
+        raise ExperimentDefinitionError(
+            f"frozen inventory facts missing for Situations: {missing}"
+        )
+    return by_situation
+
+
+def _restore_frozen_inventory_facts(
+    database: Path,
+    facts_by_situation: InventoryFacts,
+) -> None:
+    base_facts: Dict[str, Dict[str, Dict[str, float]]] = {}
+    base_source: Dict[tuple[str, str], str] = {}
+    for situation_id, airport_rows in facts_by_situation.items():
+        for airport_id, resource_rows in airport_rows.items():
+            base_airport = base_facts.setdefault(airport_id, {})
+            for resource_id, facts in resource_rows.items():
+                key = (airport_id, resource_id)
+                existing = base_airport.get(resource_id)
+                if existing is not None and existing != facts:
+                    raise ExperimentDefinitionError(
+                        "inconsistent frozen base-airport inventory facts across Situations: "
+                        f"{airport_id}/{resource_id} "
+                        f"({base_source[key]} vs {situation_id})"
+                    )
+                base_airport[resource_id] = facts
+                base_source.setdefault(key, situation_id)
+
+    with closing(sqlite3.connect(database)) as connection:
+        actual_base = {
+            (str(row[0]), str(row[1]))
+            for row in connection.execute(
+                "SELECT airport_id,resource_type_id FROM airport_resource_stocks"
+            )
+        }
+        expected_base = {
+            (airport_id, resource_id)
+            for airport_id, resource_rows in base_facts.items()
+            for resource_id in resource_rows
+        }
+        if actual_base != expected_base:
+            raise ExperimentDefinitionError(
+                "frozen base-airport inventory keys do not match destination database"
+            )
+
+        actual_situations = {
+            (str(row[0]), str(row[1]), str(row[2]))
+            for row in connection.execute(
+                "SELECT situation_id,airport_id,resource_type_id "
+                "FROM situation_resource_stocks"
+            )
+        }
+        expected_situations = {
+            (situation_id, airport_id, resource_id)
+            for situation_id, airport_rows in facts_by_situation.items()
+            for airport_id, resource_rows in airport_rows.items()
+            for resource_id in resource_rows
+        }
+        if actual_situations != expected_situations:
+            raise ExperimentDefinitionError(
+                "frozen Situation inventory keys do not match destination database"
+            )
+
+        for airport_id, resource_rows in base_facts.items():
+            for resource_id, facts in resource_rows.items():
+                connection.execute(
+                    "UPDATE airport_resource_stocks SET quantity=?, "
+                    "replenishment_capacity_per_window=?, storage_capacity=? "
+                    "WHERE airport_id=? AND resource_type_id=?",
+                    (
+                        facts["initial_quantity"],
+                        facts["replenishment_capacity_per_window"],
+                        facts["storage_capacity"],
+                        airport_id,
+                        resource_id,
+                    ),
+                )
+        for situation_id, airport_rows in facts_by_situation.items():
+            for airport_id, resource_rows in airport_rows.items():
+                for resource_id, facts in resource_rows.items():
+                    connection.execute(
+                        "UPDATE situation_resource_stocks SET quantity=?, "
+                        "replenishment_capacity_per_window=?, storage_capacity=? "
+                        "WHERE situation_id=? AND airport_id=? AND resource_type_id=?",
+                        (
+                            facts["initial_quantity"],
+                            facts["replenishment_capacity_per_window"],
+                            facts["storage_capacity"],
+                            situation_id,
+                            airport_id,
+                            resource_id,
+                        ),
+                    )
+        connection.commit()
+
+
 def prepare_experiment_database(
     *,
     archive_path: str | Path,
@@ -282,12 +509,14 @@ def prepare_experiment_database(
     target = Path(destination).resolve()
     if target.exists():
         raise ExperimentDefinitionError(f"refusing to overwrite experiment database: {target}")
-    verify_archive(source, definition)
+    bundle = verify_archive(source, definition)
+    inventory_facts = extract_frozen_inventory_facts(bundle, definition)
     target.parent.mkdir(parents=True, exist_ok=True)
     with closing(_open_read_only(source)) as source_connection:
         with closing(sqlite3.connect(target)) as destination_connection:
             source_connection.backup(destination_connection)
     initialize_database(target)
+    _restore_frozen_inventory_facts(target, inventory_facts)
     with closing(sqlite3.connect(target)) as connection:
         result = connection.execute("PRAGMA quick_check").fetchone()[0]
     if result != "ok":

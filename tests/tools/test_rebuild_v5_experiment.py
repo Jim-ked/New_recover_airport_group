@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import pathlib
+import sqlite3
 import tempfile
 import unittest
 
 from tools.dev_validation.rebuild_v5_experiment import (
+    ArchiveBundle,
     ExperimentDefinitionError,
+    extract_frozen_inventory_facts,
     load_definition,
     prepare_experiment_database,
     project_experiment_assessment,
@@ -21,6 +26,23 @@ ARCHIVE = ROOT / "runtime" / "stage4-browser" / "stage4-v5.sqlite"
 
 
 class RebuildV5ExperimentTests(unittest.TestCase):
+    @staticmethod
+    def _replace_snapshot_payload(snapshot, payload):
+        payload_json = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        from backend.domain.run_snapshot import RunSnapshot
+        return RunSnapshot(
+            run_id=snapshot.run_id,
+            situation_id=snapshot.situation_id,
+            content_hash=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            payload_json=payload_json,
+        )
+
     def test_manifest_freezes_exact_v5_matrix(self) -> None:
         definition = load_definition(MANIFEST)
 
@@ -52,6 +74,55 @@ class RebuildV5ExperimentTests(unittest.TestCase):
             )
         )
 
+        facts = extract_frozen_inventory_facts(bundle, definition)
+        self.assertEqual(
+            {
+                "initial_quantity": 220.0,
+                "replenishment_capacity_per_window": 15.0,
+                "storage_capacity": 232.0,
+            },
+            facts["ST-V5-MOTHER-01"]["AP179"]["MUN-1"],
+        )
+        self.assertEqual(
+            facts["ST-V5-MOTHER-01"],
+            facts["ST-V5-PRESSURE-01"],
+        )
+
+    @unittest.skipUnless(ARCHIVE.exists(), "V5 archive is an external experiment asset")
+    def test_frozen_inventory_rejects_missing_or_inconsistent_snapshot_facts(self) -> None:
+        definition = load_definition(MANIFEST)
+        bundle = verify_archive(ARCHIVE, definition)
+        snapshots = dict(bundle.snapshots)
+        target = snapshots["RUN-ROUND15-R1"]
+
+        missing_payload = target.to_dict()
+        del missing_payload["situation"]["airports"][0]["operational_profile"][
+            "resource_stocks"
+        ][0]["storage_capacity"]
+        missing = dict(snapshots)
+        missing[target.run_id] = self._replace_snapshot_payload(target, missing_payload)
+        with self.assertRaisesRegex(ExperimentDefinitionError, "storage_capacity"):
+            extract_frozen_inventory_facts(
+                ArchiveBundle(missing, bundle.solutions, bundle.metrics), definition
+            )
+
+        changed_payload = target.to_dict()
+        stock = changed_payload["situation"]["airports"][0]["operational_profile"][
+            "resource_stocks"
+        ][0]
+        stock["storage_capacity"] = float(stock["storage_capacity"]) + 1.0
+        changed_payload["dynamic_inventory"]["storage_capacity"][
+            changed_payload["situation"]["airports"][0]["airport"]["airport_id"]
+        ][stock["resource_type_id"]] = stock["storage_capacity"]
+        inconsistent = dict(snapshots)
+        inconsistent[target.run_id] = self._replace_snapshot_payload(
+            target, changed_payload
+        )
+        with self.assertRaisesRegex(ExperimentDefinitionError, "inconsistent"):
+            extract_frozen_inventory_facts(
+                ArchiveBundle(inconsistent, bundle.solutions, bundle.metrics), definition
+            )
+
     @unittest.skipUnless(ARCHIVE.exists(), "V5 archive is an external experiment asset")
     def test_prepare_uses_independent_database_and_refuses_overwrite(self) -> None:
         definition = load_definition(MANIFEST)
@@ -72,6 +143,27 @@ class RebuildV5ExperimentTests(unittest.TestCase):
                         verify_file_hash=False,
                     ).snapshots
                 ),
+            )
+            from contextlib import closing
+            with closing(sqlite3.connect(prepared)) as connection:
+                airport_row = connection.execute(
+                    "SELECT quantity,replenishment_capacity_per_window,storage_capacity "
+                    "FROM airport_resource_stocks "
+                    "WHERE airport_id='AP179' AND resource_type_id='MUN-1'"
+                ).fetchone()
+                situation_rows = connection.execute(
+                    "SELECT situation_id,quantity,replenishment_capacity_per_window,storage_capacity "
+                    "FROM situation_resource_stocks "
+                    "WHERE airport_id='AP179' AND resource_type_id='MUN-1' "
+                    "ORDER BY situation_id"
+                ).fetchall()
+            self.assertEqual((220.0, 15.0, 232.0), airport_row)
+            self.assertEqual(
+                [
+                    ("ST-V5-MOTHER-01", 220.0, 15.0, 232.0),
+                    ("ST-V5-PRESSURE-01", 220.0, 15.0, 232.0),
+                ],
+                situation_rows,
             )
             with self.assertRaisesRegex(ExperimentDefinitionError, "refusing to overwrite"):
                 prepare_experiment_database(
