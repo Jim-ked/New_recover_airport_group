@@ -299,7 +299,12 @@ class AssessmentRepository:
         return self._run_evaluation(row, value_rows)
 
     def list_run_evaluations(
-        self, *, status: Optional[str] = None, limit: int = 100, offset: int = 0
+        self,
+        *,
+        status: Optional[str] = None,
+        owner_user_id: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[RunIndicatorAssessment], int]:
         if not 1 <= limit <= 500:
             raise AssessmentRepositoryError("limit must be in [1,500]")
@@ -307,15 +312,30 @@ class AssessmentRepository:
             raise AssessmentRepositoryError("offset must be nonnegative")
         if status is not None and status not in {"available", "unavailable"}:
             raise AssessmentRepositoryError("status must be available or unavailable")
-        where = "WHERE status=?" if status is not None else ""
-        params: list[Any] = [status] if status is not None else []
+        if owner_user_id is not None and (
+            not isinstance(owner_user_id, str) or not owner_user_id.strip()
+        ):
+            raise AssessmentRepositoryError("owner_user_id must be nonblank or None")
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            clauses.append("evaluation.status=?")
+            params.append(status)
+        if owner_user_id is not None:
+            clauses.append("run.owner_user_id=?")
+            params.append(owner_user_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        source = (
+            "FROM assessment_run_evaluation evaluation "
+            "JOIN runs run ON run.run_id=evaluation.run_id"
+        )
         with self.connect() as conn:
             total = int(conn.execute(
-                f"SELECT COUNT(*) FROM assessment_run_evaluation {where}", params
+                f"SELECT COUNT(*) {source} {where}", params
             ).fetchone()[0])
             rows = conn.execute(
-                f"SELECT * FROM assessment_run_evaluation {where} "
-                "ORDER BY updated_at DESC,run_id LIMIT ? OFFSET ?",
+                f"SELECT evaluation.* {source} {where} "
+                "ORDER BY evaluation.updated_at DESC,evaluation.run_id LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             ).fetchall()
             result: list[RunIndicatorAssessment] = []

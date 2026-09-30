@@ -54,6 +54,7 @@ const refs = {
 function view() { return state.workspaceStates[state.workspace]; }
 function esc(value) { const node = document.createElement('span'); node.textContent = String(value ?? ''); return node.innerHTML; }
 function shortRunId(value) { const text = String(value || ''); return text.length > 14 ? `${text.substring(0, 6)}…${text.substring(text.length - 5)}` : text; }
+function shortHash(value) { const text = String(value || ''); return text.length > 12 ? `${text.substring(0, 12)}…` : text || '未记录'; }
 function number(value, digits = 2) { return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits }); }
 function displayValue(value, { formatter = null, comparable = true, notApplicable = false } = {}) {
   if (notApplicable) return '不适用';
@@ -221,29 +222,46 @@ function currentAssessmentEvaluation() {
 }
 function renderAssessmentEvaluation() {
   const items = Array.isArray(state.assessment.evaluations?.items) ? state.assessment.evaluations.items : [];
-  refs.assessmentRunSelect.innerHTML = items.map((item) => `<option value="${esc(item.run_id)}" title="${esc(item.run_id)}">${esc(shortRunId(item.run_id))} · ${item.status === 'available' ? '可评价' : '不可用'}</option>`).join('');
+  refs.assessmentRunSelect.innerHTML = items.map((item) => {
+    const context = item.run || {};
+    const situation = context.situation_name || context.situation_id || '情境未记录';
+    const damage = context.damage_scenario_id || '无损毁';
+    const status = item.provenance_status === 'stale' ? '来源已过期' : item.status === 'available' ? '可评价' : '不可用';
+    const title = `${item.run_id} · ${situation} · ${damage}${context.owner_user_id ? ` · ${context.owner_user_id}` : ''}`;
+    return `<option value="${esc(item.run_id)}" title="${esc(title)}">${esc(shortRunId(item.run_id))} · ${esc(situation)} · ${esc(damage)} · ${esc(status)}</option>`;
+  }).join('');
   refs.assessmentRunSelect.disabled = !items.length;
   refs.assessmentRunSelect.value = state.assessment.runId || '';
   const evaluation = currentAssessmentEvaluation();
   if (!evaluation) {
-    refs.assessmentIndicatorTable.innerHTML = '<div class="results-placeholder">暂无正式指标评价结果</div>';
-    refs.assessmentComposite.innerHTML = '<div class="results-placeholder">暂无综合评价结果</div>';
+    refs.assessmentIndicatorTable.innerHTML = '<div class="results-placeholder">尚无综合评价结果</div>';
+    refs.assessmentComposite.innerHTML = '<div class="results-placeholder">尚无综合评价结果</div>';
     return;
   }
+  const context = evaluation.run || {};
+  const situation = context.situation_name || context.situation_id || '未记录';
+  const damage = context.damage_scenario_id || '无损毁';
+  const sourceLabel = evaluation.weight_source === 'ahp' ? 'AHP' : '专家评分';
+  const traceRows = `<dl class="assessment-trace"><dt>Run</dt><dd title="${esc(evaluation.run_id)}">${esc(evaluation.run_id)}</dd><dt>情境</dt><dd title="${esc(context.situation_id || '')}">${esc(situation)}</dd><dt>损毁场景</dt><dd>${esc(damage)}</dd><dt>Snapshot</dt><dd title="${esc(evaluation.snapshot_hash || '')}">${esc(shortHash(evaluation.snapshot_hash))}</dd><dt>Metrics</dt><dd title="${esc(evaluation.metrics_hash || '')}">${esc(shortHash(evaluation.metrics_hash))}</dd><dt>权重来源</dt><dd>${esc(sourceLabel)}</dd></dl>`;
   if (evaluation.status !== 'available') {
     const reason = evaluation.unavailable_reason || '正式评价输入不完整';
-    refs.assessmentIndicatorTable.innerHTML = `<div class="results-placeholder">不可用：${esc(reason)}</div>`;
-    refs.assessmentComposite.innerHTML = `<div class="results-placeholder">不可用：${esc(reason)}</div>`;
+    const label = evaluation.provenance_status === 'stale' ? '评价来源已过期' : '不可用';
+    refs.assessmentIndicatorTable.innerHTML = `<div class="results-placeholder">${esc(label)}：${esc(reason)}</div>`;
+    refs.assessmentComposite.innerHTML = `<div class="assessment-unavailable"><p>${esc(label)}：${esc(reason)}</p>${traceRows}</div>`;
     return;
   }
-  const sourceLabel = evaluation.weight_source === 'ahp' ? 'AHP' : '专家评分';
-  const indicatorRows = (evaluation.indicators || []).map((item) => `<tr><th title="${esc(item.calculation_type)}">${esc(item.name)}</th><td>${esc(number(Number(item.raw_value) * 100, 2))}%</td><td>${esc(number(Number(item.normalized_value) * 100, 2))}%</td><td>${esc(number(Number(item.weight) * 100, 2))}%</td><td>${esc(sourceLabel)}</td></tr>`).join('');
-  refs.assessmentIndicatorTable.innerHTML = `<table><thead><tr><th>指标</th><th>原始值</th><th>归一化</th><th>权重</th><th>来源</th></tr></thead><tbody>${indicatorRows}</tbody></table>`;
-  const membership = evaluation.overall_membership || {};
   const ratingLabels = { very_low: '很低', low: '较低', medium: '中等', high: '较高', very_high: '很高' };
+  const indicatorRows = (evaluation.indicators || []).map((item) => {
+    const membership = item.evidence?.membership || {};
+    const dominant = Object.entries(membership).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
+    const contribution = item.evidence?.contribution;
+    return `<tr><th title="${esc(item.calculation_type)}">${esc(item.name)}</th><td>${esc(number(Number(item.raw_value) * 100, 2))}%</td><td>${esc(number(Number(item.normalized_value) * 100, 2))}%</td><td>${esc(number(Number(item.weight) * 100, 2))}%</td><td>${contribution == null ? '未记录' : `${esc(number(Number(contribution) * 100, 2))}%`}</td><td>${esc(dominant ? ratingLabels[dominant[0]] || dominant[0] : '未记录')}</td></tr>`;
+  }).join('');
+  refs.assessmentIndicatorTable.innerHTML = `<table><thead><tr><th>指标</th><th>原始值</th><th>归一化</th><th>权重</th><th>贡献</th><th>隶属等级</th></tr></thead><tbody>${indicatorRows}</tbody></table>`;
+  const membership = evaluation.overall_membership || {};
   const dominant = Object.entries(membership).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
   const traceTitle = `Snapshot ${evaluation.snapshot_hash || '未记录'} · Metrics ${evaluation.metrics_hash || '未记录'} · ${evaluation.calculation_version || '计算版本未记录'}`;
-  refs.assessmentComposite.innerHTML = `<div class="assessment-composite-score" title="${esc(traceTitle)}"><strong>${esc(number(Number(evaluation.support_index) * 100, 2))}</strong><span>综合能力指数 / 100</span></div><dl><dt>评价等级</dt><dd>${esc(dominant ? ratingLabels[dominant[0]] || dominant[0] : '未记录')}</dd><dt>指标集</dt><dd>${esc(evaluation.indicator_set?.version || '未记录')}</dd><dt>权重来源</dt><dd>${esc(sourceLabel)}</dd><dt>计算版本</dt><dd>${esc(evaluation.calculation_version || '未记录')}</dd></dl>`;
+  refs.assessmentComposite.innerHTML = `<div class="assessment-composite-score" title="${esc(traceTitle)}"><strong>${esc(number(Number(evaluation.support_index) * 100, 2))}</strong><span>综合能力指数 / 100</span></div><div>${traceRows}<dl><dt>评价等级</dt><dd>${esc(dominant ? ratingLabels[dominant[0]] || dominant[0] : '未记录')}</dd><dt>指标集</dt><dd>${esc(evaluation.indicator_set?.version || '未记录')}</dd><dt>计算版本</dt><dd>${esc(evaluation.calculation_version || '未记录')}</dd></dl></div>`;
 }
 function renderAssessmentRisk() {
   const evaluations = Array.isArray(state.assessment.evaluations?.items) ? state.assessment.evaluations.items : [];

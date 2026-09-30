@@ -5,6 +5,8 @@ from typing import Any
 from backend.auth.principal import Principal
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.assessment_repository import AssessmentRepository
+from backend.storage.run_repository import RunRepository
+from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.web.error_mapping import map_expected_error
 from backend.web.http import ApiInputError, ApiResponse, parse_positive_int
 
@@ -17,9 +19,13 @@ class AssessmentResultsApi:
         *,
         assessment_repository: AssessmentRepository,
         airport_repository: AirportRepository,
+        run_repository: RunRepository,
+        snapshot_repository: RunSnapshotRepository,
     ) -> None:
         self.assessment = assessment_repository
         self.airports = airport_repository
+        self.runs = run_repository
+        self.snapshots = snapshot_repository
 
     @staticmethod
     def _handle(call) -> ApiResponse:
@@ -174,11 +180,59 @@ class AssessmentResultsApi:
         def action() -> ApiResponse:
             principal.require_permission("results.read")
             parsed_limit = parse_positive_int(limit, field="limit", default=100, maximum=500)
-            records, total = self.assessment.list_run_evaluations(limit=parsed_limit)
+            records, total = self.assessment.list_run_evaluations(
+                owner_user_id=None if principal.is_admin else principal.user_id,
+                limit=parsed_limit,
+            )
+            items: list[dict[str, Any]] = []
+            for evaluation in records:
+                item = evaluation.to_dict()
+                run = self.runs.get(evaluation.run_id)
+                snapshot = self.snapshots.get(evaluation.run_id)
+                payload = snapshot.to_dict() if snapshot is not None else {}
+                situation = payload.get("situation")
+                run_config = payload.get("run_config")
+                item["run"] = {
+                    "owner_user_id": None if run is None else run.owner_user_id,
+                    "situation_id": None if run is None else run.situation_id,
+                    "situation_name": (
+                        situation.get("name") or situation.get("situation_name")
+                        if isinstance(situation, dict)
+                        else None
+                    ),
+                    "damage_scenario_id": (
+                        run_config.get("damage_scenario_id")
+                        if isinstance(run_config, dict)
+                        else None
+                    ),
+                }
+                current = bool(
+                    run is not None
+                    and run.snapshot_hash == evaluation.snapshot_hash
+                    and run.metrics_hash == evaluation.metrics_hash
+                )
+                item["provenance_status"] = "current" if current else "stale"
+                if not current:
+                    reason = "评价来源与当前 Run 结果不一致，请重新生成综合评价"
+                    item.update({
+                        "status": "unavailable",
+                        "unavailable_reason": reason,
+                        "indicators": [],
+                        "support_index": None,
+                        "overall_membership": None,
+                        "weighted_composite": None,
+                        "risk": {
+                            "status": "unavailable",
+                            "score": None,
+                            "level": None,
+                            "reason": reason,
+                        },
+                    })
+                items.append(item)
             return ApiResponse(
                 {
                     "schema_version": "assessment-evaluation.v1",
-                    "items": [record.to_dict() for record in records],
+                    "items": items,
                     "total": total,
                 },
                 200,

@@ -59,6 +59,8 @@ class IndicatorApiTests(unittest.TestCase):
         ).body
         self.assertEqual("ahp", weights["weight_source"])
         self.assertLessEqual(weights["trace"]["consistency_ratio"], 0.1)
+        self.assertEqual(1, weights["trace"]["revision"])
+        self.assertRegex(weights["trace"]["config_hash"], r"^[0-9a-f]{64}$")
 
     def test_ahp_configuration_rejects_inconsistent_matrix(self):
         tree = self.api.tree(

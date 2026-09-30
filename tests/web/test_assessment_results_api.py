@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,8 @@ from backend.domain.assessment import (
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.assessment_repository import AssessmentRepository
 from backend.storage.database import initialize_database
+from backend.storage.run_repository import RunRepository
+from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.web.assessment_results_api import AssessmentResultsApi
 from backend.web.app import create_app
 from backend.web.composition import build_run_api
@@ -56,6 +60,8 @@ class AssessmentResultsApiTests(unittest.TestCase):
         self.api = AssessmentResultsApi(
             assessment_repository=self.repository,
             airport_repository=airport_repository,
+            run_repository=RunRepository(self.db_path),
+            snapshot_repository=RunSnapshotRepository(self.db_path),
         )
         self.viewer = Principal("viewer", role="viewer")
 
@@ -180,6 +186,26 @@ class AssessmentResultsApiTests(unittest.TestCase):
             risk_status="available",
         )
         self.repository.list_run_evaluations = lambda **_kwargs: ([evaluation], 1)
+        self.api.runs.get = lambda _run_id: type(
+            "Run",
+            (),
+            {
+                "owner_user_id": "viewer",
+                "situation_id": "ST-1",
+                "snapshot_hash": "a" * 64,
+                "metrics_hash": "b" * 64,
+            },
+        )()
+        self.api.snapshots.get = lambda _run_id: type(
+            "Snapshot",
+            (),
+            {
+                "to_dict": lambda _self: {
+                    "situation": {"situation_name": "验证情境"},
+                    "run_config": {"damage_scenario_id": "DS-1"},
+                }
+            },
+        )()
 
         response = self.api.evaluations(principal=self.viewer)
 
@@ -188,6 +214,130 @@ class AssessmentResultsApiTests(unittest.TestCase):
         self.assertEqual("RUN-1", response.body["items"][0]["run_id"])
         self.assertEqual("ahp", response.body["items"][0]["weight_source"])
         self.assertEqual(1, response.body["items"][0]["risk"]["level"])
+        self.assertEqual("current", response.body["items"][0]["provenance_status"])
+        self.assertEqual("ST-1", response.body["items"][0]["run"]["situation_id"])
+        self.assertEqual("验证情境", response.body["items"][0]["run"]["situation_name"])
+        self.assertEqual("DS-1", response.body["items"][0]["run"]["damage_scenario_id"])
+
+    def _save_unavailable_run_evaluation(self, run_id: str, owner_user_id: str) -> None:
+        payload = {
+            "schema": "run_input_snapshot_v4",
+            "run_id": run_id,
+            "situation": {"situation_id": "ST-1", "situation_name": "权限测试情境"},
+            "run_config": {"damage_scenario_id": None},
+        }
+        payload_json = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        snapshot_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+        with self.repository.connect() as conn:
+            conn.execute(
+                """INSERT INTO run_input_snapshots
+                   (run_id,situation_id,situation_content_hash,snapshot_hash,payload_json)
+                   VALUES (?,?,?,?,?)""",
+                (run_id, "ST-1", "c" * 64, snapshot_hash, payload_json),
+            )
+            conn.execute(
+                """INSERT INTO runs
+                   (run_id,owner_user_id,situation_id,snapshot_hash,status)
+                   VALUES (?,?,?,?, 'succeeded')""",
+                (run_id, owner_user_id, "ST-1", snapshot_hash),
+            )
+            conn.execute(
+                """INSERT INTO run_results
+                   (run_id,solution_hash,solution_json,metrics_hash,metrics_json)
+                   VALUES (?,?,?,?,?)""",
+                (run_id, "e" * 64, "{}", "d" * 64, "{}"),
+            )
+        self.repository.save_run_evaluation(
+            RunIndicatorAssessment(
+                run_id=run_id,
+                snapshot_hash=snapshot_hash,
+                metrics_hash="d" * 64,
+                indicator_set_id="INDSET-RUN-ASSESSMENT-V1",
+                indicator_set_version="run-assessment.v1",
+                indicators=(),
+                status="unavailable",
+                unavailable_reason="正式指标输入不完整",
+                calculation_version="run-indicator-assessment.v1",
+                weight_source="ahp",
+                weight_trace={"consistent": True},
+                risk_status="unavailable",
+                risk_reason="正式指标输入不完整",
+            )
+        )
+
+    def test_indicator_evaluations_are_owner_scoped_and_admins_see_all_runs(self) -> None:
+        self._save_unavailable_run_evaluation("RUN-OWN", "operator-a")
+        self._save_unavailable_run_evaluation("RUN-FOREIGN", "operator-b")
+
+        operator = self.api.evaluations(
+            principal=Principal("operator-a", role="operator")
+        )
+        admin = self.api.evaluations(
+            principal=Principal("admin", role="admin")
+        )
+
+        self.assertEqual(["RUN-OWN"], [item["run_id"] for item in operator.body["items"]])
+        self.assertEqual(1, operator.body["total"])
+        self.assertEqual(
+            {"RUN-OWN", "RUN-FOREIGN"},
+            {item["run_id"] for item in admin.body["items"]},
+        )
+        self.assertEqual(2, admin.body["total"])
+
+    def test_stale_evaluation_provenance_is_not_returned_as_available(self) -> None:
+        evaluation = RunIndicatorAssessment(
+            run_id="RUN-STALE",
+            snapshot_hash="a" * 64,
+            metrics_hash="b" * 64,
+            indicator_set_id="INDSET-RUN-ASSESSMENT-V1",
+            indicator_set_version="run-assessment.v1",
+            indicators=(
+                IndicatorAssessmentValue(
+                    indicator_id="IND:task",
+                    code="task_completion_rate",
+                    name="任务履行率",
+                    raw_value=0.9,
+                    normalized_value=0.9,
+                    weight=1.0,
+                    weight_source="ahp",
+                    calculation_type="metrics.summary.completion_ratio",
+                    evidence={},
+                ),
+            ),
+            status="available",
+            calculation_version="run-indicator-assessment.v1",
+            weight_source="ahp",
+            weight_trace={"consistent": True},
+            support_index=0.9,
+            overall_membership={"very_high": 1.0},
+            weighted_composite=0.9,
+            risk_score=0.1,
+            risk_level=1,
+            risk_status="available",
+        )
+        self.repository.list_run_evaluations = lambda **_kwargs: ([evaluation], 1)
+        self.api.runs.get = lambda _run_id: type(
+            "Run",
+            (),
+            {
+                "owner_user_id": "viewer",
+                "situation_id": "ST-1",
+                "snapshot_hash": "a" * 64,
+                "metrics_hash": "e" * 64,
+            },
+        )()
+        self.api.snapshots.get = lambda _run_id: None
+
+        response = self.api.evaluations(principal=self.viewer)
+        item = response.body["items"][0]
+
+        self.assertEqual("stale", item["provenance_status"])
+        self.assertEqual("unavailable", item["status"])
+        self.assertIsNone(item["support_index"])
+        self.assertEqual([], item["indicators"])
+        self.assertIn("重新生成", item["unavailable_reason"])
 
     def test_run_derived_capacity_observation_has_explicit_semantics_and_provenance(self) -> None:
         digest = "a" * 64

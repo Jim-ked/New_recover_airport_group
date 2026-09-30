@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -578,6 +579,40 @@ class IndicatorRepository:
             ).fetchone()
             source = config_row["weight_source"] if config_row is not None else "expert"
             trace = json.loads(config_row["trace_json"]) if config_row is not None else {}
+            revision = int(config_row["revision"]) if config_row is not None else 0
+            config_fact = {
+                "indicator_set_id": set_row["indicator_set_id"],
+                "weight_source": source,
+                "revision": revision,
+                "indicator_ids": (
+                    json.loads(config_row["indicator_ids_json"])
+                    if config_row is not None
+                    else []
+                ),
+                "comparison_matrix": (
+                    json.loads(config_row["comparison_matrix_json"])
+                    if config_row is not None and config_row["comparison_matrix_json"] is not None
+                    else None
+                ),
+                "trace": trace,
+                "weights": [
+                    {
+                        "indicator_id": item["indicator_id"],
+                        "weight": item["weight"],
+                        "weight_source": item["weight_source"],
+                    }
+                    for item in items
+                ],
+            }
+            config_hash = hashlib.sha256(
+                json.dumps(
+                    config_fact,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            trace = {**trace, "revision": revision, "config_hash": config_hash}
             return {
                 "indicator_set_id": set_row["indicator_set_id"],
                 "version": set_row["version"],

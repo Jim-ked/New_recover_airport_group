@@ -34,7 +34,7 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
         for message in (
             "暂无评估落库结果",
             "当前机场暂无评估曲线",
-            "暂无正式指标评价结果",
+            "尚无综合评价结果",
             "正式评价输入不完整",
             "暂无跨场景评估对比记录",
             "评估数据读取失败",
@@ -89,11 +89,20 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
     def test_indicator_evaluation_keeps_missing_data_distinct_from_zero(self) -> None:
         render = JS[JS.index("function renderAssessmentEvaluation"):JS.index("function renderAssessmentRisk")]
         self.assertIn("evaluation.status !== 'available'", render)
-        self.assertIn("不可用：", render)
+        self.assertIn("'不可用'", render)
         self.assertNotIn("|| 0", render)
         self.assertIn("weight_source", render)
         self.assertIn("snapshot_hash", render)
         self.assertIn("metrics_hash", render)
+        self.assertIn("provenance_status", render)
+        self.assertIn("situation_name", render)
+        self.assertIn("damage_scenario_id", render)
+
+    def test_comprehensive_selector_has_explicit_empty_and_available_states(self) -> None:
+        render = JS[JS.index("function renderAssessmentEvaluation"):JS.index("function renderAssessmentRisk")]
+        self.assertIn("assessmentRunSelect.disabled = !items.length", render)
+        self.assertIn("尚无综合评价结果", render)
+        self.assertIn("评价来源已过期", render)
 
     def test_formal_run_risk_is_not_mixed_with_legacy_airport_risk(self) -> None:
         render = JS[JS.index("function renderAssessmentRisk"):JS.index("function renderAssessmentComparisons")]

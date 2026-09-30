@@ -90,6 +90,8 @@ def build_assessment_results_api(db_path: str | Path) -> AssessmentResultsApi:
     return AssessmentResultsApi(
         assessment_repository=AssessmentRepository(db_path),
         airport_repository=WorkspaceAirportRepository(db_path),
+        run_repository=RunRepository(db_path),
+        snapshot_repository=RunSnapshotRepository(db_path),
     )
 
 

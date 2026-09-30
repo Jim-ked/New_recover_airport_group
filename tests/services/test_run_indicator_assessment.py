@@ -190,6 +190,12 @@ class RunIndicatorAssessmentServiceTests(unittest.TestCase):
         self.assertEqual(4, len(result.indicators))
         self.assertTrue(0 <= result.support_index <= 1)
         self.assertTrue(1 <= result.risk_level <= 5)
+        for item in result.indicators:
+            self.assertEqual(
+                {"very_low", "low", "medium", "high", "very_high"},
+                set(item.evidence["membership"]),
+            )
+            self.assertGreaterEqual(item.evidence["contribution"], 0)
         self.assertEqual([result], captured.saved)
 
     def test_incomplete_metrics_persist_explicit_unavailable_without_score(self) -> None:

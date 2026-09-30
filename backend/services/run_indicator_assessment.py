@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from backend.algorithm.assessment.ahp_weights import AHPError, compute_risk
@@ -282,6 +282,21 @@ class RunIndicatorAssessmentService:
                 weight_map[code] = weight
             fuzzy = evaluate_elements(score_map, weight_map)
             risk = compute_risk(score_map, weight_map)
+            values = [
+                replace(
+                    item,
+                    evidence={
+                        **dict(item.evidence),
+                        "membership": dict(fuzzy.element_memberships[item.code]),
+                        "contribution": round(
+                            fuzzy.normalized_weights[item.code]
+                            * fuzzy.element_capabilities[item.code],
+                            6,
+                        ),
+                    },
+                )
+                for item in values
+            ]
         except (RunIndicatorAssessmentError, AHPError, FuzzyInputError, ValueError) as exc:
             return self._save_unavailable(record, str(exc), version, source, trace)
 
