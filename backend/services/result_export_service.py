@@ -135,6 +135,170 @@ def _flatten_scalar_map(kind: str, section: str, mapping: Mapping[str, Any], *, 
             yield _row(kind, section, str(key), value, entity_type=entity_type, entity_id=entity_id)
 
 
+def _scalar_items(value: Any, prefix: str = ""):
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            yield from _scalar_items(child, child_prefix)
+    else:
+        yield prefix, value
+
+
+def _comparison_objects(
+    kind: str,
+    data: Mapping[str, Any],
+    source_run_ids: Sequence[Any],
+) -> list[tuple[str, str]]:
+    roles = data.get("roles") or {}
+    if isinstance(roles, Mapping) and roles:
+        return [(str(role), str(run_id)) for role, run_id in roles.items()]
+
+    run_ids = data.get("run_ids") or source_run_ids
+    if not isinstance(run_ids, (list, tuple)):
+        return []
+    baseline_run_id = data.get("baseline_run_id")
+    records = []
+    for run_id in run_ids:
+        role = "run"
+        if kind == "configuration_comparison":
+            role = "baseline" if run_id == baseline_run_id else "comparison"
+        records.append((role, str(run_id)))
+    return records
+
+
+def _comparison_overview_records(
+    kind: str,
+    data: Mapping[str, Any],
+) -> list[tuple[str, str, Any]]:
+    if kind == "configuration_comparison":
+        overview = data.get("summary_deltas_vs_baseline") or {}
+        baseline_run_id = data.get("baseline_run_id")
+        records = []
+        if isinstance(overview, Mapping):
+            for run_id, metrics in overview.items():
+                if run_id == baseline_run_id:
+                    continue
+                if not isinstance(metrics, Mapping):
+                    continue
+                for metric, value in metrics.items():
+                    if value is not None and not isinstance(value, (Mapping, list, tuple)):
+                        records.append((str(metric), str(run_id), value))
+        return records
+
+    overview = data.get("difference_overview") or {}
+    records = []
+    if not isinstance(overview, Mapping):
+        return records
+    for metric, value in overview.items():
+        if not isinstance(value, Mapping):
+            if value is not None:
+                records.append((str(metric), "", value))
+            continue
+        for series, detail in value.items():
+            if isinstance(detail, Mapping) and "value" in detail:
+                scalar = detail.get("value")
+                run_ids = detail.get("run_ids") or []
+                suffix = ", ".join(str(run_id) for run_id in run_ids)
+                label = f"{series} ({suffix})" if suffix else str(series)
+                if scalar is not None:
+                    records.append((str(metric), label, scalar))
+            elif detail is not None and not isinstance(detail, (Mapping, list, tuple)):
+                records.append((str(metric), str(series), detail))
+    return records
+
+
+def _comparison_airport_records(data: Mapping[str, Any]) -> list[tuple[str, str, Any]]:
+    airports = data.get("airports") or {}
+    labels = data.get("labels") or {}
+    airport_labels = labels.get("airports") if isinstance(labels, Mapping) else {}
+    if not isinstance(airport_labels, Mapping):
+        airport_labels = {}
+    records = []
+    if not isinstance(airports, Mapping):
+        return records
+    for airport_id, payload in airports.items():
+        if not isinstance(payload, Mapping):
+            continue
+        label = airport_labels.get(airport_id)
+        display_id = (
+            f"{label} ({airport_id})"
+            if label and str(label) != str(airport_id)
+            else str(airport_id)
+        )
+        departures = payload.get("departures_total")
+        if isinstance(departures, Mapping):
+            for series, value in departures.items():
+                if value is not None and not isinstance(value, (Mapping, list, tuple)):
+                    records.append((display_id, str(series), value))
+            continue
+        for series, values in payload.items():
+            if not isinstance(values, Mapping):
+                continue
+            value = values.get("departures_total")
+            if value is not None and not isinstance(value, (Mapping, list, tuple)):
+                records.append((display_id, str(series), value))
+    return records
+
+
+def _comparison_entity_rows(
+    kind: str,
+    data: Mapping[str, Any],
+    section: str,
+    entity_type: str,
+) -> list[Dict[str, str]]:
+    entities = data.get(section) or {}
+    if not isinstance(entities, Mapping):
+        return []
+    roles = data.get("roles") or {}
+    run_series = set(str(item) for item in (data.get("run_ids") or []))
+    if isinstance(roles, Mapping):
+        run_series.update(str(item) for item in roles)
+        run_series.update(str(item) for item in roles.values())
+
+    rows = []
+    for entity_id, payload in entities.items():
+        if not isinstance(payload, Mapping):
+            continue
+        if run_series.intersection(str(key) for key in payload):
+            for series, metrics in payload.items():
+                if not isinstance(metrics, Mapping):
+                    continue
+                for metric, value in _scalar_items(metrics):
+                    rows.append(_row(
+                        kind,
+                        section,
+                        metric,
+                        value,
+                        entity_type=entity_type,
+                        entity_id=str(entity_id),
+                        series=str(series),
+                    ))
+        else:
+            for metric, series_values in payload.items():
+                if isinstance(series_values, Mapping):
+                    for series, value in series_values.items():
+                        if not isinstance(value, Mapping):
+                            rows.append(_row(
+                                kind,
+                                section,
+                                str(metric),
+                                value,
+                                entity_type=entity_type,
+                                entity_id=str(entity_id),
+                                series=str(series),
+                            ))
+                elif not isinstance(series_values, (list, tuple)):
+                    rows.append(_row(
+                        kind,
+                        section,
+                        str(metric),
+                        series_values,
+                        entity_type=entity_type,
+                        entity_id=str(entity_id),
+                    ))
+    return rows
+
+
 def build_tidy_rows(report_data: Mapping[str, Any]) -> list[Dict[str, str]]:
     _validate_report_data(report_data)
     kind = str(report_data.get("kind") or "")
@@ -177,40 +341,68 @@ def build_tidy_rows(report_data: Mapping[str, Any]) -> list[Dict[str, str]]:
                     if isinstance(chain, Mapping):
                         rows.extend(_flatten_scalar_map(kind, "sortie_chains", chain, entity_type="sortie_chain", entity_id=str(chain.get("path_id") or idx)))
     else:
-        # comparison.v1: keep every comparison number tied to role/series/time window.
-        for section in ("difference_overview", "summary", "collaboration"):
-            payload = data.get(section) or {}
-            if isinstance(payload, Mapping):
-                for metric, value in payload.items():
-                    if isinstance(value, Mapping):
-                        for series, scalar in value.items():
-                            if not isinstance(scalar, (Mapping, list, tuple)):
-                                rows.append(_row(kind, section, str(metric), scalar, series=str(series)))
-                    elif not isinstance(value, (list, tuple)):
-                        rows.append(_row(kind, section, str(metric), value))
+        # comparison.v1: normalize the three comparison shapes without recalculating facts.
+        for role, run_id in _comparison_objects(kind, data, report_data.get("source_run_ids") or []):
+            rows.append(_row(
+                kind,
+                "comparison_objects",
+                "run_id",
+                run_id,
+                entity_type="run",
+                entity_id=run_id,
+                series=role,
+            ))
+        run_summaries = data.get("run_summaries") or {}
+        if isinstance(run_summaries, Mapping):
+            for run_id, summary in run_summaries.items():
+                if not isinstance(summary, Mapping):
+                    continue
+                for metric, value in _scalar_items(summary):
+                    rows.append(_row(
+                        kind,
+                        "run_summaries",
+                        metric,
+                        value,
+                        entity_type="run",
+                        entity_id=str(run_id),
+                        series=str(run_id),
+                    ))
+        summary_deltas = data.get("summary_deltas_vs_baseline") or {}
+        if isinstance(summary_deltas, Mapping):
+            for run_id, deltas in summary_deltas.items():
+                if not isinstance(deltas, Mapping):
+                    continue
+                for metric, value in _scalar_items(deltas):
+                    rows.append(_row(
+                        kind,
+                        "summary_deltas_vs_baseline",
+                        metric,
+                        value,
+                        entity_type="run",
+                        entity_id=str(run_id),
+                        series=str(run_id),
+                    ))
+        for metric, series, value in _comparison_overview_records(kind, data):
+            rows.append(_row(kind, "difference_overview", metric, value, series=series))
         timeline = data.get("timeline") or {}
         windows = list(timeline.get("windows") or []) if isinstance(timeline, Mapping) else []
         if isinstance(timeline, Mapping):
             for metric in ("departures", "returns"):
                 series_map = timeline.get(metric) or {}
                 if isinstance(series_map, Mapping):
-                    for series, values in series_map.items():
-                        if isinstance(values, list) and len(values) == len(windows):
-                            for t, value in zip(windows, values):
-                                rows.append(_row(kind, "timeline", metric, value, series=str(series), time_window=t))
+                    for series, payload in series_map.items():
+                        series_payloads = {str(series): payload}
+                        if isinstance(payload, Mapping):
+                            series_payloads = {
+                                str(series): payload.get("values"),
+                                f"{series}.delta_vs_baseline": payload.get("delta_vs_baseline"),
+                            }
+                        for series_name, values in series_payloads.items():
+                            if isinstance(values, list) and len(values) == len(windows):
+                                for t, value in zip(windows, values):
+                                    rows.append(_row(kind, "timeline", metric, value, series=series_name, time_window=t))
         for section, entity_type in (("airports", "airport"), ("tasks", "task"), ("aircraft", "aircraft")):
-            entities = data.get(section) or {}
-            if isinstance(entities, Mapping):
-                for entity_id, payload in entities.items():
-                    if not isinstance(payload, Mapping):
-                        continue
-                    for metric, values in payload.items():
-                        if isinstance(values, Mapping):
-                            for series, scalar in values.items():
-                                if not isinstance(scalar, (Mapping, list, tuple)):
-                                    rows.append(_row(kind, section, str(metric), scalar, entity_type=entity_type, entity_id=str(entity_id), series=str(series)))
-                        elif not isinstance(values, (list, tuple)):
-                            rows.append(_row(kind, section, str(metric), values, entity_type=entity_type, entity_id=str(entity_id)))
+            rows.extend(_comparison_entity_rows(kind, data, section, entity_type))
     return rows
 
 
@@ -269,7 +461,7 @@ class ResultExportService:
             from reportlab.lib.units import mm
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
-            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+            from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
         except ImportError as exc:  # pragma: no cover - deployment dependency
             raise ResultExportError("PDF rendering requires reportlab") from exc
 
@@ -301,7 +493,7 @@ class ResultExportService:
         )
         styles = getSampleStyleSheet()
         title = ParagraphStyle("zh-title", parent=styles["Title"], fontName=bold_font, fontSize=18, leading=24, textColor=colors.HexColor("#15324A"))
-        h2 = ParagraphStyle("zh-h2", parent=styles["Heading2"], fontName=bold_font, fontSize=12, leading=17, spaceBefore=6, spaceAfter=5, keepWithNext=True, textColor=colors.HexColor("#1E4E72"))
+        h2 = ParagraphStyle("zh-h2", parent=styles["Heading2"], fontName=bold_font, fontSize=12, leading=17, spaceBefore=6, spaceAfter=5, textColor=colors.HexColor("#1E4E72"))
         body = ParagraphStyle("zh-body", parent=styles["BodyText"], fontName=regular_font, fontSize=9, leading=13, alignment=TA_LEFT)
         small = ParagraphStyle("zh-small", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#415A6B"))
         story = [Paragraph("机场群顽存能力仿真结果报告", title)]
@@ -317,6 +509,7 @@ class ResultExportService:
         story.append(Spacer(1, 5 * mm))
 
         def add_table(title_text: str, headers: Sequence[str], records: Iterable[Sequence[Any]], widths=None):
+            story.append(CondPageBreak(18 * mm))
             story.append(Paragraph(title_text, h2))
             table_rows = [[Paragraph(escape(str(h)), small) for h in headers]]
             for record in records:
@@ -366,34 +559,30 @@ class ResultExportService:
                 (fid, row.get("scheduled_total")) for fid, row in aircraft.items() if isinstance(row, Mapping)
             ], widths=[70 * mm, 45 * mm])
         else:
-            roles = data.get("roles") or data.get("runs") or {}
-            if isinstance(roles, Mapping):
-                add_table("比较对象", ["角色/标签", "Run ID"], roles.items(), widths=[70 * mm, 100 * mm])
-            overview = data.get("difference_overview") or data.get("comparison_summary") or {}
-            if isinstance(overview, Mapping):
-                records = []
-                for metric, value in overview.items():
-                    if isinstance(value, Mapping):
-                        for series, scalar in value.items():
-                            if not isinstance(scalar, (Mapping, list, tuple)):
-                                records.append((metric, series, scalar))
-                    else:
-                        records.append((metric, "", value))
-                add_table("结果差异概览", ["指标", "角色/差值", "值"], records, widths=[80 * mm, 60 * mm, 55 * mm])
-            airports = data.get("airports") or {}
-            if isinstance(airports, Mapping):
-                records = []
-                for aid, payload in airports.items():
-                    if not isinstance(payload, Mapping):
-                        continue
-                    dep = payload.get("departures_total") or {}
-                    if isinstance(dep, Mapping):
-                        for series in ("R0", "R1", "R2", "damage_delta", "cluster_delta"):
-                            if series in dep:
-                                records.append((aid, series, dep.get(series)))
-                    else:
-                        records.append((aid, "", dep))
-                add_table("全机场承接比较", ["机场", "角色/差值", "出动架次"], records, widths=[60 * mm, 60 * mm, 50 * mm])
+            role_labels = {
+                "baseline": "基准",
+                "comparison": "比较",
+                "run": "Run",
+            }
+            objects = [
+                (role_labels.get(role, role), run_id)
+                for role, run_id in _comparison_objects(
+                    kind, data, report_data.get("source_run_ids") or []
+                )
+            ]
+            add_table("比较对象", ["角色/标签", "Run ID"], objects, widths=[70 * mm, 100 * mm])
+            add_table(
+                "结果差异概览",
+                ["指标", "角色/差值", "值"],
+                _comparison_overview_records(kind, data),
+                widths=[80 * mm, 60 * mm, 55 * mm],
+            )
+            add_table(
+                "全机场承接比较",
+                ["机场", "角色/差值", "出动架次"],
+                _comparison_airport_records(data),
+                widths=[70 * mm, 60 * mm, 50 * mm],
+            )
 
         doc.build(story)
         return RenderedExport(

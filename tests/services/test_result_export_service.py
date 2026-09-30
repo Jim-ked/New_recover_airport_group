@@ -9,6 +9,8 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from pypdf import PdfReader
+
 from backend.algorithm.runner import run_once
 from backend.auth.principal import Principal
 from backend.services.result_export_service import ResultExportService, build_tidy_rows
@@ -16,7 +18,7 @@ from backend.services.run_result_service import RunResultService
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.web.results_api import ResultsApi
-from tests.algorithm.test_runner import RunnerFakeModel
+from tests.algorithm.test_runner import RunnerFakeModel, fixed_cluster_selector
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
 
@@ -39,6 +41,57 @@ class ResultExportServiceTests(unittest.TestCase):
             principal=Principal("ADMIN", is_admin=True),
         ).body
         self.exporter = ResultExportService()
+
+    def _persist(self, snapshot):
+        self.runs.create_queued(snapshot=snapshot, owner_user_id="ADMIN")
+        self.runs.claim_running(snapshot.run_id)
+        kwargs = {"model_factory": RunnerFakeModel}
+        if snapshot.to_dict()["run_config"]["cluster_enabled"]:
+            kwargs["cluster_selector_fn"] = fixed_cluster_selector
+        self.api.results.persist_success(result=run_once(snapshot, **kwargs))
+
+    def _comparison_sources(self):
+        from backend.domain.damage import DamageScenario
+
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS-EXPORT",
+            "name": "Export comparison damage",
+            "category": "custom",
+            "events": [],
+        })
+        self._persist(make_snapshot(
+            run_id="EXPORT-R0",
+            cluster_enabled=False,
+            available_scenarios=(scenario,),
+        ))
+        self._persist(make_snapshot(
+            run_id="EXPORT-R1",
+            cluster_enabled=False,
+            scenario=scenario,
+        ))
+        self._persist(make_snapshot(
+            run_id="EXPORT-R2",
+            cluster_enabled=True,
+            scenario=scenario,
+        ))
+        principal = Principal("ADMIN", is_admin=True)
+        return {
+            "damage_comparison": self.api.export_data({
+                "kind": "damage_comparison",
+                "r0_run_id": "EXPORT-R0",
+                "r1_run_id": "EXPORT-R1",
+                "r2_run_id": "EXPORT-R2",
+            }, principal=principal).body,
+            "scenario_comparison": self.api.export_data({
+                "kind": "scenario_comparison",
+                "run_ids": ["EXPORT-R0", "EXPORT-R1"],
+            }, principal=principal).body,
+            "configuration_comparison": self.api.export_data({
+                "kind": "configuration_comparison",
+                "run_ids": ["EXPORT-R1", "EXPORT-R2"],
+                "baseline_run_id": "EXPORT-R1",
+            }, principal=principal).body,
+        }
 
     def tearDown(self):
         self.td.cleanup()
@@ -143,6 +196,87 @@ class ResultExportServiceTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "pdf, csv, json or xml"):
             self.exporter.render(self.source, "xlsx")
+
+    def test_configuration_comparison_all_formats_contain_canonical_business_rows(self):
+        source = self._comparison_sources()["configuration_comparison"]
+        data = source["data"]
+
+        self.assertEqual(["EXPORT-R1", "EXPORT-R2"], source["source_run_ids"])
+        self.assertEqual(["EXPORT-R1", "EXPORT-R2"], data["run_ids"])
+        self.assertEqual("EXPORT-R1", data["baseline_run_id"])
+        self.assertEqual({"EXPORT-R1", "EXPORT-R2"}, set(data["run_summaries"]))
+        self.assertTrue(data["run_summaries"]["EXPORT-R1"])
+        self.assertIn("A1", data["airports"])
+        self.assertIn("EXPORT-R2", data["airports"]["A1"])
+        self.assertIn("EXPORT-R2", data["summary_deltas_vs_baseline"])
+
+        parsed_json = json.loads(self.exporter.render_json(source).content.decode("utf-8"))
+        self.assertEqual(source, parsed_json)
+        self.assertIn("A1", parsed_json["data"]["airports"])
+
+        root = ET.fromstring(self.exporter.render_xml(source).content)
+        parsed_xml = self._decode_xml_object(root)
+        self.assertEqual(source, parsed_xml)
+        self.assertIn("A1", parsed_xml["data"]["airports"])
+
+        csv_text = self.exporter.render_csv(source).content.decode("utf-8-sig")
+        rows = list(csv.DictReader(io.StringIO(csv_text)))
+        self.assertTrue(any(
+            row["section"] == "comparison_objects"
+            and row["entity_id"] == "EXPORT-R1"
+            and row["series"] == "baseline"
+            for row in rows
+        ))
+        self.assertTrue(any(
+            row["section"] == "summary_deltas_vs_baseline"
+            and row["entity_id"] == "EXPORT-R2"
+            and row["metric"] == "participating_airport_count_delta"
+            and row["value"] == "0.0"
+            for row in rows
+        ))
+        self.assertTrue(any(
+            row["section"] == "airports"
+            and row["entity_id"] == "A1"
+            and row["series"] == "EXPORT-R2"
+            and row["metric"] == "departures_total"
+            for row in rows
+        ))
+
+    def test_all_comparison_exports_contain_run_summary_airport_and_pdf_rows(self):
+        for kind, source in self._comparison_sources().items():
+            with self.subTest(kind=kind):
+                csv_text = self.exporter.render_csv(source).content.decode("utf-8-sig")
+                csv_rows = list(csv.DictReader(io.StringIO(csv_text)))
+                self.assertTrue(any(
+                    row["section"] == "comparison_objects"
+                    for row in csv_rows
+                ))
+                self.assertTrue(any(
+                    row["section"] == "run_summaries"
+                    and row["entity_id"] == source["source_run_ids"][0]
+                    for row in csv_rows
+                ))
+                self.assertTrue(any(
+                    row["section"] == "airports"
+                    and row["entity_id"] == "A1"
+                    and row["metric"] == "departures_total"
+                    for row in csv_rows
+                ))
+
+                rendered = self.exporter.render_pdf(source)
+                reader = PdfReader(io.BytesIO(rendered.content))
+                text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                airport_value = source["data"]["airports"]["A1"]
+                if kind == "damage_comparison":
+                    expected_value = airport_value["departures_total"]["R0"]
+                else:
+                    first_run_id = source["source_run_ids"][0]
+                    expected_value = airport_value[first_run_id]["departures_total"]
+
+                for run_id in source["source_run_ids"]:
+                    self.assertIn(run_id, text)
+                self.assertIn("A1", text)
+                self.assertIn(str(expected_value), text)
 
 
 if __name__ == "__main__":

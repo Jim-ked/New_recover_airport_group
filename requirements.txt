@@ -8,5 +8,8 @@ Flask>=2.3,<4
 # Programmatic offline PDF result reports. CSV export uses the Python standard library.
 reportlab>=4,<5
 
+# Programmatic PDF text verification for export regression tests.
+pypdf>=6,<7
+
 # Cross-platform production WSGI host for the formal Windows/Linux startup entrypoint.
 waitress>=3,<4
