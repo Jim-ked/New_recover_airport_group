@@ -173,6 +173,15 @@ class RunFrontendContractTests(unittest.TestCase):
         self.assertIn("if (state.inspectRunId)", RUN_JS)
         self.assertIn("返回当前运行", RUN_HTML)
 
+    def test_admin_history_identifies_run_owner_without_emphasizing_it_for_operators(self):
+        self.assertIn('data-admin-owner-column', RUN_HTML)
+        self.assertIn('>提交用户</th>', RUN_HTML)
+        self.assertIn("isAdmin: false", RUN_JS)
+        self.assertIn("state.isAdmin = account?.is_admin === true", RUN_JS)
+        self.assertIn("run.owner_user_id", RUN_JS)
+        self.assertIn("column.hidden = !state.isAdmin", RUN_JS)
+        self.assertIn("cell.colSpan = state.isAdmin ? 10 : 9", RUN_JS)
+
     def test_current_run_terminal_catchup_and_queue_cancel_use_existing_api(self):
         self.assertIn("transitionedToTerminal", RUN_JS)
         self.assertIn("refreshActiveEvents({ force: true })", RUN_JS)

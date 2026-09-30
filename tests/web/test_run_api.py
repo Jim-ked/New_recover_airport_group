@@ -17,6 +17,7 @@ from backend.storage.situation_repository import SituationRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.services.run_submission_service import SolverProbeResult
 from backend.web.composition import build_run_api
+from tests.algorithm.test_snapshot_adapter import make_snapshot
 
 
 class RunApiTests(unittest.TestCase):
@@ -206,6 +207,36 @@ class RunApiTests(unittest.TestCase):
         bad = self.api.list(principal=self.u1, no_damage="true", damage_scenario_id="D1")
         self.assertEqual(400, bad.status)
         self.assertEqual("no_damage", bad.body["error"]["field"])
+
+    def test_admin_history_discovers_filters_and_pages_across_owners(self):
+        own = self.api.submit(self.body, principal=self.u1)
+        self.assertEqual(201, own.status)
+        for run_id in ("FOREIGN-A", "FOREIGN-B"):
+            self.runs.create_queued(
+                snapshot=make_snapshot(run_id=run_id),
+                owner_user_id="U2",
+            )
+
+        first = self.api.list(principal=self.admin, limit="2", offset="0")
+        second = self.api.list(principal=self.admin, limit="2", offset="2")
+        filtered = self.api.list(
+            principal=self.admin, run_id_query="FOREIGN-A", limit="10", offset="0"
+        )
+        operator = self.api.list(principal=self.u1, limit="10", offset="0")
+        viewer = self.api.list(
+            principal=Principal("U1", role="viewer"), limit="10", offset="0"
+        )
+
+        self.assertEqual(3, first.body["total"])
+        self.assertEqual(3, second.body["total"])
+        self.assertEqual(
+            {"RUN-API-1", "FOREIGN-A", "FOREIGN-B"},
+            {row["run_id"] for row in first.body["items"] + second.body["items"]},
+        )
+        self.assertEqual(["FOREIGN-A"], [row["run_id"] for row in filtered.body["items"]])
+        self.assertEqual(["RUN-API-1"], [row["run_id"] for row in operator.body["items"]])
+        self.assertEqual(["RUN-API-1"], [row["run_id"] for row in viewer.body["items"]])
+        self.assertEqual("U2", filtered.body["items"][0]["owner_user_id"])
 
     def test_error_envelope_distinguishes_format_not_found_semantic_and_state_errors(self):
         bad_shape = self.api.submit({**self.body, "scene_file": "legacy.json"}, principal=self.u1)

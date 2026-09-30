@@ -214,8 +214,9 @@ class RunResultService:
             raise RunResultServiceError(
                 "mode must be multi_scenario, configuration or exploratory"
             )
-        candidates = self.runs.list_for_owner(
-            base_record.owner_user_id, statuses=("succeeded",), limit=limit, offset=0
+        candidates, _total = self.runs.search_history(
+            owner_user_id=None if is_admin else actor_user_id,
+            statuses=("succeeded",), limit=limit, offset=0,
         )
         items = []
         for record in candidates:
@@ -274,8 +275,9 @@ class RunResultService:
         Every returned triple has already passed the fixed R0/R1/R2 comparability rules
         and the canonical Metrics schema/time-axis compatibility check.
         """
-        records = self.runs.list_for_owner(
-            actor_user_id, statuses=("succeeded",), limit=min(max(int(limit), 1), 200), offset=0
+        records, _total = self.runs.search_history(
+            owner_user_id=None if is_admin else actor_user_id,
+            statuses=("succeeded",), limit=min(max(int(limit), 1), 200), offset=0,
         )
         bundles: Dict[str, Tuple[RunRecord, RunSnapshot, Dict[str, Any], Dict[str, Any]]] = {}
         for record in records:

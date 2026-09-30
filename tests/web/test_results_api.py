@@ -130,6 +130,16 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual(200, config.status)
         self.assertEqual(["CONFIG"], [row["run_id"] for row in config.body["items"]])
 
+        admin = self.api.comparable_runs(
+            principal=Principal("ADMIN", is_admin=True),
+            base_run_id="BASE",
+            mode="multi_scenario",
+        )
+        self.assertEqual(200, admin.status)
+        self.assertEqual(
+            {"SCENE", "FOREIGN"}, {row["run_id"] for row in admin.body["items"]}
+        )
+
     def test_results_access_is_owner_scoped(self):
         ds = self._scenario("DS1")
         self._persist(make_snapshot(run_id="BASE", cluster_enabled=False, scenario=ds), owner="U1")

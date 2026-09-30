@@ -48,6 +48,29 @@ class RunServiceTests(unittest.TestCase):
         record = self.service.request_cancel("R1", actor_user_id="U1")
         self.assertEqual("cancelled", record.status)
 
+    def test_admin_history_is_global_but_operator_and_viewer_remain_owner_scoped(self):
+        for run_id, owner in (("R1", "U1"), ("R2", "U2"), ("R3", "U1")):
+            self.service.submit(
+                run_id=run_id, owner_user_id=owner, situation_id="S1",
+                run_config={}, od_distances=[],
+            )
+
+        admin_rows, admin_total = self.service.search_history(
+            actor_user_id="ADMIN", is_admin=True, limit=2, offset=0,
+        )
+        second_page, second_total = self.service.search_history(
+            actor_user_id="ADMIN", is_admin=True, limit=2, offset=2,
+        )
+        operator_rows, operator_total = self.service.search_history(
+            actor_user_id="U1", is_admin=False,
+        )
+
+        self.assertEqual(3, admin_total)
+        self.assertEqual(3, second_total)
+        self.assertEqual({"R1", "R2", "R3"}, {row.run_id for row in admin_rows + second_page})
+        self.assertEqual(2, operator_total)
+        self.assertEqual({"R1", "R3"}, {row.run_id for row in operator_rows})
+
 
 if __name__ == "__main__":
     unittest.main()

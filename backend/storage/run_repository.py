@@ -150,9 +150,9 @@ class RunRepository:
             ).fetchone()
         return None if row is None else self._record_from_row(row)
 
-    def search_for_owner(
+    def search_history(
         self,
-        owner_user_id: str,
+        owner_user_id: Optional[str],
         *,
         statuses: Optional[Sequence[str]] = None,
         situation_id: Optional[str] = None,
@@ -167,7 +167,7 @@ class RunRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> Tuple[List[RunRecord], int]:
-        """Query owner-scoped Run history without making the frontend inspect snapshots.
+        """Query Run history, optionally restricted to one owner.
 
         Filters on task, damage configuration and selected airport deliberately execute
         against the immutable snapshot/result JSON stored with each Run.  This keeps
@@ -178,8 +178,10 @@ class RunRepository:
             raise RunRepositoryError("limit must be an integer in [1,500]")
         if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
             raise RunRepositoryError("offset must be a nonnegative integer")
-        if not isinstance(owner_user_id, str) or not owner_user_id.strip():
-            raise RunRepositoryError("owner_user_id must be nonblank")
+        if owner_user_id is not None and (
+            not isinstance(owner_user_id, str) or not owner_user_id.strip()
+        ):
+            raise RunRepositoryError("owner_user_id must be nonblank or None")
         if no_damage is not None and not isinstance(no_damage, bool):
             raise RunRepositoryError("no_damage must be bool or None")
         if cluster_enabled is not None and not isinstance(cluster_enabled, bool):
@@ -187,8 +189,11 @@ class RunRepository:
         if no_damage is True and damage_scenario_id is not None:
             raise RunRepositoryError("no_damage and damage_scenario_id cannot both be set")
 
-        clauses: List[str] = ["r.owner_user_id = ?"]
-        params: List[Any] = [owner_user_id]
+        clauses: List[str] = []
+        params: List[Any] = []
+        if owner_user_id is not None:
+            clauses.append("r.owner_user_id = ?")
+            params.append(owner_user_id)
         if statuses:
             vals = tuple(str(x) for x in statuses)
             unknown = sorted(set(vals) - set(RUN_STATUSES))
@@ -231,7 +236,7 @@ class RunRepository:
             clauses.append("r.created_at <= ?")
             params.append(str(created_before))
 
-        where = " AND ".join(clauses)
+        where = " AND ".join(clauses) if clauses else "1 = 1"
         base = f"""
             FROM runs r
             JOIN run_input_snapshots rs ON rs.run_id = r.run_id
@@ -254,6 +259,14 @@ class RunRepository:
             ).fetchall()
         return [self._record_from_row(row) for row in rows], int(total_row["n"] if total_row else 0)
 
+    def search_for_owner(
+        self,
+        owner_user_id: str,
+        **filters: Any,
+    ) -> Tuple[List[RunRecord], int]:
+        """Backward-compatible owner-scoped wrapper around the unified query."""
+        return self.search_history(owner_user_id=owner_user_id, **filters)
+
     def list_for_owner(
         self,
         owner_user_id: str,
@@ -262,8 +275,8 @@ class RunRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> List[RunRecord]:
-        records, _total = self.search_for_owner(
-            owner_user_id, statuses=statuses, limit=limit, offset=offset
+        records, _total = self.search_history(
+            owner_user_id=owner_user_id, statuses=statuses, limit=limit, offset=offset
         )
         return records
 

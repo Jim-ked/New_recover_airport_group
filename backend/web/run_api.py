@@ -210,6 +210,7 @@ class RunApi:
                 )
             records, total = self.runs.search_history(
                 actor_user_id=principal.user_id,
+                is_admin=principal.is_admin,
                 statuses=parsed_statuses,
                 situation_id=parsed_situation,
                 run_id_query=parsed_query,

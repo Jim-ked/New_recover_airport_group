@@ -37,6 +37,22 @@ class RunRepositoryTests(unittest.TestCase):
         record = self.repo.get("R1")
         self.assertEqual("U1", record.owner_user_id)
 
+    def test_search_history_accepts_optional_owner_scope_without_duplicating_filters(self):
+        self.repo.create_queued(snapshot=make_snapshot(run_id="OWN-1"), owner_user_id="U1")
+        self.repo.create_queued(snapshot=make_snapshot(run_id="FOREIGN-1"), owner_user_id="U2")
+
+        owned, owned_total = self.repo.search_history(
+            owner_user_id="U1", run_id_query="1", limit=10, offset=0,
+        )
+        global_rows, global_total = self.repo.search_history(
+            owner_user_id=None, run_id_query="1", limit=10, offset=0,
+        )
+
+        self.assertEqual(1, owned_total)
+        self.assertEqual(["OWN-1"], [row.run_id for row in owned])
+        self.assertEqual(2, global_total)
+        self.assertEqual({"OWN-1", "FOREIGN-1"}, {row.run_id for row in global_rows})
+
     def test_cancel_has_no_external_cancelling_status(self):
         self.repo.create_queued(snapshot=make_snapshot(run_id="R1"), owner_user_id="U1")
         queued_cancel = self.repo.request_cancel("R1")

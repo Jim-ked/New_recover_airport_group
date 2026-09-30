@@ -73,6 +73,7 @@ const state = {
   clusterHasBeenEnabled: false,
   permissions: new Set(),
   accountReady: false,
+  isAdmin: false,
   logAutoScroll: true,
   workerStatus: { connected: false, reason: 'unknown' },
 };
@@ -902,7 +903,7 @@ function renderHistory() {
   refs.historyCount.textContent = String(rows.length);
   refs.historyBody.replaceChildren();
   if (!rows.length) {
-    const tr = document.createElement('tr'); const cell = td('暂无历史运行', 'table-empty'); cell.colSpan = 9; tr.append(cell); refs.historyBody.append(tr); return;
+    const tr = document.createElement('tr'); const cell = td('暂无历史运行', 'table-empty'); cell.colSpan = state.isAdmin ? 10 : 9; tr.append(cell); refs.historyBody.append(tr); return;
   }
   for (const run of rows) {
     const tr = document.createElement('tr');
@@ -928,8 +929,12 @@ function renderHistory() {
       });
       actions.prepend(resultButton);
     }
+    const ownerCell = td(run.owner_user_id || '—');
+    ownerCell.dataset.adminOwnerColumn = '';
+    ownerCell.hidden = !state.isAdmin;
+    ownerCell.title = run.owner_user_id || '';
     tr.append(
-      td(shortRunId(run.run_id)), td(run.situation?.name || run.situation_id), td(damageLabel(run)),
+      td(shortRunId(run.run_id)), ownerCell, td(run.situation?.name || run.situation_id), td(damageLabel(run)),
       td(PREFERENCE_LABELS[run.run_config?.preference_mode] || run.run_config?.preference_mode),
       td(clusterLabel(run)), td(run.started_at), td(run.finished_at),
       td(STATUS_LABELS[run.status], `status-${run.status}`), actions,
@@ -1115,7 +1120,11 @@ function bindFormEvents() {
 
 function applyAccount(account) {
   state.permissions = new Set(account?.permissions || []);
+  state.isAdmin = account?.is_admin === true;
   state.accountReady = true;
+  document.querySelectorAll('[data-admin-owner-column]').forEach((column) => {
+    column.hidden = !state.isAdmin;
+  });
   applyRunPermissionState();
   renderQueue();
   renderHistory();

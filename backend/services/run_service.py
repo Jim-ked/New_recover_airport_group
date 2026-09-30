@@ -77,18 +77,22 @@ class RunService:
         self,
         *,
         actor_user_id: str,
+        is_admin: bool = False,
         statuses: Optional[Sequence[str]] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[RunRecord]:
-        return self.runs.list_for_owner(
-            actor_user_id, statuses=statuses, limit=limit, offset=offset
+        records, _total = self.runs.search_history(
+            owner_user_id=None if is_admin else actor_user_id,
+            statuses=statuses, limit=limit, offset=offset,
         )
+        return records
 
     def search_history(
         self,
         *,
         actor_user_id: str,
+        is_admin: bool = False,
         statuses: Optional[Sequence[str]] = None,
         situation_id: Optional[str] = None,
         run_id_query: Optional[str] = None,
@@ -102,11 +106,8 @@ class RunService:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[RunRecord], int]:
-        # The normal Run workbench is intentionally owner-scoped.  Admin access to an
-        # individual foreign Run is a separate capability from browsing every user's
-        # history and must not leak into this product surface accidentally.
-        return self.runs.search_for_owner(
-            actor_user_id,
+        return self.runs.search_history(
+            owner_user_id=None if is_admin else actor_user_id,
             statuses=statuses,
             situation_id=situation_id,
             run_id_query=run_id_query,
