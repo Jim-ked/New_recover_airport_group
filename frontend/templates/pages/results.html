@@ -15,8 +15,10 @@
       <div id="resultsExport" class="results-export">
         <button id="resultsExportButton" class="btn" type="button" disabled aria-expanded="false">导出</button>
         <div id="resultsExportMenu" class="results-export-menu" aria-hidden="true">
-          <button type="button" data-export-format="pdf">PDF汇总</button>
-          <button type="button" data-export-format="csv">CSV完整数据</button>
+          <button type="button" data-export-format="pdf">PDF 汇总报告</button>
+          <button type="button" data-export-format="csv">CSV 表格数据</button>
+          <button type="button" data-export-format="json">JSON 结构化数据</button>
+          <button type="button" data-export-format="xml">XML 结构化数据</button>
         </div>
       </div>
     </div>
@@ -84,7 +86,8 @@
 
   <section id="assessmentWorkbench" class="assessment-workbench hidden" aria-label="评估结果可视化">
     <header class="assessment-toolbar">
-      <div><strong>评估结果可视化</strong><small>展示已经落库的正式评估记录</small></div>
+      <div><strong>评估结果可视化</strong><small>容量事实与指标综合评价均来自正式运行记录</small></div>
+      <label class="assessment-run-choice" for="assessmentRunSelect">综合评价 Run<select id="assessmentRunSelect" class="mini-select"></select></label>
       <button id="assessmentRefreshButton" class="btn small" type="button">刷新</button>
     </header>
     <div id="assessmentError" class="results-error hidden" role="alert"></div>
@@ -99,9 +102,19 @@
         <div id="assessmentCurveLegend" class="results-legend"></div>
       </article>
     </section>
+    <section class="assessment-grid assessment-grid-evaluation">
+      <article class="assessment-card">
+        <header class="assessment-card-head"><h3>指标评价结果</h3><span>原始值、归一化值及权重</span></header>
+        <div id="assessmentIndicatorTable" class="assessment-indicator-table"><div class="results-placeholder">加载中…</div></div>
+      </article>
+      <article class="assessment-card">
+        <header class="assessment-card-head"><h3>综合能力评价</h3><span>参考版模糊综合评价方法</span></header>
+        <div id="assessmentComposite" class="assessment-composite"><div class="results-placeholder">加载中…</div></div>
+      </article>
+    </section>
     <section class="assessment-grid assessment-grid-bottom">
       <article class="assessment-card">
-        <header class="assessment-card-head"><h3>风险分级</h3><span>仅显示独立模型或正式专家评分</span></header>
+        <header class="assessment-card-head"><h3>风险/等级</h3><span>无完整输入时明确标记不可用</span></header>
         <div id="assessmentRiskTable" class="assessment-risk-table"><div class="results-placeholder">—</div></div>
       </article>
       <article class="assessment-card">

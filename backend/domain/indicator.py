@@ -10,6 +10,8 @@ SET_STATUSES = frozenset({"draft", "published", "disabled"})
 NODE_KINDS = frozenset({"CATEGORY", "ABSTRACT", "DIRECT"})
 DIRECTIONS = frozenset({"positive", "negative", "neutral"})
 SCORE_STATUSES = frozenset({"draft", "submitted"})
+WEIGHT_SOURCES = frozenset({"expert", "ahp"})
+CALCULATION_STATUSES = frozenset({"available", "unavailable"})
 
 
 class IndicatorValidationError(ValueError):
@@ -91,12 +93,17 @@ class IndicatorNode:
     editable: bool = True
     enabled: bool = True
     display_order: int = 0
+    category: Optional[str] = None
+    calculation_type: Optional[str] = None
+    weight_source: Optional[str] = None
+    calculation_status: str = "unavailable"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "IndicatorNode":
         allowed = {
             "id", "indicator_set_id", "parent_id", "code", "name", "level", "node_kind",
             "unit", "direction", "weight", "description", "is_core", "editable", "enabled", "display_order",
+            "category", "calculation_type", "weight_source", "calculation_status",
         }
         unknown = [k for k in raw if k not in allowed]
         if unknown:
@@ -133,12 +140,21 @@ class IndicatorNode:
         order = raw.get("display_order", 0)
         if isinstance(order, bool) or not isinstance(order, int) or order < 0:
             _fail("display_order", "display_order must be a nonnegative integer")
+        weight_source = raw.get("weight_source")
+        if weight_source is not None and weight_source not in WEIGHT_SOURCES:
+            _fail("weight_source", f"weight_source must be one of {sorted(WEIGHT_SOURCES)} or null")
+        calculation_status = raw.get("calculation_status", "unavailable")
+        if calculation_status not in CALCULATION_STATUSES:
+            _fail("calculation_status", f"calculation_status must be one of {sorted(CALCULATION_STATUSES)}")
         return cls(
             id=_id(raw.get("id"), "id"), indicator_set_id=_id(raw.get("indicator_set_id"), "indicator_set_id"),
             parent_id=parent, code=_id(raw.get("code"), "code"), name=_text(raw.get("name"), "name") or "",
             level=level, node_kind=kind, unit=_text(raw.get("unit"), "unit", optional=True), direction=direction,
             weight=weight, description=_text(raw.get("description"), "description", optional=True),
             is_core=bools["is_core"], editable=bools["editable"], enabled=bools["enabled"], display_order=order,
+            category=_text(raw.get("category"), "category", optional=True),
+            calculation_type=_text(raw.get("calculation_type"), "calculation_type", optional=True),
+            weight_source=weight_source, calculation_status=calculation_status,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -148,6 +164,8 @@ class IndicatorNode:
             "unit": self.unit, "direction": self.direction, "weight": self.weight,
             "description": self.description, "is_core": self.is_core, "editable": self.editable,
             "enabled": self.enabled, "display_order": self.display_order,
+            "category": self.category, "calculation_type": self.calculation_type,
+            "weight_source": self.weight_source, "calculation_status": self.calculation_status,
         }
 
 

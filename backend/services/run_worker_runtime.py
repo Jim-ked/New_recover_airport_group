@@ -3,11 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.services.run_result_service import RunResultService
+from backend.services.run_indicator_assessment import RunIndicatorAssessmentService
 from backend.services.run_service import RunService
 from backend.services.run_snapshot_service import RunSnapshotService
 from backend.services.run_worker import RunWorker
 from backend.services.run_worker_loop import RunWorkerLoop
 from backend.storage.airport_repository import AirportRepository
+from backend.storage.assessment_repository import AssessmentRepository
+from backend.storage.indicator_repository import IndicatorRepository
 from backend.storage.run_queue_repository import RunQueueRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.storage.situation_repository import SituationRepository
@@ -38,6 +41,12 @@ def build_run_worker_loop(
         run_service=run_service,
         result_service=result_service,
         snapshot_repository=snapshots,
+        post_success_hook=RunIndicatorAssessmentService(
+            run_repository=runs,
+            snapshot_repository=snapshots,
+            indicator_repository=IndicatorRepository(db_path),
+            assessment_repository=AssessmentRepository(db_path),
+        ).evaluate,
     )
     return RunWorkerLoop(
         queue_repository=runs,

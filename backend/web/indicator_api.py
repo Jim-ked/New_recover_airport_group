@@ -205,5 +205,39 @@ class IndicatorApi:
             return ApiResponse(self.repo.published_weights(indicator_set_id), 200)
         return self._handle(action)
 
+    def configure_weighting(self, set_id: str, raw_body: Any, *, principal: Principal) -> ApiResponse:
+        def action() -> ApiResponse:
+            principal.require_permission("indicators.write")
+            body = require_object(raw_body)
+            reject_unknown(
+                body,
+                {"weight_source", "indicator_ids", "comparison_matrix", "expected_revision"},
+            )
+            source = required_nonblank_string(body, "weight_source")
+            if source != "ahp":
+                raise ApiInputError(
+                    "weight_source must be ahp; expert weights are configured through submitted score sheets",
+                    field="weight_source",
+                )
+            indicator_ids = body.get("indicator_ids")
+            matrix = body.get("comparison_matrix")
+            if not isinstance(indicator_ids, list) or not all(
+                isinstance(item, str) and item.strip() for item in indicator_ids
+            ):
+                raise ApiInputError("indicator_ids must be a nonempty string array", field="indicator_ids")
+            if not isinstance(matrix, list):
+                raise ApiInputError("comparison_matrix must be an array", field="comparison_matrix")
+            return ApiResponse(
+                self.repo.configure_ahp_weights(
+                    set_id,
+                    indicator_ids=indicator_ids,
+                    comparison_matrix=matrix,
+                    expected_revision=_revision(body),
+                ),
+                200,
+            )
+
+        return self._handle(action)
+
 
 __all__ = ["IndicatorApi"]

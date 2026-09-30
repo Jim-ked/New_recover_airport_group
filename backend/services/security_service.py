@@ -104,12 +104,16 @@ class SecurityService:
         source = self._inside(self.backup_root, record.path, "backup")
         if not source.is_file():
             raise SecurityServiceError("backup file is missing")
-        verification = sqlite3.connect(str(source))
+        verification = None
         try:
+            verification = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
             if verification.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise SecurityServiceError("backup database integrity check failed")
+        except sqlite3.DatabaseError as exc:
+            raise SecurityServiceError("backup file is not a valid SQLite database") from exc
         finally:
-            verification.close()
+            if verification is not None:
+                verification.close()
         source_connection = sqlite3.connect(str(source))
         target_connection = sqlite3.connect(str(self.db_path))
         try:

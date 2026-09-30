@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Sequence
 
 from backend.domain.indicator import Expert, ExpertScore, IndicatorNode, IndicatorSet
+from backend.algorithm.assessment.ahp_weights import analyze_ahp_matrix
 from backend.storage.database import initialize_database
 
 
@@ -91,6 +93,8 @@ class IndicatorRepository:
             unit=row["unit"], direction=row["direction"], weight=row["weight"], description=row["description"],
             is_core=bool(row["is_core"]), editable=bool(row["editable"]), enabled=bool(row["enabled"]),
             display_order=int(row["display_order"]),
+            category=row["category"], calculation_type=row["calculation_type"],
+            weight_source=row["weight_source"], calculation_status=row["calculation_status"],
         )
 
     @staticmethod
@@ -190,8 +194,18 @@ class IndicatorRepository:
         # No submitted expert facts means weights are intentionally unavailable.
         if submitted == 0:
             conn.execute(
-                "UPDATE indicator_nodes SET weight=NULL WHERE indicator_set_id=? AND level=3",
+                "UPDATE indicator_nodes SET weight=NULL,weight_source=NULL WHERE indicator_set_id=? AND level=3",
                 (set_id,),
+            )
+            conn.execute(
+                """INSERT INTO indicator_weight_config
+                   (indicator_set_id,weight_source,indicator_ids_json,comparison_matrix_json,trace_json)
+                   VALUES (?,'expert','[]',NULL,?)
+                   ON CONFLICT(indicator_set_id) DO UPDATE SET
+                     weight_source='expert',indicator_ids_json='[]',comparison_matrix_json=NULL,
+                     trace_json=excluded.trace_json,revision=indicator_weight_config.revision+1,
+                     updated_at=CURRENT_TIMESTAMP""",
+                (set_id, json.dumps({"rule": "submitted_expert_mean_normalization_v1", "submitted_expert_count": 0})),
             )
             return {"submitted_expert_count": 0, "weighted_indicator_count": 0}
 
@@ -233,9 +247,25 @@ class IndicatorRepository:
         )
         for indicator_id, weight in weights.items():
             conn.execute(
-                "UPDATE indicator_nodes SET weight=? WHERE indicator_set_id=? AND indicator_id=?",
+                "UPDATE indicator_nodes SET weight=?,weight_source='expert' WHERE indicator_set_id=? AND indicator_id=?",
                 (weight, set_id, indicator_id),
             )
+        indicator_ids = sorted(weights)
+        trace = {
+            "rule": "submitted_expert_mean_sibling_normalization_v1",
+            "submitted_expert_count": submitted,
+            "normalization_scope": "enabled_level3_siblings_under_each_level2_parent",
+        }
+        conn.execute(
+            """INSERT INTO indicator_weight_config
+               (indicator_set_id,weight_source,indicator_ids_json,comparison_matrix_json,trace_json)
+               VALUES (?,'expert',?,NULL,?)
+               ON CONFLICT(indicator_set_id) DO UPDATE SET
+                 weight_source='expert',indicator_ids_json=excluded.indicator_ids_json,
+                 comparison_matrix_json=NULL,trace_json=excluded.trace_json,
+                 revision=indicator_weight_config.revision+1,updated_at=CURRENT_TIMESTAMP""",
+            (set_id, json.dumps(indicator_ids, separators=(",", ":")), json.dumps(trace, separators=(",", ":"))),
+        )
         return {
             "submitted_expert_count": submitted,
             "weighted_indicator_count": len(weights),
@@ -265,13 +295,15 @@ class IndicatorRepository:
                 conn.execute(
                     """INSERT INTO indicator_nodes
                        (indicator_id,indicator_set_id,parent_id,code,name,level,node_kind,unit,direction,weight,
-                        description,is_core,editable,enabled,display_order)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        description,is_core,editable,enabled,display_order,category,calculation_type,
+                        weight_source,calculation_status)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         id_map[r["indicator_id"]], draft.id,
                         None if r["parent_id"] is None else id_map[r["parent_id"]],
                         r["code"], r["name"], r["level"], r["node_kind"], r["unit"], r["direction"], r["weight"],
                         r["description"], r["is_core"], r["editable"], r["enabled"], r["display_order"],
+                        r["category"], r["calculation_type"], r["weight_source"], r["calculation_status"],
                     ),
                 )
         return self.get_tree(draft.id)
@@ -318,21 +350,25 @@ class IndicatorRepository:
                 conn.execute(
                     """INSERT INTO indicator_nodes
                        (indicator_id,indicator_set_id,parent_id,code,name,level,node_kind,unit,direction,weight,
-                        description,is_core,editable,enabled,display_order)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        description,is_core,editable,enabled,display_order,category,calculation_type,
+                        weight_source,calculation_status)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (node.id, node.indicator_set_id, node.parent_id, node.code, node.name, node.level, node.node_kind,
                      node.unit, node.direction, node.weight, node.description, int(node.is_core), int(node.editable),
-                     int(node.enabled), node.display_order),
+                     int(node.enabled), node.display_order, node.category, node.calculation_type,
+                     node.weight_source, node.calculation_status),
                 )
             else:
                 if existing["indicator_set_id"] != node.indicator_set_id:
                     raise IndicatorStateError("indicator node cannot move between sets")
                 conn.execute(
                     """UPDATE indicator_nodes SET parent_id=?,code=?,name=?,node_kind=?,unit=?,direction=?,weight=?,
-                       description=?,enabled=?,display_order=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP
+                       description=?,enabled=?,display_order=?,category=?,calculation_type=?,weight_source=?,
+                       calculation_status=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP
                        WHERE indicator_id=?""",
                     (node.parent_id, node.code, node.name, node.node_kind, node.unit, node.direction, node.weight,
-                     node.description, int(node.enabled), node.display_order, node.id),
+                     node.description, int(node.enabled), node.display_order, node.category,
+                     node.calculation_type, node.weight_source, node.calculation_status, node.id),
                 )
             self._bump_set(conn, node.indicator_set_id)
         tree = self.get_tree(node.indicator_set_id)
@@ -520,22 +556,102 @@ class IndicatorRepository:
             if set_row["status"] != "published":
                 raise IndicatorStateError("weights can only be read from a published set")
             rows = conn.execute(
-                """SELECT indicator_id,code,name,weight FROM indicator_nodes
+                """SELECT indicator_id,code,name,weight,weight_source,category,calculation_type,
+                          calculation_status FROM indicator_nodes
                    WHERE indicator_set_id=? AND level=3 AND enabled=1
                    ORDER BY display_order, indicator_id""",
                 (set_row["indicator_set_id"],),
             ).fetchall()
             items = [
-                {"indicator_id": r["indicator_id"], "code": r["code"], "name": r["name"], "weight": r["weight"]}
+                {
+                    "indicator_id": r["indicator_id"], "code": r["code"], "name": r["name"],
+                    "weight": r["weight"], "weight_source": r["weight_source"],
+                    "category": r["category"], "calculation_type": r["calculation_type"],
+                    "calculation_status": r["calculation_status"],
+                }
                 for r in rows
             ]
             complete = all(x["weight"] is not None for x in items)
+            config_row = conn.execute(
+                "SELECT * FROM indicator_weight_config WHERE indicator_set_id=?",
+                (set_row["indicator_set_id"],),
+            ).fetchone()
+            source = config_row["weight_source"] if config_row is not None else "expert"
+            trace = json.loads(config_row["trace_json"]) if config_row is not None else {}
             return {
                 "indicator_set_id": set_row["indicator_set_id"],
                 "version": set_row["version"],
                 "status": "available" if complete else "unavailable",
-                "calculation_rule": "submitted_expert_mean_sibling_normalization_v1",
-                "normalization_scope": "enabled_level3_siblings_under_each_level2_parent",
+                "weight_source": source,
+                "calculation_rule": (
+                    "ahp_normalized_column_mean_v1"
+                    if source == "ahp" else "submitted_expert_mean_sibling_normalization_v1"
+                ),
+                "normalization_scope": (
+                    "all_enabled_level3_indicators"
+                    if source == "ahp" else "enabled_level3_siblings_under_each_level2_parent"
+                ),
+                "trace": trace,
                 "items": items,
                 "message": None if complete else "No submitted expert score sheet is available for the published indicator set.",
             }
+
+    def configure_ahp_weights(
+        self,
+        set_id: str,
+        *,
+        indicator_ids: Sequence[str],
+        comparison_matrix: Sequence[Sequence[float]],
+        expected_revision: int,
+    ) -> Dict[str, Any]:
+        result = analyze_ahp_matrix(comparison_matrix)
+        ordered_ids = [str(value) for value in indicator_ids]
+        if len(ordered_ids) != len(result.weights) or len(set(ordered_ids)) != len(ordered_ids):
+            raise IndicatorStateError("indicator_ids must uniquely match the AHP matrix order")
+        with self.connect() as conn:
+            set_row = self._assert_set_revision(conn, set_id, expected_revision)
+            if set_row["status"] != "published":
+                raise IndicatorStateError("AHP weighting requires a published indicator set")
+            rows = conn.execute(
+                """SELECT indicator_id FROM indicator_nodes
+                   WHERE indicator_set_id=? AND level=3 AND enabled=1""",
+                (set_id,),
+            ).fetchall()
+            enabled = {str(row["indicator_id"]) for row in rows}
+            if set(ordered_ids) != enabled:
+                raise IndicatorStateError("AHP indicator_ids must cover every enabled level-3 indicator exactly once")
+            conn.execute(
+                "UPDATE indicator_nodes SET weight=NULL,weight_source=NULL WHERE indicator_set_id=? AND level=3",
+                (set_id,),
+            )
+            for index, indicator_id in enumerate(ordered_ids):
+                conn.execute(
+                    "UPDATE indicator_nodes SET weight=?,weight_source='ahp' WHERE indicator_set_id=? AND indicator_id=?",
+                    (result.weights[index], set_id, indicator_id),
+                )
+            trace = {
+                "method": "normalized_column_mean",
+                "lambda_max": result.lambda_max,
+                "consistency_index": result.consistency_index,
+                "consistency_ratio": result.consistency_ratio,
+                "consistent": result.consistent,
+                "matrix_order": ordered_ids,
+            }
+            conn.execute(
+                """INSERT INTO indicator_weight_config
+                   (indicator_set_id,weight_source,indicator_ids_json,comparison_matrix_json,trace_json)
+                   VALUES (?,'ahp',?,?,?)
+                   ON CONFLICT(indicator_set_id) DO UPDATE SET
+                     weight_source='ahp',indicator_ids_json=excluded.indicator_ids_json,
+                     comparison_matrix_json=excluded.comparison_matrix_json,
+                     trace_json=excluded.trace_json,revision=indicator_weight_config.revision+1,
+                     updated_at=CURRENT_TIMESTAMP""",
+                (
+                    set_id,
+                    json.dumps(ordered_ids, separators=(",", ":")),
+                    json.dumps(comparison_matrix, separators=(",", ":")),
+                    json.dumps(trace, separators=(",", ":")),
+                ),
+            )
+            self._bump_set(conn, set_id)
+        return self.published_weights(set_id)

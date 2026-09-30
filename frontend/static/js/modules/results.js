@@ -28,7 +28,7 @@ const state = {
     multi: createWorkspaceState(),
     configuration: createWorkspaceState(),
   },
-  assessment: { status: 'idle', overview: null, curves: null, comparisons: null, airportId: null, error: null },
+  assessment: { status: 'idle', overview: null, curves: null, comparisons: null, evaluations: null, airportId: null, runId: null, error: null },
 };
 const refs = {
   page: $('resultsPage'), conditionTitle: $('conditionTitle'), conditionFacts: $('conditionFacts'),
@@ -47,7 +47,8 @@ const refs = {
   assessmentRefresh: $('assessmentRefreshButton'), assessmentHeatmap: $('assessmentHeatmap'),
   assessmentCurves: $('assessmentCurves'), assessmentCurveLegend: $('assessmentCurveLegend'),
   assessmentAirportSelect: $('assessmentAirportSelect'), assessmentRiskTable: $('assessmentRiskTable'),
-  assessmentComparisons: $('assessmentComparisons'),
+  assessmentComparisons: $('assessmentComparisons'), assessmentRunSelect: $('assessmentRunSelect'),
+  assessmentIndicatorTable: $('assessmentIndicatorTable'), assessmentComposite: $('assessmentComposite'),
 };
 
 function view() { return state.workspaceStates[state.workspace]; }
@@ -214,7 +215,47 @@ function renderAssessmentCurves() {
   refs.assessmentCurves.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(metricLabel)}逐窗曲线">${grid}<path d="M${pad.left} ${height - pad.bottom}H${width - pad.right}M${pad.left} ${pad.top}V${height - pad.bottom}" stroke="#48687b"/>${lines}</svg>`;
   refs.assessmentCurveLegend.innerHTML = series.map((row, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${esc(assessmentScenarioLabel(row.scenario_type))}</span>`).join('');
 }
+function currentAssessmentEvaluation() {
+  const items = Array.isArray(state.assessment.evaluations?.items) ? state.assessment.evaluations.items : [];
+  return items.find((item) => item.run_id === state.assessment.runId) || items[0] || null;
+}
+function renderAssessmentEvaluation() {
+  const items = Array.isArray(state.assessment.evaluations?.items) ? state.assessment.evaluations.items : [];
+  refs.assessmentRunSelect.innerHTML = items.map((item) => `<option value="${esc(item.run_id)}" title="${esc(item.run_id)}">${esc(shortRunId(item.run_id))} · ${item.status === 'available' ? '可评价' : '不可用'}</option>`).join('');
+  refs.assessmentRunSelect.disabled = !items.length;
+  refs.assessmentRunSelect.value = state.assessment.runId || '';
+  const evaluation = currentAssessmentEvaluation();
+  if (!evaluation) {
+    refs.assessmentIndicatorTable.innerHTML = '<div class="results-placeholder">暂无正式指标评价结果</div>';
+    refs.assessmentComposite.innerHTML = '<div class="results-placeholder">暂无综合评价结果</div>';
+    return;
+  }
+  if (evaluation.status !== 'available') {
+    const reason = evaluation.unavailable_reason || '正式评价输入不完整';
+    refs.assessmentIndicatorTable.innerHTML = `<div class="results-placeholder">不可用：${esc(reason)}</div>`;
+    refs.assessmentComposite.innerHTML = `<div class="results-placeholder">不可用：${esc(reason)}</div>`;
+    return;
+  }
+  const sourceLabel = evaluation.weight_source === 'ahp' ? 'AHP' : '专家评分';
+  const indicatorRows = (evaluation.indicators || []).map((item) => `<tr><th title="${esc(item.calculation_type)}">${esc(item.name)}</th><td>${esc(number(Number(item.raw_value) * 100, 2))}%</td><td>${esc(number(Number(item.normalized_value) * 100, 2))}%</td><td>${esc(number(Number(item.weight) * 100, 2))}%</td><td>${esc(sourceLabel)}</td></tr>`).join('');
+  refs.assessmentIndicatorTable.innerHTML = `<table><thead><tr><th>指标</th><th>原始值</th><th>归一化</th><th>权重</th><th>来源</th></tr></thead><tbody>${indicatorRows}</tbody></table>`;
+  const membership = evaluation.overall_membership || {};
+  const ratingLabels = { very_low: '很低', low: '较低', medium: '中等', high: '较高', very_high: '很高' };
+  const dominant = Object.entries(membership).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
+  const traceTitle = `Snapshot ${evaluation.snapshot_hash || '未记录'} · Metrics ${evaluation.metrics_hash || '未记录'} · ${evaluation.calculation_version || '计算版本未记录'}`;
+  refs.assessmentComposite.innerHTML = `<div class="assessment-composite-score" title="${esc(traceTitle)}"><strong>${esc(number(Number(evaluation.support_index) * 100, 2))}</strong><span>综合能力指数 / 100</span></div><dl><dt>评价等级</dt><dd>${esc(dominant ? ratingLabels[dominant[0]] || dominant[0] : '未记录')}</dd><dt>指标集</dt><dd>${esc(evaluation.indicator_set?.version || '未记录')}</dd><dt>权重来源</dt><dd>${esc(sourceLabel)}</dd><dt>计算版本</dt><dd>${esc(evaluation.calculation_version || '未记录')}</dd></dl>`;
+}
 function renderAssessmentRisk() {
+  const evaluations = Array.isArray(state.assessment.evaluations?.items) ? state.assessment.evaluations.items : [];
+  if (evaluations.length) {
+    const rows = evaluations.map((item) => {
+      const risk = item.risk || {};
+      if (risk.status !== 'available') return `<tr><td title="${esc(item.run_id)}">${esc(shortRunId(item.run_id))}</td><td colspan="3">不可用：${esc(risk.reason || item.unavailable_reason || '正式输入不完整')}</td></tr>`;
+      return `<tr><td title="${esc(item.run_id)}">${esc(shortRunId(item.run_id))}</td><td><span class="assessment-risk-badge" data-risk-level="${esc(risk.level)}">${esc(ASSESSMENT_RISK_LABELS[risk.level] || risk.level)}</span></td><td>${esc(number(Number(risk.score) * 100, 2))}%</td><td>${esc(item.weight_source === 'ahp' ? 'AHP' : '专家评分')}</td></tr>`;
+    }).join('');
+    refs.assessmentRiskTable.innerHTML = `<table><thead><tr><th>Run</th><th>风险等级</th><th>风险值</th><th>权重</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return;
+  }
   const risks = state.assessment.overview?.risks || [];
   if (!risks.length) {
     const reason = state.assessment.overview?.risk_status?.reason || '未配置独立风险评估模型或正式专家评分';
@@ -238,18 +279,22 @@ function renderAssessmentWorkspace() {
   if (!active) return;
   refs.assessmentError.classList.toggle('hidden', state.assessment.status !== 'error');
   refs.assessmentError.textContent = state.assessment.status === 'error' ? '评估数据读取失败，请稍后重试。' : '';
-  renderAssessmentHeatmap(); renderAssessmentCurves(); renderAssessmentRisk(); renderAssessmentComparisons();
+  renderAssessmentHeatmap(); renderAssessmentCurves(); renderAssessmentEvaluation(); renderAssessmentRisk(); renderAssessmentComparisons();
 }
 async function loadAssessmentWorkspace({ force = false } = {}) {
   if (state.assessment.status === 'loading' && !force) return;
   state.assessment.status = 'loading'; state.assessment.error = null; renderAssessmentWorkspace();
   try {
-    const [overview, comparisons] = await Promise.all([
+    const [overview, comparisons, evaluations] = await Promise.all([
       apiFetch('/api/results/assessment/overview'),
       apiFetch('/api/results/assessment/comparisons?limit=50'),
+      apiFetch('/api/results/assessment/evaluations?limit=100'),
     ]);
-    state.assessment.overview = overview; state.assessment.comparisons = comparisons;
+    state.assessment.overview = overview; state.assessment.comparisons = comparisons; state.assessment.evaluations = evaluations;
     if (!state.assessment.airportId || !overview.airport_ids.includes(state.assessment.airportId)) state.assessment.airportId = overview.airport_ids[0] || null;
+    const evaluationItems = Array.isArray(evaluations.items) ? evaluations.items : [];
+    const evaluationRunIds = evaluationItems.map((item) => item.run_id);
+    if (!state.assessment.runId || !evaluationRunIds.includes(state.assessment.runId)) state.assessment.runId = evaluationRunIds[0] || null;
     state.assessment.curves = state.assessment.airportId ? await apiFetch(`/api/results/assessment/curves?airport_id=${encodeURIComponent(state.assessment.airportId)}`) : null;
     state.assessment.status = 'ready';
   } catch (error) { state.assessment.status = 'error'; state.assessment.error = error; }
@@ -654,6 +699,10 @@ refs.assessmentAirportSelect.addEventListener('change', async () => {
     state.assessment.curves = state.assessment.airportId ? await apiFetch(`/api/results/assessment/curves?airport_id=${encodeURIComponent(state.assessment.airportId)}`) : null;
     state.assessment.status = 'ready';
   } catch (error) { state.assessment.status = 'error'; state.assessment.error = error; }
+  renderAssessmentWorkspace();
+});
+refs.assessmentRunSelect.addEventListener('change', () => {
+  state.assessment.runId = refs.assessmentRunSelect.value || null;
   renderAssessmentWorkspace();
 });
 globalThis.addEventListener('resize', () => {

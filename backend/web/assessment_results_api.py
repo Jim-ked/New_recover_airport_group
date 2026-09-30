@@ -170,5 +170,21 @@ class AssessmentResultsApi:
 
         return self._handle(action)
 
+    def evaluations(self, *, principal: Principal, limit: Any = None) -> ApiResponse:
+        def action() -> ApiResponse:
+            principal.require_permission("results.read")
+            parsed_limit = parse_positive_int(limit, field="limit", default=100, maximum=500)
+            records, total = self.assessment.list_run_evaluations(limit=parsed_limit)
+            return ApiResponse(
+                {
+                    "schema_version": "assessment-evaluation.v1",
+                    "items": [record.to_dict() for record in records],
+                    "total": total,
+                },
+                200,
+            )
+
+        return self._handle(action)
+
 
 __all__ = ["AssessmentResultsApi"]

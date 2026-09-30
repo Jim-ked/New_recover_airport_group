@@ -75,6 +75,17 @@ class SecurityServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(SecurityServiceError, "approved backup directory"):
             self.service.restore_backup("unsafe")
 
+    def test_restore_rejects_invalid_sqlite_inside_approved_root(self) -> None:
+        self.backup_root.mkdir(parents=True, exist_ok=True)
+        invalid = self.backup_root / "invalid.sqlite3"
+        invalid.write_bytes(b"not a SQLite database")
+        self.repository.save_backup(
+            BackupRecord(id="invalid-sqlite", kind="full", path=invalid.name, encrypted=False)
+        )
+
+        with self.assertRaisesRegex(SecurityServiceError, "not a valid SQLite database"):
+            self.service.restore_backup("invalid-sqlite")
+
     def test_audit_report_is_generated_inside_root_and_tampered_path_is_rejected(self) -> None:
         connection = sqlite3.connect(self.db_path)
         try:

@@ -17,13 +17,16 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
         self.assertIn('id="assessmentWorkbench"', HTML)
         self.assertIn("评估结果可视化", HTML)
 
-    def test_workspace_contains_the_four_read_only_views_and_states(self) -> None:
+    def test_workspace_contains_capacity_and_indicator_evaluation_views(self) -> None:
         for element_id in (
             "assessmentHeatmap",
             "assessmentCurves",
             "assessmentAirportSelect",
             "assessmentRiskTable",
             "assessmentComparisons",
+            "assessmentRunSelect",
+            "assessmentIndicatorTable",
+            "assessmentComposite",
             "assessmentError",
             "assessmentRefreshButton",
         ):
@@ -31,7 +34,8 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
         for message in (
             "暂无评估落库结果",
             "当前机场暂无评估曲线",
-            "未配置独立风险评估模型或正式专家评分",
+            "暂无正式指标评价结果",
+            "正式评价输入不完整",
             "暂无跨场景评估对比记录",
             "评估数据读取失败",
         ):
@@ -48,6 +52,7 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
             "/api/results/assessment/overview",
             "/api/results/assessment/curves",
             "/api/results/assessment/comparisons",
+            "/api/results/assessment/evaluations",
         ):
             self.assertIn(endpoint, JS)
         self.assertNotIn("/api/assessment/correct", JS)
@@ -59,6 +64,7 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
             "function renderAssessmentCurves",
             "function renderAssessmentRisk",
             "function renderAssessmentComparisons",
+            "function renderAssessmentEvaluation",
         ):
             self.assertIn(token, JS)
         for token in (
@@ -66,8 +72,25 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
             ".assessment-heat-cell",
             ".assessment-risk-badge",
             ".assessment-curves",
+            ".assessment-grid-evaluation",
+            ".assessment-indicator-table",
+            ".assessment-composite",
         ):
             self.assertIn(token, CSS)
+
+    def test_indicator_evaluation_keeps_missing_data_distinct_from_zero(self) -> None:
+        render = JS[JS.index("function renderAssessmentEvaluation"):JS.index("function renderAssessmentRisk")]
+        self.assertIn("evaluation.status !== 'available'", render)
+        self.assertIn("不可用：", render)
+        self.assertNotIn("|| 0", render)
+        self.assertIn("weight_source", render)
+        self.assertIn("snapshot_hash", render)
+        self.assertIn("metrics_hash", render)
+
+    def test_formal_run_risk_is_not_mixed_with_legacy_airport_risk(self) -> None:
+        render = JS[JS.index("function renderAssessmentRisk"):JS.index("function renderAssessmentComparisons")]
+        self.assertIn("if (evaluations.length)", render)
+        self.assertIn("return;", render)
 
 
 if __name__ == "__main__":

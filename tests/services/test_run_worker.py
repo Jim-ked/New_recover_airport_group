@@ -49,12 +49,13 @@ class RunWorkerTests(unittest.TestCase):
         self.runs.create_queued(snapshot=snapshot, owner_user_id="U1")
         return snapshot
 
-    def _worker(self, *, algorithm_runner=run_once):
+    def _worker(self, *, algorithm_runner=run_once, post_success_hook=None):
         return RunWorker(
             run_service=self.run_service,
             result_service=self.result_service,
             snapshot_repository=self.snapshots,
             algorithm_runner=algorithm_runner,
+            post_success_hook=post_success_hook,
         )
 
     def test_successful_worker_closes_snapshot_to_canonical_result_lifecycle(self):
@@ -73,6 +74,42 @@ class RunWorkerTests(unittest.TestCase):
         self.assertEqual("run_succeeded", events[-1].event)
         self.assertEqual("persistence", events[-1].stage)
         self.assertEqual(list(range(1, len(events) + 1)), [e.seq for e in events])
+
+    def test_successful_worker_persists_derived_assessment_without_changing_run_result(self):
+        self._queue()
+
+        class Assessment:
+            status = "available"
+            unavailable_reason = None
+
+        assessed = []
+        record = self._worker(post_success_hook=lambda run_id: assessed.append(run_id) or Assessment()).execute(
+            "R1",
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=RunnerFakeModel,
+        )
+
+        self.assertEqual("succeeded", record.status)
+        self.assertEqual(["R1"], assessed)
+        self.assertEqual("run_assessment_persisted", self.runs.list_events("R1")[-1].event)
+
+    def test_assessment_failure_is_observable_but_never_rewrites_successful_run(self):
+        self._queue()
+
+        def fail_assessment(_run_id):
+            raise RuntimeError("assessment storage unavailable")
+
+        record = self._worker(post_success_hook=fail_assessment).execute(
+            "R1",
+            cluster_selector_fn=fixed_cluster_selector,
+            model_factory=RunnerFakeModel,
+        )
+
+        self.assertEqual("succeeded", record.status)
+        self.assertIsNotNone(self.runs.get_result_payloads("R1"))
+        event = self.runs.list_events("R1")[-1]
+        self.assertEqual("run_assessment_failed", event.event)
+        self.assertEqual("WARNING", event.level)
 
     def test_worker_persists_solver_facts_from_algorithm_result(self):
         self._queue()

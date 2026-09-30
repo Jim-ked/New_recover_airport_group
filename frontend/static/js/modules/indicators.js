@@ -99,6 +99,14 @@ function directionLabel(value) {
   return ({ positive: '正向', negative: '负向', neutral: '中性' })[value] || '—';
 }
 
+function weightSourceLabel(value) {
+  return ({ expert: '专家评分', ahp: 'AHP' })[value] || '未配置';
+}
+
+function calculationStatusLabel(value) {
+  return value === 'available' ? '可计算' : '不可用';
+}
+
 function setDisplayName(set) {
   const name = String(set.name || '').trim();
   const version = String(set.version || '').trim();
@@ -214,7 +222,7 @@ function renderHierarchy() {
           return `<button class="indicator-row ${node.id === state.selectedNode ? 'selected' : ''} ${node.enabled ? '' : 'disabled'}" type="button" data-node-id="${esc(node.id)}" title="${esc(node.name)}">
             <span class="indicator-row-name">${esc(node.name)}</span>
             ${showLock ? '<span class="indicator-lock" aria-label="核心指标">🔒</span>' : ''}
-            <span class="indicator-row-weight">${esc(weightLabel(node))}</span>
+            <span class="indicator-row-weight" title="权重来源：${esc(weightSourceLabel(node.weight_source))}；计算状态：${esc(calculationStatusLabel(node.calculation_status))}">${esc(weightLabel(node))}</span>
           </button>`;
         }).join('')
         : '<div class="indicator-group-empty">当前分组暂无三级指标</div>';
@@ -356,6 +364,10 @@ function renderInspector() {
     <dt>方向</dt><dd>${directionLabel(node.direction)}</dd>
     <dt>状态</dt><dd>${node.enabled ? '启用' : '停用'}</dd>
     <dt>权重</dt><dd>${esc(weightLabel(node, 2))}</dd>
+    <dt>权重来源</dt><dd>${esc(weightSourceLabel(node.weight_source))}</dd>
+    <dt>计算状态</dt><dd>${esc(calculationStatusLabel(node.calculation_status))}</dd>
+    <dt>指标分类</dt><dd>${esc(node.category || '未记录')}</dd>
+    <dt>计算口径</dt><dd title="${esc(node.calculation_type || '')}">${esc(node.calculation_type || '未配置')}</dd>
   </dl>
   ${editable ? '<div class="inspector-actions"><button id="deleteSelectedNode" class="btn danger" type="button">删除</button><button id="editSelectedNode" class="btn" type="button">编辑</button></div>' : ''}`;
   refs.inspector.classList.add('open');
@@ -413,6 +425,10 @@ function nodePayload() {
     editable: true,
     enabled: $('inspectorNodeEnabled').checked,
     display_order: node?.display_order ?? children(parentId, 3).length,
+    category: node?.category ?? null,
+    calculation_type: node?.calculation_type ?? null,
+    weight_source: node?.weight_source ?? null,
+    calculation_status: node?.calculation_status ?? 'unavailable',
   };
 }
 

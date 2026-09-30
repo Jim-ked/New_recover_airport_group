@@ -222,9 +222,121 @@ class AssessmentComparison:
         )
 
 
+@dataclass(frozen=True)
+class IndicatorAssessmentValue:
+    indicator_id: str
+    code: str
+    name: str
+    raw_value: float
+    normalized_value: float
+    weight: float
+    weight_source: str
+    calculation_type: str
+    evidence: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        _id(self.indicator_id, "indicator_id")
+        _id(self.code, "code")
+        _text(self.name, "name")
+        _number(self.raw_value, "raw_value", minimum=0.0, maximum=1.0)
+        _number(self.normalized_value, "normalized_value", minimum=0.0, maximum=1.0)
+        _number(self.weight, "weight", minimum=0.0)
+        if self.weight_source not in {"expert", "ahp"}:
+            _fail("weight_source", "weight_source must be expert or ahp")
+        _text(self.calculation_type, "calculation_type")
+        if not isinstance(self.evidence, Mapping):
+            _fail("evidence", "evidence must be an object")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "indicator_id": self.indicator_id,
+            "code": self.code,
+            "name": self.name,
+            "raw_value": self.raw_value,
+            "normalized_value": self.normalized_value,
+            "weight": self.weight,
+            "weight_source": self.weight_source,
+            "calculation_type": self.calculation_type,
+            "evidence": dict(self.evidence),
+        }
+
+
+@dataclass(frozen=True)
+class RunIndicatorAssessment:
+    run_id: str
+    snapshot_hash: str
+    metrics_hash: str
+    indicator_set_id: str
+    indicator_set_version: str
+    indicators: tuple[IndicatorAssessmentValue, ...]
+    status: str
+    calculation_version: str
+    weight_source: str
+    weight_trace: Mapping[str, Any]
+    support_index: Optional[float] = None
+    overall_membership: Optional[Mapping[str, float]] = None
+    weighted_composite: Optional[float] = None
+    risk_score: Optional[float] = None
+    risk_level: Optional[int] = None
+    risk_status: str = "unavailable"
+    risk_reason: Optional[str] = None
+    unavailable_reason: Optional[str] = None
+    created_at: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        _id(self.run_id, "run_id")
+        _hash(self.snapshot_hash, "snapshot_hash")
+        _hash(self.metrics_hash, "metrics_hash")
+        _id(self.indicator_set_id, "indicator_set_id")
+        _text(self.indicator_set_version, "indicator_set_version")
+        if self.status not in {"available", "unavailable"}:
+            _fail("status", "status must be available or unavailable")
+        if self.weight_source not in {"expert", "ahp"}:
+            _fail("weight_source", "weight_source must be expert or ahp")
+        if self.status == "available":
+            if not self.indicators:
+                _fail("indicators", "available assessment requires indicators")
+            _number(self.support_index, "support_index", minimum=0.0, maximum=1.0)
+            _number(self.weighted_composite, "weighted_composite", minimum=0.0, maximum=1.0)
+            if self.unavailable_reason is not None:
+                _fail("unavailable_reason", "available assessment cannot have unavailable_reason")
+        elif not self.unavailable_reason:
+            _fail("unavailable_reason", "unavailable assessment requires a reason")
+        if self.risk_status not in {"available", "unavailable"}:
+            _fail("risk_status", "risk_status must be available or unavailable")
+        if self.risk_status == "available":
+            _number(self.risk_score, "risk_score", minimum=0.0, maximum=1.0)
+            if isinstance(self.risk_level, bool) or not isinstance(self.risk_level, int) or not 1 <= self.risk_level <= 5:
+                _fail("risk_level", "risk_level must be in [1,5]")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "snapshot_hash": self.snapshot_hash,
+            "metrics_hash": self.metrics_hash,
+            "indicator_set": {"id": self.indicator_set_id, "version": self.indicator_set_version},
+            "indicators": [item.to_dict() for item in self.indicators],
+            "status": self.status,
+            "unavailable_reason": self.unavailable_reason,
+            "calculation_version": self.calculation_version,
+            "weight_source": self.weight_source,
+            "weight_trace": dict(self.weight_trace),
+            "support_index": self.support_index,
+            "overall_membership": None if self.overall_membership is None else dict(self.overall_membership),
+            "weighted_composite": self.weighted_composite,
+            "risk": {
+                "status": self.risk_status,
+                "score": self.risk_score,
+                "level": self.risk_level,
+                "reason": self.risk_reason,
+            },
+            "created_at": self.created_at,
+        }
 __all__ = [
     "AssessmentValidationError",
     "AssessmentResult",
     "AssessmentAirportRisk",
     "AssessmentComparison",
+    "IndicatorAssessmentValue",
+    "RunIndicatorAssessment",
 ]

@@ -99,6 +99,8 @@ def create_indicator_blueprint(
     def put_scores(expert_id): return mutate(lambda p: api.put_score_sheet(expert_id, body(), principal=p))
     @bp.get("/indicator-weights")
     def weights(): return read(lambda p: api.weights(principal=p, indicator_set_id=request.args.get("indicator_set_id")))
+    @bp.put("/indicator-sets/<set_id>/weighting")
+    def configure_weighting(set_id): return mutate(lambda p: api.configure_weighting(set_id, body(), principal=p))
     return bp
 
 

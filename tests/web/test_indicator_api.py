@@ -36,6 +36,53 @@ class IndicatorApiTests(unittest.TestCase):
         )
         core = {x["name"] for x in response.body["nodes"] if x["is_core"]}
         self.assertEqual({"任务完成率", "专业物资保障率", "群内机场分布均衡度"}, core)
+        leaf = next(x for x in response.body["nodes"] if x["level"] == 3)
+        self.assertIn("category", leaf)
+        self.assertIn("calculation_type", leaf)
+        self.assertIn("weight_source", leaf)
+        self.assertIn("calculation_status", leaf)
+
+    def test_formal_run_indicator_set_has_ahp_weights_and_trace(self):
+        sets = self.api.list_sets(principal=self.viewer).body["items"]
+        formal = next(item for item in sets if item["id"] == "INDSET-RUN-ASSESSMENT-V1")
+        tree = self.api.tree(
+            principal=self.viewer, indicator_set_id=formal["id"]
+        ).body
+        leaves = [node for node in tree["nodes"] if node["level"] == 3 and node["enabled"]]
+
+        self.assertEqual(4, len(leaves))
+        self.assertEqual({"ahp"}, {node["weight_source"] for node in leaves})
+        self.assertAlmostEqual(1.0, sum(node["weight"] for node in leaves), places=8)
+        self.assertEqual({"available"}, {node["calculation_status"] for node in leaves})
+        weights = self.api.weights(
+            principal=self.viewer, indicator_set_id=formal["id"]
+        ).body
+        self.assertEqual("ahp", weights["weight_source"])
+        self.assertLessEqual(weights["trace"]["consistency_ratio"], 0.1)
+
+    def test_ahp_configuration_rejects_inconsistent_matrix(self):
+        tree = self.api.tree(
+            principal=self.admin, indicator_set_id="INDSET-RUN-ASSESSMENT-V1"
+        ).body
+        leaves = [node for node in tree["nodes"] if node["level"] == 3 and node["enabled"]]
+        response = self.api.configure_weighting(
+            "INDSET-RUN-ASSESSMENT-V1",
+            {
+                "weight_source": "ahp",
+                "indicator_ids": [node["id"] for node in leaves],
+                "comparison_matrix": [
+                    [1, 9, 1 / 9, 1],
+                    [1 / 9, 1, 9, 1],
+                    [9, 1 / 9, 1, 1],
+                    [1, 1, 1, 1],
+                ],
+                "expected_revision": tree["indicator_set"]["revision"],
+            },
+            principal=self.admin,
+        )
+
+        self.assertEqual(422, response.status)
+        self.assertEqual("VALIDATION_FAILED", response.body["error"]["code"])
 
     def test_default_tree_matches_frozen_three_level_baseline(self):
         tree = self.api.tree(principal=self.viewer).body
@@ -190,7 +237,7 @@ class IndicatorApiTests(unittest.TestCase):
         self.assertTrue(still_default["is_default"])
 
         listed = self.api.list_sets(principal=self.viewer).body["items"]
-        self.assertEqual(2, len(listed))
+        self.assertEqual(3, len(listed))
         self.assertEqual(1, sum(1 for item in listed if item["is_default"]))
 
     def test_viewer_cannot_edit_and_operator_cannot_manage_experts(self):

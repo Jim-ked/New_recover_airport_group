@@ -6,7 +6,13 @@ from pathlib import Path
 
 from backend.auth.principal import Principal
 from backend.domain.airport import AirportBase
-from backend.domain.assessment import AssessmentAirportRisk, AssessmentComparison, AssessmentResult
+from backend.domain.assessment import (
+    AssessmentAirportRisk,
+    AssessmentComparison,
+    AssessmentResult,
+    IndicatorAssessmentValue,
+    RunIndicatorAssessment,
+)
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.assessment_repository import AssessmentRepository
 from backend.storage.database import initialize_database
@@ -141,6 +147,47 @@ class AssessmentResultsApiTests(unittest.TestCase):
         comparisons = self.api.comparisons(principal=self.viewer)
         self.assertEqual(1, comparisons.body["total"])
         self.assertEqual("CMP-1", comparisons.body["items"][0]["id"])
+
+    def test_indicator_evaluations_expose_traceable_values_weights_and_risk(self) -> None:
+        evaluation = RunIndicatorAssessment(
+            run_id="RUN-1",
+            snapshot_hash="a" * 64,
+            metrics_hash="b" * 64,
+            indicator_set_id="INDSET-RUN-ASSESSMENT-V1",
+            indicator_set_version="run-assessment.v1",
+            indicators=(
+                IndicatorAssessmentValue(
+                    indicator_id="IND:task",
+                    code="task_completion_rate",
+                    name="任务履行率",
+                    raw_value=0.9,
+                    normalized_value=0.9,
+                    weight=1.0,
+                    weight_source="ahp",
+                    calculation_type="metrics.summary.completion_ratio",
+                    evidence={"metrics_path": "summary.completion_ratio"},
+                ),
+            ),
+            status="available",
+            calculation_version="run-indicator-assessment.v1",
+            weight_source="ahp",
+            weight_trace={"consistency_ratio": 0.0},
+            support_index=0.9,
+            overall_membership={"very_high": 1.0},
+            weighted_composite=0.9,
+            risk_score=0.1,
+            risk_level=1,
+            risk_status="available",
+        )
+        self.repository.list_run_evaluations = lambda **_kwargs: ([evaluation], 1)
+
+        response = self.api.evaluations(principal=self.viewer)
+
+        self.assertEqual(200, response.status)
+        self.assertEqual("assessment-evaluation.v1", response.body["schema_version"])
+        self.assertEqual("RUN-1", response.body["items"][0]["run_id"])
+        self.assertEqual("ahp", response.body["items"][0]["weight_source"])
+        self.assertEqual(1, response.body["items"][0]["risk"]["level"])
 
     def test_run_derived_capacity_observation_has_explicit_semantics_and_provenance(self) -> None:
         digest = "a" * 64

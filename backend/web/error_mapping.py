@@ -12,6 +12,8 @@ from backend.domain.mission import MissionValidationError
 from backend.domain.run_config import RunConfigValidationError
 from backend.domain.security import SecurityValidationError
 from backend.services.security_service import SecurityServiceError
+from backend.algorithm.assessment.ahp_weights import AHPError
+from backend.algorithm.assessment.fuzzy_comprehensive import FuzzyInputError
 from backend.domain.situation import SituationValidationError
 from backend.analysis.comparison import ComparisonError
 from backend.domain.run_snapshot import RunSnapshotValidationError
@@ -118,6 +120,7 @@ def map_expected_error(exc: Exception) -> ApiResponse | None:
             AirportValidationError, AirportOperationsValidationError, AssessmentValidationError, CatalogValidationError,
             DamageValidationError, MissionValidationError, SituationValidationError, IndicatorValidationError,
             SecurityValidationError,
+            AHPError, FuzzyInputError,
         ),
     ):
         return ApiResponse(error_body("VALIDATION_FAILED", str(exc), field=_field(exc)), 422)

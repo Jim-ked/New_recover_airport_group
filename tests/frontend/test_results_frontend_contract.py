@@ -214,6 +214,8 @@ process.stdout.write(JSON.stringify([
         self.assertIn("baseline_run_id", export_body)
         self.assertIn("comparison_run_id", export_body)
         self.assertIn("/api/results/export-file", JS)
+        for fmt in ("pdf", "csv", "json", "xml"):
+            self.assertIn(f'data-export-format="{fmt}"', HTML)
 
     def test_missing_zero_and_not_comparable_are_distinct(self):
         function = extract_function(JS, "displayValue")

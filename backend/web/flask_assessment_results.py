@@ -57,6 +57,14 @@ def create_assessment_results_blueprint(
             )
         )
 
+    @blueprint.get("/evaluations")
+    def evaluations():
+        return invoke(
+            lambda principal: api.evaluations(
+                principal=principal, limit=request.args.get("limit")
+            )
+        )
+
     return blueprint
 
 
