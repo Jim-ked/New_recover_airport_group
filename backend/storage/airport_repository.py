@@ -466,14 +466,17 @@ class AirportRepository:
                 conn.execute(
                     """
                     INSERT INTO airport_resource_stocks (
-                        airport_id, resource_type_id, quantity
+                        airport_id, resource_type_id, quantity,
+                        replenishment_capacity_per_window, storage_capacity
                     )
-                    VALUES (?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
                         profile.airport_id,
                         row.resource_type_id,
                         row.initial_quantity,
+                        row.replenishment_capacity_per_window,
+                        row.storage_capacity,
                     ),
                 )
 
@@ -494,7 +497,8 @@ class AirportRepository:
             ).fetchall()
             stock_rows = conn.execute(
                 """
-                SELECT resource_type_id, quantity
+                SELECT resource_type_id, quantity,
+                       replenishment_capacity_per_window, storage_capacity
                 FROM airport_resource_stocks
                 WHERE airport_id = ? ORDER BY resource_type_id
                 """,
@@ -518,6 +522,8 @@ class AirportRepository:
                 AirportResourceStock(
                     resource_type_id=r["resource_type_id"],
                     initial_quantity=r["quantity"],
+                    replenishment_capacity_per_window=r["replenishment_capacity_per_window"],
+                    storage_capacity=r["storage_capacity"],
                 )
                 for r in stock_rows
             ),

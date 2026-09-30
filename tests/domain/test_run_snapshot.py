@@ -25,7 +25,10 @@ class RunSnapshotTests(unittest.TestCase):
             airport_id="A1", configuration_complete=complete,
             capacity_per_window=8 if complete else None, support_level="L1" if complete else None,
             aircraft_support=(AirportAircraftSupport("fighter", 3 if complete else None, 2 if complete else None),),
-            resource_stocks=(AirportResourceStock("FUEL-1", 50 if complete else None),),
+            resource_stocks=(AirportResourceStock(
+                "FUEL-1", 50 if complete else None, 4 if complete else None,
+                75 if complete else None,
+            ),),
         )
         mission = Mission(
             mission_id="M1", name="Mission", longitude=120.0, latitude=32.0,
@@ -72,6 +75,15 @@ class RunSnapshotTests(unittest.TestCase):
         self.assertEqual(0.2, payload["catalogs"]["aircraft_types"][0]["reserve_ratio"])
         self.assertEqual(1.0, payload["catalogs"]["aircraft_types"][0]["departure_capacity_occupancy_factor"])
         self.assertEqual(0.9, payload["catalogs"]["aircraft_types"][0]["arrival_capacity_occupancy_factor"])
+        self.assertEqual(
+            {
+                "resource_type_id": "FUEL-1",
+                "initial_quantity": 50,
+                "replenishment_capacity_per_window": 4,
+                "storage_capacity": 75,
+            },
+            payload["situation"]["airports"][0]["operational_profile"]["resource_stocks"][0],
+        )
         payload["situation"]["name"] = "changed"
         self.assertEqual("S", snap.to_dict()["situation"]["name"])
 

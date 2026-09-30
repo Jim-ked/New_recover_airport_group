@@ -129,8 +129,8 @@ class AirportRepositoryTests(unittest.TestCase):
                     {"aircraft_type_id": "transport-Y", "initial_quantity": 0, "tau_reset_windows": 4},
                 ],
                 "resource_stocks": [
-                    {"resource_type_id": "FUEL-A", "initial_quantity": 200, "replenishment_capacity_per_window": 0},
-                    {"resource_type_id": "MAT-99", "initial_quantity": 30, "replenishment_capacity_per_window": 0},
+                    {"resource_type_id": "FUEL-A", "initial_quantity": 200, "replenishment_capacity_per_window": 7, "storage_capacity": 240},
+                    {"resource_type_id": "MAT-99", "initial_quantity": 30, "replenishment_capacity_per_window": 2, "storage_capacity": 50},
                 ],
             }
         )
@@ -138,6 +138,7 @@ class AirportRepositoryTests(unittest.TestCase):
         saved = self.repo.get_operational_profile(airport.airport_id)
         self.assertTrue(saved.supports_aircraft("transport-Y"))
         self.assertEqual(0, saved.resource_initial_quantity("MUN-8"))
+        self.assertEqual(profile.resource_stocks, saved.resource_stocks)
 
         with self.repo.connect() as conn:
             airport_columns = {r["name"] for r in conn.execute("PRAGMA table_info(airports)")}

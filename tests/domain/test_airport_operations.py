@@ -30,7 +30,7 @@ class AirportOperationalProfileTests(unittest.TestCase):
         canonical = profile.to_dict()
         self.assertTrue(canonical["configuration_complete"])
         self.assertTrue(all(
-            "replenishment_capacity_per_window" not in row
+            row["replenishment_capacity_per_window"] == 0
             for row in canonical["resource_stocks"]
         ))
         self.assertTrue(profile.supports_aircraft("transport"))
@@ -111,7 +111,7 @@ class AirportOperationalProfileTests(unittest.TestCase):
         }, derive_configuration=True)
         self.assertFalse(incomplete.configuration_complete)
 
-    def test_retired_replenishment_capacity_is_accepted_only_for_legacy_input(self) -> None:
+    def test_dynamic_inventory_stock_fields_are_canonicalized_and_preserved(self) -> None:
         profile = AirportOperationalProfile.from_mapping({
             "airport_id": "A1", "configuration_complete": True,
             "capacity_per_window": 4,
@@ -119,13 +119,32 @@ class AirportOperationalProfileTests(unittest.TestCase):
             "resource_stocks": [{
                 "resource_type_id": "MAT-1",
                 "initial_quantity": 8,
-                "replenishment_capacity_per_window": -999,
+                "replenishment_capacity_per_window": 3,
+                "storage_capacity": 12,
             }],
         })
         self.assertEqual(
-            [{"resource_type_id": "MAT-1", "initial_quantity": 8}],
+            [{
+                "resource_type_id": "MAT-1",
+                "initial_quantity": 8,
+                "replenishment_capacity_per_window": 3,
+                "storage_capacity": 12,
+            }],
             profile.to_dict()["resource_stocks"],
         )
+
+    def test_dynamic_inventory_stock_rejects_negative_replenishment_capacity(self) -> None:
+        with self.assertRaises(AirportOperationsValidationError):
+            AirportOperationalProfile.from_mapping({
+                "airport_id": "A1", "configuration_complete": True,
+                "capacity_per_window": 4, "aircraft_support": [],
+                "resource_stocks": [{
+                    "resource_type_id": "MAT-1",
+                    "initial_quantity": 8,
+                    "replenishment_capacity_per_window": -1,
+                    "storage_capacity": 12,
+                }],
+            })
 
     def test_duplicate_relation_keys_are_rejected(self) -> None:
         payload = {

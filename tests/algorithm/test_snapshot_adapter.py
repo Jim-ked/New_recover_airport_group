@@ -4,7 +4,7 @@ import hashlib
 import json
 import unittest
 
-from backend.algorithm.snapshot_adapter import build_algorithm_input
+from backend.algorithm.snapshot_adapter import AlgorithmInputError, build_algorithm_input
 from backend.domain.airport import AirportBase
 from backend.domain.airport_operations import AirportAircraftSupport, AirportOperationalProfile, AirportResourceStock
 from backend.domain.catalog import AircraftResourceRequirement, AircraftType, ResourceType
@@ -20,6 +20,7 @@ def airport(
     qty: int = 2,
     *,
     fuel_initial: float = 100,
+    include_storage_capacity: bool = False,
     replenishments: tuple[ResourceReplenishment, ...] = (),
 ) -> SituationAirport:
     base = AirportBase.from_mapping({
@@ -40,8 +41,14 @@ def airport(
         capacity_per_window=5,
         aircraft_support=(AirportAircraftSupport("fighter", qty, 2),),
         resource_stocks=(
-            AirportResourceStock("FUEL-A", fuel_initial),
-            AirportResourceStock("MAT-1", 20),
+            AirportResourceStock(
+                "FUEL-A", fuel_initial, None,
+                fuel_initial if include_storage_capacity else None,
+            ),
+            AirportResourceStock(
+                "MAT-1", 20, None,
+                20 if include_storage_capacity else None,
+            ),
         ),
     )
     return SituationAirport(base, profile, replenishments)
@@ -83,6 +90,7 @@ def make_snapshot(
     airport_ids: tuple[str, str] = ("A1", "A2"),
     core_airport_reward_weight: float = 0.25,
     mission_required_sorties: int = 2,
+    include_storage_capacity: bool = False,
 ) -> RunSnapshot:
     first_airport_id, second_airport_id = airport_ids
     mission = Mission(
@@ -96,10 +104,11 @@ def make_snapshot(
         airport(
             first_airport_id,
             fuel_initial=a1_fuel_initial,
+            include_storage_capacity=include_storage_capacity,
             replenishments=a1_replenishments,
         )
     ).with_airport(
-        airport(second_airport_id, qty=0)
+        airport(second_airport_id, qty=0, include_storage_capacity=include_storage_capacity)
     ).with_mission(mission)
     damage_id = None
     scenario_map = {row.damage_scenario_id: row for row in available_scenarios}
@@ -184,6 +193,62 @@ class SnapshotAdapterTests(unittest.TestCase):
             [100.0] * bundle.ds["timeview"]["T"],
             facts["storage_capacity"]["A1"]["FUEL-A"],
         )
+
+    def test_dynamic_inventory_damage_uses_frozen_storage_capacity(self):
+        scenario = DamageScenario.from_mapping({
+            "damage_scenario_id": "DS-STORAGE",
+            "name": "Storage damage",
+            "category": "custom",
+            "events": [{
+                "event_id": "E-STORAGE",
+                "sequence": 0,
+                "target": {"airport_id": "A1", "target_type": "airport", "target_id": None},
+                "damage_type": "resource_damage",
+                "start_slot": 4,
+                "end_slot": 6,
+                "effect": {
+                    "inventory_semantics": "physical_inventory_v1",
+                    "physical_loss": {"remaining_quantity": {"FUEL-A": 80}},
+                    "storage_capacity_damage": {"remaining_capacity": {"FUEL-A": 80}},
+                },
+                "recovery_mode": "instant",
+                "recovery_duration_slots": None,
+            }],
+        })
+
+        bundle = build_algorithm_input(
+            as_physical_inventory_v5(
+                make_snapshot(scenario=scenario, include_storage_capacity=True)
+            )
+        )
+
+        facts = bundle.ds["timeview"]["dynamic_inventory"]
+        self.assertIn(80.0, facts["storage_capacity"]["A1"]["FUEL-A"])
+        self.assertIn("E-STORAGE", facts["damage_event_id"]["A1"]["FUEL-A"])
+
+    def test_dynamic_inventory_rejects_missing_frozen_storage_capacity(self):
+        frozen = as_physical_inventory_v5(make_snapshot())
+        payload = frozen.to_dict()
+        del payload["dynamic_inventory"]["storage_capacity"]["A1"]["FUEL-A"]
+        payload_json = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        missing = RunSnapshot(
+            run_id=frozen.run_id,
+            situation_id=frozen.situation_id,
+            content_hash=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            payload_json=payload_json,
+        )
+
+        with self.assertRaisesRegex(
+            AlgorithmInputError,
+            "storage capacity missing: A1/FUEL-A",
+        ):
+            build_algorithm_input(missing)
 
     def test_historical_categories_roundtrip_hash_and_frozen_projection_compatibility(self):
         for category in ("low", "medium", "high", "custom"):

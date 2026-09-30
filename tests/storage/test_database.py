@@ -275,8 +275,10 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertNotIn("initial_quantity", airport_columns)
             self.assertIn("quantity", situation_columns)
             self.assertNotIn("initial_quantity", situation_columns)
-            self.assertNotIn("replenishment_capacity_per_window", airport_columns)
-            self.assertNotIn("replenishment_capacity_per_window", situation_columns)
+            self.assertIn("replenishment_capacity_per_window", airport_columns)
+            self.assertIn("storage_capacity", airport_columns)
+            self.assertIn("replenishment_capacity_per_window", situation_columns)
+            self.assertIn("storage_capacity", situation_columns)
             self.assertEqual(1, airport_columns["airport_id"][2])
             self.assertEqual(2, airport_columns["resource_type_id"][2])
             self.assertEqual(1, situation_columns["situation_id"][2])
@@ -302,6 +304,46 @@ class DatabaseMigrationTests(unittest.TestCase):
                 ("resource_type_id", "resource_types", "resource_type_id", "RESTRICT"),
                 situation_foreign_keys,
             )
+
+    def test_inventory_repair_ignores_orphan_ledger_and_preserves_unknown_as_null(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "orphan-ledger.sqlite"
+            initialize_database(path)
+            with connect(path) as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations (migration_id) VALUES (?)",
+                    ("v020_dynamic_inventory_storage_capacity",),
+                )
+                conn.execute(
+                    "INSERT INTO airports (airport_id, airport_name, facility_type, role, longitude, latitude, scheduled_service, runways_known) VALUES ('A1','A','small_airport','civil',110,30,0,0)"
+                )
+                conn.execute(
+                    "INSERT INTO resource_types (resource_type_id,name,category,unit) VALUES ('R1','R','material','t')"
+                )
+                conn.execute(
+                    "INSERT INTO airport_operational_profiles (airport_id,configuration_complete) VALUES ('A1',0)"
+                )
+                conn.execute(
+                    "INSERT INTO airport_resource_stocks (airport_id,resource_type_id,quantity) VALUES ('A1','R1',9)"
+                )
+                conn.execute("DELETE FROM schema_migrations WHERE migration_id='v026_inventory_contract_repair'")
+                conn.execute("ALTER TABLE airport_resource_stocks RENAME TO airport_resource_stocks_full")
+                conn.execute("CREATE TABLE airport_resource_stocks (airport_id TEXT NOT NULL, resource_type_id TEXT NOT NULL, quantity REAL CHECK(quantity IS NULL OR quantity >= 0), PRIMARY KEY(airport_id,resource_type_id), FOREIGN KEY(airport_id) REFERENCES airport_operational_profiles(airport_id) ON DELETE CASCADE, FOREIGN KEY(resource_type_id) REFERENCES resource_types(resource_type_id) ON DELETE RESTRICT)")
+                conn.execute("INSERT INTO airport_resource_stocks SELECT airport_id,resource_type_id,quantity FROM airport_resource_stocks_full")
+                conn.execute("DROP TABLE airport_resource_stocks_full")
+
+            initialize_database(path)
+            initialize_database(path)
+
+            with connect(path) as conn:
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(airport_resource_stocks)")}
+                row = conn.execute("SELECT quantity,replenishment_capacity_per_window,storage_capacity FROM airport_resource_stocks WHERE airport_id='A1' AND resource_type_id='R1'").fetchone()
+                orphan = conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE migration_id='v020_dynamic_inventory_storage_capacity'").fetchone()[0]
+                repair = conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE migration_id='v026_inventory_contract_repair'").fetchone()[0]
+            self.assertEqual({"quantity", "replenishment_capacity_per_window", "storage_capacity"}, columns & {"quantity", "replenishment_capacity_per_window", "storage_capacity"})
+            self.assertEqual((9.0, None, None), tuple(row))
+            self.assertEqual(1, orphan)
+            self.assertEqual(1, repair)
 
     def test_damage_migration_fails_fast_if_legacy_preservation_table_already_exists(self) -> None:
         with tempfile.TemporaryDirectory() as td:

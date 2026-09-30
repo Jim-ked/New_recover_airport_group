@@ -6,7 +6,12 @@ from backend.domain.airport import AirportBase
 from backend.domain.airport_operations import AirportAircraftSupport, AirportOperationalProfile, AirportResourceStock
 from backend.domain.damage import DamageEvent, DamageScenario
 from backend.domain.mission import Mission
-from backend.domain.situation import ResourceReplenishment, Situation, SituationAirport
+from backend.domain.situation import (
+    ResourceReplenishment,
+    Situation,
+    SituationAirport,
+    SituationValidationError,
+)
 
 
 class SituationTests(unittest.TestCase):
@@ -32,6 +37,28 @@ class SituationTests(unittest.TestCase):
             "damage_type": "capacity_damage", "start_slot": start, "end_slot": end,
             "effect": {"closed": False, "remaining_capacity_per_window": 3},
             "recovery_mode": "average", "recovery_duration_slots": 2,
+        })
+
+    def _dynamic_inventory_scenario(self):
+        return DamageScenario.from_mapping({
+            "damage_scenario_id": "DS-STORAGE",
+            "name": "Storage damage",
+            "category": "custom",
+            "events": [{
+                "event_id": "D-STORAGE",
+                "sequence": 0,
+                "target": {"airport_id": "A1", "target_type": "airport", "target_id": None},
+                "damage_type": "resource_damage",
+                "start_slot": 2,
+                "end_slot": 5,
+                "effect": {
+                    "inventory_semantics": "physical_inventory_v1",
+                    "physical_loss": {"remaining_quantity": {"FUEL-1": 70}},
+                    "storage_capacity_damage": {"remaining_capacity": {"FUEL-1": 70}},
+                },
+                "recovery_mode": "instant",
+                "recovery_duration_slots": None,
+            }],
         })
 
     def test_situation_airport_requires_matching_id(self) -> None:
@@ -83,6 +110,29 @@ class SituationTests(unittest.TestCase):
         })
         with self.assertRaises(Exception):
             Situation(situation_id="S1", name="S", airports=(item,), damage_scenarios=(bad_resource,))
+
+    def test_dynamic_inventory_damage_requires_formal_storage_capacity(self) -> None:
+        scenario = self._dynamic_inventory_scenario()
+        missing = SituationAirport(self._airport(), self._profile())
+        with self.assertRaisesRegex(
+            SituationValidationError,
+            "storage_capacity is required before configuring dynamic inventory damage",
+        ):
+            Situation.create(situation_id="S1", name="S").with_airport(
+                missing
+            ).with_damage_scenario(scenario)
+
+        profile = AirportOperationalProfile(
+            airport_id="A1",
+            configuration_complete=True,
+            capacity_per_window=8,
+            aircraft_support=(AirportAircraftSupport("fighter", 3, 2),),
+            resource_stocks=(AirportResourceStock("FUEL-1", 100, 5, 120),),
+        )
+        valid = Situation.create(situation_id="S1", name="S").with_airport(
+            SituationAirport(self._airport(), profile)
+        ).with_damage_scenario(scenario)
+        self.assertEqual("DS-STORAGE", valid.damage_scenarios[0].damage_scenario_id)
 
     def test_cannot_remove_airport_still_referenced_by_damage(self) -> None:
         item = SituationAirport(self._airport(), self._profile())

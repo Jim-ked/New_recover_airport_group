@@ -112,12 +112,21 @@ class AirportResourceStock:
         if unknown:
             _fail(f"{field}.{unknown[0]}", f"unknown field: {field}.{unknown[0]}")
         initial = value.get("initial_quantity")
+        replenishment_capacity = value.get("replenishment_capacity_per_window")
         storage_capacity = value.get("storage_capacity")
         canonical_initial = None if initial is None else _nonnegative_number(
             initial, f"{field}.initial_quantity"
         )
         canonical_storage = None if storage_capacity is None else _nonnegative_number(
             storage_capacity, f"{field}.storage_capacity"
+        )
+        canonical_replenishment = (
+            None
+            if replenishment_capacity is None
+            else _nonnegative_number(
+                replenishment_capacity,
+                f"{field}.replenishment_capacity_per_window",
+            )
         )
         if (
             canonical_initial is not None
@@ -131,10 +140,7 @@ class AirportResourceStock:
         return cls(
             resource_type_id=_id(value.get("resource_type_id"), f"{field}.resource_type_id"),
             initial_quantity=canonical_initial,
-            # This retired field remains accepted for historical input compatibility,
-            # but it is not part of the current Airport profile contract. Archived V5
-            # snapshots consume it directly at the adapter boundary instead.
-            replenishment_capacity_per_window=None,
+            replenishment_capacity_per_window=canonical_replenishment,
             storage_capacity=canonical_storage,
         )
 
@@ -143,6 +149,8 @@ class AirportResourceStock:
             "resource_type_id": self.resource_type_id,
             "initial_quantity": self.initial_quantity,
         }
+        if self.replenishment_capacity_per_window is not None:
+            out["replenishment_capacity_per_window"] = self.replenishment_capacity_per_window
         if self.storage_capacity is not None:
             out["storage_capacity"] = self.storage_capacity
         return out

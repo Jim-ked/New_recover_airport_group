@@ -50,7 +50,10 @@ class SituationRepositoryTests(unittest.TestCase):
             "aircraft_support": [
                 {"aircraft_type_id": "fighter", "initial_quantity": 2, "tau_reset_windows": 2}
             ],
-            "resource_stocks": [{"resource_type_id": "MAT-1", "initial_quantity": 7, "replenishment_capacity_per_window": 0}],
+            "resource_stocks": [{
+                "resource_type_id": "MAT-1", "initial_quantity": 7,
+                "replenishment_capacity_per_window": 3, "storage_capacity": 11,
+            }],
         })
         return SituationAirport(ap, op)
 
@@ -94,6 +97,10 @@ class SituationRepositoryTests(unittest.TestCase):
         self.assertEqual(2, got.airports[0].operational_profile.aircraft_support[0].initial_quantity)
         self.assertEqual(18, got.airports[0].airport.parking_stand_count)
         self.assertEqual("level_3", got.airports[0].operational_profile.emergency_response_level)
+        self.assertEqual(
+            self._item().operational_profile.resource_stocks,
+            got.airports[0].operational_profile.resource_stocks,
+        )
 
     def test_explicit_save_replaces_children_and_no_autosave(self):
         saved = Situation.create(situation_id="S1", name="S").with_airport(self._item()).with_mission(self._mission())

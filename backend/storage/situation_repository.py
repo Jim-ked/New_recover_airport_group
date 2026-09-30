@@ -215,14 +215,17 @@ class SituationRepository:
                     conn.execute(
                         """
                         INSERT INTO situation_resource_stocks (
-                            situation_id, airport_id, resource_type_id, quantity
-                        ) VALUES (?, ?, ?, ?)
+                            situation_id, airport_id, resource_type_id, quantity,
+                            replenishment_capacity_per_window, storage_capacity
+                        ) VALUES (?, ?, ?, ?, ?, ?)
                         """,
                         (
                             situation.situation_id,
                             ap.airport_id,
                             row.resource_type_id,
                             row.initial_quantity,
+                            row.replenishment_capacity_per_window,
+                            row.storage_capacity,
                         ),
                     )
                 for row in item.resource_replenishments:
@@ -470,7 +473,8 @@ class SituationRepository:
                 ).fetchall()
                 stock_rows = conn.execute(
                     """
-                    SELECT resource_type_id, quantity
+                    SELECT resource_type_id, quantity,
+                           replenishment_capacity_per_window, storage_capacity
                     FROM situation_resource_stocks
                     WHERE situation_id = ? AND airport_id = ? ORDER BY resource_type_id
                     """,
@@ -488,6 +492,8 @@ class SituationRepository:
                         AirportResourceStock(
                             resource_type_id=r["resource_type_id"],
                             initial_quantity=r["quantity"],
+                            replenishment_capacity_per_window=r["replenishment_capacity_per_window"],
+                            storage_capacity=r["storage_capacity"],
                         )
                         for r in stock_rows
                     ),
