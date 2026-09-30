@@ -8,6 +8,10 @@
     <span class="single-head-divider" aria-hidden="true">|</span>
     <h1>单次运行</h1>
     <div id="runBadges" class="single-run-meta"><span class="single-run-id">正在读取 Run…</span></div>
+    <details id="constraintStatus" class="constraint-status hidden">
+      <summary aria-label="约束状态详情"><span>约束状态</span><strong><i id="constraintStatusIcon" aria-hidden="true">—</i><span id="constraintStatusLabel">未判定</span></strong><span class="constraint-toggle"><span class="when-closed">展开</span><span class="when-open">收起</span></span></summary>
+      <div id="constraintStatusDetails" class="constraint-status-details"></div>
+    </details>
     <span class="single-head-divider single-actions-divider" aria-hidden="true">|</span>
     <div class="single-actions"><button id="openRunRecordButton" class="btn secondary" type="button">结果记录</button><button id="openRuntimeButton" class="btn primary" type="button">运行态势</button></div>
   </header>

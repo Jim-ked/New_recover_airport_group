@@ -14,6 +14,7 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const refs = {
   message: $('singleRunMessage'), loading: $('singleRunLoading'), content: $('singleRunContent'), runBadges: $('runBadges'),
+  constraintStatus: $('constraintStatus'), constraintStatusIcon: $('constraintStatusIcon'), constraintStatusLabel: $('constraintStatusLabel'), constraintStatusDetails: $('constraintStatusDetails'),
   openRuntimeButton: $('openRuntimeButton'), openRunRecordButton: $('openRunRecordButton'), closeRunRecordButton: $('closeRunRecordButton'), runRecordDialog: $('runRecordDialog'), clusterSummary: $('clusterSummary'), solverFacts: $('solverFacts'),
   taskMatrix: $('taskFulfillmentMatrix'), timelineModes: $('timelineModes'), timelineObjectSelect: $('timelineObjectSelect'), timelineChart: $('timelineChart'),
   timelineEventModes: $('timelineEventModes'), timelineDirections: $('timelineDirections'), timelineWindowNav: $('timelineWindowNav'), timelineWindowRange: $('timelineWindowRange'),
@@ -57,6 +58,40 @@ function renderBadges() {
   const status = text('span', '', 'single-run-status'); status.title = 'Run 已成功完成'; status.append(text('i', '', 'status-dot'), document.createTextNode('成功'));
   const divider = () => { const item = text('span', '|', 'single-head-divider'); item.setAttribute('aria-hidden', 'true'); return item; };
   refs.runBadges.replaceChildren(runId, divider(), situation, divider(), damageStatus, divider(), cluster, divider(), status);
+}
+function constraintDetailFacts(run, metrics) {
+  const summary = metrics?.summary || {}, technical = metrics?.technical || {};
+  const rows = [];
+  const basisLabels = {
+    feasible_solution: '当前方案为可行解',
+    solver_proven_infeasible: '求解器已明确证明不可行',
+    no_feasibility_conclusion: '当前没有可行性结论',
+  };
+  const basis = basisLabels[run?.constraint_status?.basis];
+  if (basis) rows.push(['依据', basis]);
+  if (Number.isFinite(summary.fulfilled_sorties_total) && Number.isFinite(summary.required_sorties_total)) {
+    rows.push(['任务完成', `${integer(summary.fulfilled_sorties_total)} / ${integer(summary.required_sorties_total)}`]);
+  }
+  if (Number.isFinite(summary.unmet_sorties_total)) rows.push(['任务缺口', integer(summary.unmet_sorties_total)]);
+  if (typeof technical.solver_status === 'string' && technical.solver_status) {
+    rows.push(['终止原因', SOLVER_STATUS_LABELS[technical.solver_status] || technical.solver_status]);
+  }
+  if (Number.isFinite(technical.gap)) rows.push(['Gap', percent(technical.gap, 2)]);
+  return rows;
+}
+function renderConstraintStatus() {
+  const status = state.run.constraint_status || { state: 'unavailable', label: '未判定' };
+  const icons = { satisfied: '✓', unsatisfied: '×', unavailable: '—' };
+  const visualState = Object.hasOwn(icons, status.state) ? status.state : 'unavailable';
+  refs.constraintStatus.dataset.state = visualState;
+  refs.constraintStatusIcon.textContent = icons[visualState];
+  refs.constraintStatusLabel.textContent = status.label || '未判定';
+  refs.constraintStatusDetails.replaceChildren(...constraintDetailFacts(state.run, state.metrics).map(([label, value]) => {
+    const row = document.createElement('p');
+    row.append(text('span', label), text('strong', value));
+    return row;
+  }));
+  refs.constraintStatus.classList.remove('hidden');
 }
 function metricCard(label, value, note = '') {
   const article = document.createElement('article'); article.className = 'overview-metric';
@@ -505,7 +540,7 @@ function bindInteractions() {
   refs.openRuntimeButton.addEventListener('click', () => { window.location.href = `/runs/${encodeURIComponent(state.runId)}/runtime`; });
   let resizeFrame = null; window.addEventListener('resize', () => { if (resizeFrame) cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { resizeFrame = null; if (state.metrics) { renderTimeline(); renderTaskDistribution(); } }); });
 }
-function renderAll() { renderBadges(); renderOverview(); renderTaskFulfillmentMatrix(); renderChainTable(); populateSupportControls(); updatePhaseAvailability(); renderTimeline(); renderAirportAcceptance(); renderTaskDistribution(); renderSupport(); renderRecordView(); refs.loading.classList.add('hidden'); refs.content.classList.remove('hidden'); }
+function renderAll() { renderBadges(); renderConstraintStatus(); renderOverview(); renderTaskFulfillmentMatrix(); renderChainTable(); populateSupportControls(); updatePhaseAvailability(); renderTimeline(); renderAirportAcceptance(); renderTaskDistribution(); renderSupport(); renderRecordView(); refs.loading.classList.add('hidden'); refs.content.classList.remove('hidden'); }
 async function init() {
   bindInteractions(); if (!state.runId) { showError(new Error('missing run id')); return; }
   try {

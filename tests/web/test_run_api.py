@@ -171,6 +171,14 @@ class RunApiTests(unittest.TestCase):
         self.runs.save_success(run_id, solution=solution, metrics=metrics)
         self.assertEqual(solution, self.api.solution(run_id, principal=self.u1).body)
         self.assertEqual(metrics, self.api.metrics(run_id, principal=self.u1).body)
+        self.assertEqual(
+            {
+                "state": "satisfied",
+                "label": "满足",
+                "basis": "feasible_solution",
+            },
+            self.api.detail(run_id, principal=self.u1).body["constraint_status"],
+        )
         situation = self.api.situation(run_id, principal=self.u1)
         self.assertEqual("S1", situation.body["situation_id"])
 

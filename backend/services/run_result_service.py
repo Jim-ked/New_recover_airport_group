@@ -65,6 +65,27 @@ class RunResultService:
         self._assert_access(record, actor_user_id, is_admin=is_admin)
         return record
 
+    @staticmethod
+    def _constraint_status(record: RunRecord) -> Dict[str, str]:
+        """Project model feasibility without persisting a second source of truth."""
+        if record.status == "succeeded":
+            return {
+                "state": "satisfied",
+                "label": "满足",
+                "basis": "feasible_solution",
+            }
+        if record.status == "failed" and record.failure_code == "INFEASIBLE":
+            return {
+                "state": "unsatisfied",
+                "label": "不满足",
+                "basis": "solver_proven_infeasible",
+            }
+        return {
+            "state": "unavailable",
+            "label": "未判定",
+            "basis": "no_feasibility_conclusion",
+        }
+
     def _successful_bundle(
         self,
         run_id: str,
@@ -177,6 +198,7 @@ class RunResultService:
                     }
                     break
         out = record.to_dict()
+        out["constraint_status"] = self._constraint_status(record)
         out["run_config"] = payload.get("run_config")
         out["situation"] = {
             "situation_id": snapshot.situation_id,

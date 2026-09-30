@@ -433,6 +433,51 @@ process.stdout.write(JSON.stringify({{recordedFacts,missingFacts}}));
             self.assertNotIn(token, JS)
             self.assertNotIn(token, HTML)
 
+    def test_constraint_status_is_visible_by_default_and_details_are_disclosed(self):
+        for token in (
+            'id="constraintStatus"', 'id="constraintStatusLabel"',
+            'id="constraintStatusDetails"', '约束状态', '展开', '收起',
+            'state.run.constraint_status', 'renderConstraintStatus',
+        ):
+            self.assertIn(token, HTML + JS)
+        self.assertIn('aria-label="约束状态详情"', HTML)
+
+    def test_constraint_status_details_reuse_existing_task_and_solver_facts(self):
+        facts = extract_function(JS, "constraintDetailFacts")
+        script = f"""
+function integer(value) {{ return String(value); }}
+function percent(value, digits = 1) {{ return `${{(value * 100).toFixed(digits)}}%`; }}
+function recorded(value, formatter = String) {{ return value === null || value === undefined ? '未记录' : formatter(value); }}
+const SOLVER_STATUS_LABELS = {{timelimit:'达到时间限制'}};
+{facts}
+const rows = constraintDetailFacts({{
+  constraint_status: {{state:'satisfied', label:'满足', basis:'feasible_solution'}},
+}}, {{
+  summary: {{fulfilled_sorties_total:305, required_sorties_total:308, unmet_sorties_total:3}},
+  technical: {{solver_status:'timelimit', gap:0.0111}},
+}});
+process.stdout.write(JSON.stringify(rows));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            [
+                ["依据", "当前方案为可行解"],
+                ["任务完成", "305 / 308"],
+                ["任务缺口", "3"],
+                ["终止原因", "达到时间限制"],
+                ["Gap", "1.11%"],
+            ],
+            json.loads(completed.stdout),
+        )
+        self.assertNotIn("unmet_sorties_total", extract_function(JS, "renderConstraintStatus").split("constraintDetailFacts")[0])
+
     def test_single_run_rejects_timeline_length_mismatch_without_padding_zero(self):
         validate = extract_function(JS, "validateTimelineSeries")
         script = f"""

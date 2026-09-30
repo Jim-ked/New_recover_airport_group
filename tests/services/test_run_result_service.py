@@ -127,6 +127,75 @@ class RunResultServiceTests(unittest.TestCase):
             self.assertEqual(gap, technical["gap"])
             self.assertIsNotNone(technical["objective"])
 
+    def test_constraint_status_uses_canonical_feasibility_facts(self):
+        self._execute_and_persist(make_snapshot(run_id="R-SATISFIED"))
+        satisfied = self.service.get_run_detail(
+            "R-SATISFIED", actor_user_id="U1"
+        )["constraint_status"]
+        self.assertEqual(
+            {
+                "state": "satisfied",
+                "label": "满足",
+                "basis": "feasible_solution",
+            },
+            satisfied,
+        )
+
+        infeasible = make_snapshot(run_id="R-INFEASIBLE")
+        self.runs.create_queued(snapshot=infeasible, owner_user_id="U1")
+        self.runs.claim_running(infeasible.run_id)
+        self.runs.mark_failed(
+            infeasible.run_id,
+            message="solver proved infeasible",
+            code="INFEASIBLE",
+        )
+        self.assertEqual(
+            {
+                "state": "unsatisfied",
+                "label": "不满足",
+                "basis": "solver_proven_infeasible",
+            },
+            self.service.get_run_detail(
+                infeasible.run_id, actor_user_id="U1"
+            )["constraint_status"],
+        )
+
+    def test_constraint_status_is_unavailable_without_a_feasibility_conclusion(self):
+        queued = make_snapshot(run_id="R-QUEUED")
+        running = make_snapshot(run_id="R-RUNNING")
+        cancelled = make_snapshot(run_id="R-CANCELLED")
+        failed = make_snapshot(run_id="R-FAILED")
+        for snapshot in (queued, running, cancelled, failed):
+            self.runs.create_queued(snapshot=snapshot, owner_user_id="U1")
+        self.runs.claim_running(running.run_id)
+        self.runs.request_cancel(cancelled.run_id)
+        self.runs.mark_failed(failed.run_id, message="technical failure", code="SOLVER")
+
+        for run_id in (queued.run_id, running.run_id, cancelled.run_id, failed.run_id):
+            with self.subTest(run_id=run_id):
+                status = self.service.get_run_detail(
+                    run_id, actor_user_id="U1"
+                )["constraint_status"]
+                self.assertEqual("unavailable", status["state"])
+                self.assertEqual("未判定", status["label"])
+                self.assertEqual("no_feasibility_conclusion", status["basis"])
+
+    def test_task_gap_does_not_change_feasible_constraint_status(self):
+        snapshot = make_snapshot(
+            run_id="R-SOFT-GAP",
+            mission_required_sorties=3,
+        )
+        self._execute_and_persist(snapshot, model_factory=TimeLimitFakeModel)
+
+        detail = self.service.get_run_detail(
+            snapshot.run_id, actor_user_id="U1"
+        )
+        metrics = self.service.get_metrics(snapshot.run_id, actor_user_id="U1")
+
+        self.assertGreater(metrics["summary"]["unmet_sorties_total"], 0)
+        self.assertEqual("timelimit", metrics["technical"]["solver_status"])
+        self.assertEqual("satisfied", detail["constraint_status"]["state"])
+
     def test_old_metrics_without_new_technical_fields_remain_unchanged_on_read(self):
         snapshot = make_snapshot(run_id="R-OLD")
         self.runs.create_queued(snapshot=snapshot, owner_user_id="U1")
