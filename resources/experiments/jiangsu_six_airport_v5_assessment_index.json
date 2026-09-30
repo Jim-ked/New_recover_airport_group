@@ -1,0 +1,116 @@
+{
+  "schema_version": "jiangsu-six-airport-v5-assessment.v1",
+  "experiment_id": "jiangsu-six-airport-three-mission-v5",
+  "source_result_index": "jiangsu_six_airport_v5_result_index.json",
+  "indicator_set": {
+    "id": "INDSET-RUN-ASSESSMENT-V1",
+    "version": "run-assessment.v1",
+    "calculation_version": "run-indicator-assessment.v1",
+    "weight_source": "ahp",
+    "weights": {
+      "task_completion_rate": 0.25,
+      "capacity_availability_rate": 0.25,
+      "aircraft_availability_rate": 0.25,
+      "resource_reserve_retention_rate": 0.25
+    },
+    "ahp_consistency_ratio": 0.0
+  },
+  "evaluation_count": 11,
+  "indicator_value_count": 44,
+  "runs": [
+    {
+      "label": "R0",
+      "run_id": "RUN-ROUND15-R0",
+      "values": [1.0, 1.0, 0.7875844594594594, 0.0],
+      "support_index": 0.691215,
+      "weighted_composite": 0.696896,
+      "risk_level": 2
+    },
+    {
+      "label": "R1",
+      "run_id": "RUN-ROUND15-R1",
+      "values": [1.0, 0.9501854795972443, 0.784206081081081, 0.0],
+      "support_index": 0.689616,
+      "weighted_composite": 0.683598,
+      "risk_level": 2
+    },
+    {
+      "label": "R2",
+      "run_id": "RUN-ROUND15-R2",
+      "values": [1.0, 0.9501854795972443, 0.7795608108108109, 0.0064516129032258064],
+      "support_index": 0.6875,
+      "weighted_composite": 0.684049,
+      "risk_level": 2
+    },
+    {
+      "label": "RESOURCE",
+      "run_id": "RUN-ROUND16-RESOURCE",
+      "values": [1.0, 1.0, 0.7852618243243243, 0.005714285714285714],
+      "support_index": 0.690125,
+      "weighted_composite": 0.697744,
+      "risk_level": 2
+    },
+    {
+      "label": "CAPACITY",
+      "run_id": "RUN-ROUND16-CAPACITY",
+      "values": [1.0, 0.9501854795972443, 0.7863175675675675, 0.00909090909090909],
+      "support_index": 0.690626,
+      "weighted_composite": 0.686398,
+      "risk_level": 2
+    },
+    {
+      "label": "MUN2",
+      "run_id": "RUN-ROUND17-MUN2",
+      "values": [1.0, 0.9501854795972443, 0.7856841216216216, 0.0],
+      "support_index": 0.690327,
+      "weighted_composite": 0.683967,
+      "risk_level": 2
+    },
+    {
+      "label": "STORAGE",
+      "run_id": "RUN-ROUND17-STORAGE",
+      "values": [1.0, 0.9501854795972443, 0.7827280405405406, 0.004545454545454545],
+      "support_index": 0.688889,
+      "weighted_composite": 0.684365,
+      "risk_level": 2
+    },
+    {
+      "label": "P0",
+      "run_id": "RUN-ROUND18-P0",
+      "values": [0.9805194805194806, 1.0, 0.7347972972972973, 0.0],
+      "support_index": 0.681748,
+      "weighted_composite": 0.678829,
+      "risk_level": 2
+    },
+    {
+      "label": "P1",
+      "run_id": "RUN-ROUND18-P1",
+      "values": [0.9805194805194806, 0.9501854795972443, 0.7290962837837838, 0.0],
+      "support_index": 0.679855,
+      "weighted_composite": 0.66495,
+      "risk_level": 2
+    },
+    {
+      "label": "P2",
+      "run_id": "RUN-ROUND18-P2",
+      "values": [0.9902597402597403, 0.9501854795972443, 0.7274070945945946, 0.0],
+      "support_index": 0.679319,
+      "weighted_composite": 0.666963,
+      "risk_level": 2
+    },
+    {
+      "label": "P3",
+      "run_id": "RUN-ROUND19-P3",
+      "values": [0.9902597402597403, 1.0, 0.7322635135135135, 0.0],
+      "support_index": 0.680891,
+      "weighted_composite": 0.680631,
+      "risk_level": 2
+    }
+  ],
+  "value_order": [
+    "task_completion_rate",
+    "capacity_availability_rate",
+    "aircraft_availability_rate",
+    "resource_reserve_retention_rate"
+  ]
+}

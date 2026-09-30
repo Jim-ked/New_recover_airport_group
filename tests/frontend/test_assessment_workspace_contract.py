@@ -77,6 +77,14 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
             ".assessment-composite",
         ):
             self.assertIn(token, CSS)
+        self.assertIn(
+            ".assessment-workbench{grid-template-rows:auto minmax(260px,1fr) ",
+            CSS,
+        )
+        self.assertIn(
+            "@media(max-width:1180px){.results-page.assessment-active{overflow:auto}.assessment-workbench{grid-template-rows:auto auto auto auto",
+            CSS,
+        )
 
     def test_indicator_evaluation_keeps_missing_data_distinct_from_zero(self) -> None:
         render = JS[JS.index("function renderAssessmentEvaluation"):JS.index("function renderAssessmentRisk")]
