@@ -4,6 +4,7 @@ from typing import Any
 
 from backend.analysis.comparison import MAX_ANALYSIS_RUNS
 from backend.auth.principal import Principal
+from backend.services.result_export_service import SUPPORTED_FORMATS
 from backend.services.run_result_service import RunResultService
 from backend.web.error_mapping import map_expected_error
 from backend.web.http import (
@@ -285,8 +286,8 @@ class ResultsApi:
                 "data": data,
                 "rendering": {
                     "status": "source_ready",
-                    "supported_formats": ["pdf", "csv"],
-                    "message": "PDF report and tidy CSV are rendered from this canonical source",
+                    "supported_formats": list(SUPPORTED_FORMATS),
+                    "message": "PDF, CSV, JSON and XML files are rendered from this canonical source",
                 },
             }, 200)
         return self._handle(action)

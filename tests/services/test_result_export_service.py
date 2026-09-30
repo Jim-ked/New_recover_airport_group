@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import re
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from backend.algorithm.runner import run_once
@@ -51,16 +54,95 @@ class ResultExportServiceTests(unittest.TestCase):
         parsed = list(csv.DictReader(io.StringIO(text)))
         self.assertGreater(len(parsed), 5)
         self.assertIn("section", parsed[0])
+        self.assertEqual("text/csv; charset=utf-8", rendered.mimetype)
         self.assertTrue(rendered.filename.endswith(".csv"))
+
+    def test_json_preserves_the_complete_canonical_report_source(self):
+        rendered = self.exporter.render_json(self.source)
+
+        self.assertEqual("application/json; charset=utf-8", rendered.mimetype)
+        self.assertTrue(rendered.filename.endswith(".json"))
+        self.assertEqual(self.source, json.loads(rendered.content.decode("utf-8")))
+        self.assertIn("\n  \"schema_version\"", rendered.content.decode("utf-8"))
+
+    def test_xml_round_trips_dynamic_keys_special_characters_and_scalar_types(self):
+        source = {
+            "schema_version": "report-data.v1",
+            "kind": "single_run",
+            "source_run_ids": ["RUN<&\"1"],
+            "data": {
+                "123 invalid <key>": {
+                    "text": "中文 & < > \"quoted\"",
+                    "integer": 7,
+                    "float": 2.5,
+                    "boolean": True,
+                    "nothing": None,
+                    "items": [False, None, "值"],
+                }
+            },
+            "rendering": {"status": "source_ready", "supported_formats": ["pdf", "csv", "json", "xml"]},
+        }
+
+        rendered = self.exporter.render_xml(source)
+        root = ET.fromstring(rendered.content)
+
+        self.assertTrue(rendered.content.startswith(b"<?xml"))
+        self.assertEqual("application/xml; charset=utf-8", rendered.mimetype)
+        self.assertTrue(rendered.filename.endswith(".xml"))
+        self.assertEqual("report_data", root.tag)
+        self.assertEqual("report-data.v1", root.attrib["schema_version"])
+        self.assertEqual(source, self._decode_xml_object(root))
+
+    @classmethod
+    def _decode_xml_object(cls, element):
+        return {child.attrib["name"]: cls._decode_xml_value(child) for child in element.findall("field")}
+
+    @classmethod
+    def _decode_xml_value(cls, element):
+        value_type = element.attrib["type"]
+        if value_type == "object":
+            return cls._decode_xml_object(element)
+        if value_type == "array":
+            return [cls._decode_xml_value(item) for item in element.findall("item")]
+        if value_type == "null":
+            return None
+        if value_type == "boolean":
+            return element.text == "true"
+        if value_type == "integer":
+            return int(element.text)
+        if value_type == "float":
+            return float(element.text)
+        return element.text or ""
 
     def test_pdf_is_real_pdf_and_contains_multiple_report_sections(self):
         rendered = self.exporter.render_pdf(self.source)
         self.assertTrue(rendered.content.startswith(b"%PDF-"))
         self.assertGreater(len(rendered.content), 2000)
+        self.assertGreaterEqual(len(re.findall(rb"/Type\s*/Page\b", rendered.content)), 1)
+        self.assertIn(b"/FontFile2", rendered.content)
+        self.assertIn(b"/ToUnicode", rendered.content)
+        self.assertEqual("application/pdf", rendered.mimetype)
         self.assertTrue(rendered.filename.endswith(".pdf"))
         out = Path(self.td.name) / "report.pdf"
         out.write_bytes(rendered.content)
         self.assertTrue(out.exists())
+
+    def test_render_dispatches_all_formats_and_rejects_unknown_format(self):
+        expected = {
+            "pdf": ("application/pdf", ".pdf"),
+            "csv": ("text/csv; charset=utf-8", ".csv"),
+            "json": ("application/json; charset=utf-8", ".json"),
+            "xml": ("application/xml; charset=utf-8", ".xml"),
+        }
+        for fmt, (mimetype, extension) in expected.items():
+            with self.subTest(fmt=fmt):
+                rendered = self.exporter.render(self.source, fmt)
+                self.assertEqual(mimetype, rendered.mimetype)
+                self.assertTrue(rendered.filename.endswith(extension))
+                self.assertTrue(rendered.content)
+
+        with self.assertRaisesRegex(ValueError, "pdf, csv, json or xml"):
+            self.exporter.render(self.source, "xlsx")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,10 @@ import csv
 import io
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 
 
 class ResultExportError(ValueError):
@@ -30,6 +33,8 @@ CSV_COLUMNS = (
     "unit",
 )
 
+SUPPORTED_FORMATS = ("pdf", "csv", "json", "xml")
+
 
 def _scalar(value: Any) -> str:
     if value is None:
@@ -39,6 +44,60 @@ def _scalar(value: Any) -> str:
     if isinstance(value, (int, float, str)):
         return str(value)
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _validate_report_data(report_data: Mapping[str, Any]) -> None:
+    if report_data.get("schema_version") != "report-data.v1":
+        raise ResultExportError("report_data schema_version must be report-data.v1")
+    if not isinstance(report_data.get("data"), Mapping):
+        raise ResultExportError("report_data.data must be an object")
+
+
+def _filename_suffix(report_data: Mapping[str, Any]) -> str:
+    return "_".join(str(x) for x in (report_data.get("source_run_ids") or [])[:3]) or "results"
+
+
+def _append_xml_value(element: ET.Element, value: Any) -> None:
+    if isinstance(value, Mapping):
+        element.set("type", "object")
+        for key, child_value in value.items():
+            child = ET.SubElement(element, "field", {"name": str(key)})
+            _append_xml_value(child, child_value)
+    elif isinstance(value, (list, tuple)):
+        element.set("type", "array")
+        for child_value in value:
+            child = ET.SubElement(element, "item")
+            _append_xml_value(child, child_value)
+    elif value is None:
+        element.set("type", "null")
+    elif isinstance(value, bool):
+        element.set("type", "boolean")
+        element.text = "true" if value else "false"
+    elif isinstance(value, int):
+        element.set("type", "integer")
+        element.text = str(value)
+    elif isinstance(value, float):
+        element.set("type", "float")
+        element.text = str(value)
+    elif isinstance(value, str):
+        element.set("type", "string")
+        element.text = value
+    else:
+        raise ResultExportError(f"unsupported XML value type: {type(value).__name__}")
+
+
+def _indent_xml(element: ET.Element, level: int = 0) -> None:
+    """Pretty-print without depending on ElementTree.indent (Python 3.9+)."""
+    indentation = "\n" + level * "  "
+    if len(element):
+        if not element.text or not element.text.strip():
+            element.text = indentation + "  "
+        for child in element:
+            _indent_xml(child, level + 1)
+        if not child.tail or not child.tail.strip():
+            child.tail = indentation
+    if level and (not element.tail or not element.tail.strip()):
+        element.tail = indentation
 
 
 def _row(
@@ -77,12 +136,9 @@ def _flatten_scalar_map(kind: str, section: str, mapping: Mapping[str, Any], *, 
 
 
 def build_tidy_rows(report_data: Mapping[str, Any]) -> list[Dict[str, str]]:
-    if report_data.get("schema_version") != "report-data.v1":
-        raise ResultExportError("report_data schema_version must be report-data.v1")
+    _validate_report_data(report_data)
     kind = str(report_data.get("kind") or "")
     data = report_data.get("data")
-    if not isinstance(data, Mapping):
-        raise ResultExportError("report_data.data must be an object")
     rows: list[Dict[str, str]] = []
     for run_id in report_data.get("source_run_ids") or []:
         rows.append(_row(kind, "source", "run_id", run_id, entity_type="run", entity_id=str(run_id)))
@@ -159,7 +215,7 @@ def build_tidy_rows(report_data: Mapping[str, Any]) -> list[Dict[str, str]]:
 
 
 class ResultExportService:
-    """Render canonical report-data facts to the two frozen delivery formats."""
+    """Render one canonical report-data source to every supported file format."""
 
     def render_csv(self, report_data: Mapping[str, Any]) -> RenderedExport:
         rows = build_tidy_rows(report_data)
@@ -169,8 +225,40 @@ class ResultExportService:
         writer.writerows(rows)
         # UTF-8 BOM keeps Chinese column/content readable when opened directly in Excel.
         content = ("\ufeff" + out.getvalue()).encode("utf-8")
-        suffix = "_".join(str(x) for x in (report_data.get("source_run_ids") or [])[:3]) or "results"
-        return RenderedExport(content, "text/csv; charset=utf-8", f"airport_run_results_{suffix}.csv")
+        return RenderedExport(
+            content,
+            "text/csv; charset=utf-8",
+            f"airport_run_results_{_filename_suffix(report_data)}.csv",
+        )
+
+    def render_json(self, report_data: Mapping[str, Any]) -> RenderedExport:
+        _validate_report_data(report_data)
+        try:
+            content = (json.dumps(report_data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ResultExportError("report_data must contain JSON-serializable values") from exc
+        return RenderedExport(
+            content,
+            "application/json; charset=utf-8",
+            f"airport_run_results_{_filename_suffix(report_data)}.json",
+        )
+
+    def render_xml(self, report_data: Mapping[str, Any]) -> RenderedExport:
+        _validate_report_data(report_data)
+        root = ET.Element("report_data", {
+            "schema_version": "report-data.v1",
+            "type": "object",
+        })
+        for key, value in report_data.items():
+            child = ET.SubElement(root, "field", {"name": str(key)})
+            _append_xml_value(child, value)
+        _indent_xml(root)
+        content = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        return RenderedExport(
+            content,
+            "application/xml; charset=utf-8",
+            f"airport_run_results_{_filename_suffix(report_data)}.xml",
+        )
 
     def render_pdf(self, report_data: Mapping[str, Any]) -> RenderedExport:
         try:
@@ -180,19 +268,27 @@ class ResultExportService:
             from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
             from reportlab.lib.units import mm
             from reportlab.pdfbase import pdfmetrics
-            from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+            from reportlab.pdfbase.ttfonts import TTFont
             from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
         except ImportError as exc:  # pragma: no cover - deployment dependency
             raise ResultExportError("PDF rendering requires reportlab") from exc
 
-        if report_data.get("schema_version") != "report-data.v1":
-            raise ResultExportError("report_data schema_version must be report-data.v1")
+        _validate_report_data(report_data)
         kind = str(report_data.get("kind") or "")
         data = report_data.get("data") or {}
-        if not isinstance(data, Mapping):
-            raise ResultExportError("report_data.data must be an object")
+        font_root = Path(__file__).resolve().parents[2] / "frontend" / "static" / "fonts"
+        regular_font = "SourceHanSansCN-Regular"
+        bold_font = "SourceHanSansCN-Bold"
+        font_files = {
+            regular_font: font_root / "SourceHanSansCN-Regular.ttf",
+            bold_font: font_root / "SourceHanSansCN-Bold.ttf",
+        }
+        for font_name, font_path in font_files.items():
+            if not font_path.is_file():
+                raise ResultExportError(f"PDF font file is missing: {font_path.name}")
+            if font_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
 
-        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -204,9 +300,9 @@ class ResultExportService:
             title="机场群顽存能力仿真结果报告",
         )
         styles = getSampleStyleSheet()
-        title = ParagraphStyle("zh-title", parent=styles["Title"], fontName="STSong-Light", fontSize=18, leading=24, textColor=colors.HexColor("#15324A"))
-        h2 = ParagraphStyle("zh-h2", parent=styles["Heading2"], fontName="STSong-Light", fontSize=12, leading=17, spaceBefore=6, spaceAfter=5, textColor=colors.HexColor("#1E4E72"))
-        body = ParagraphStyle("zh-body", parent=styles["BodyText"], fontName="STSong-Light", fontSize=9, leading=13, alignment=TA_LEFT)
+        title = ParagraphStyle("zh-title", parent=styles["Title"], fontName=bold_font, fontSize=18, leading=24, textColor=colors.HexColor("#15324A"))
+        h2 = ParagraphStyle("zh-h2", parent=styles["Heading2"], fontName=bold_font, fontSize=12, leading=17, spaceBefore=6, spaceAfter=5, keepWithNext=True, textColor=colors.HexColor("#1E4E72"))
+        body = ParagraphStyle("zh-body", parent=styles["BodyText"], fontName=regular_font, fontSize=9, leading=13, alignment=TA_LEFT)
         small = ParagraphStyle("zh-small", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#415A6B"))
         story = [Paragraph("机场群顽存能力仿真结果报告", title)]
         labels = {
@@ -215,16 +311,16 @@ class ResultExportService:
             "scenario_comparison": "多场景比较",
             "configuration_comparison": "方案配置比较",
         }
-        story.append(Paragraph(f"报告类型：{labels.get(kind, kind)}", body))
+        story.append(Paragraph(escape(f"报告类型：{labels.get(kind, kind)}"), body))
         source_ids = ", ".join(str(x) for x in report_data.get("source_run_ids") or [])
-        story.append(Paragraph(f"来源 Run：{source_ids or '-'}", small))
+        story.append(Paragraph(escape(f"来源 Run：{source_ids or '-'}"), small))
         story.append(Spacer(1, 5 * mm))
 
         def add_table(title_text: str, headers: Sequence[str], records: Iterable[Sequence[Any]], widths=None):
             story.append(Paragraph(title_text, h2))
-            table_rows = [[Paragraph(str(h), small) for h in headers]]
+            table_rows = [[Paragraph(escape(str(h)), small) for h in headers]]
             for record in records:
-                table_rows.append([Paragraph(_scalar(v) or "-", small) for v in record])
+                table_rows.append([Paragraph(escape(_scalar(v) or "-"), small) for v in record])
             table = Table(table_rows, colWidths=widths, repeatRows=1, hAlign="LEFT")
             table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8F0F5")),
@@ -300,8 +396,11 @@ class ResultExportService:
                 add_table("全机场承接比较", ["机场", "角色/差值", "出动架次"], records, widths=[60 * mm, 60 * mm, 50 * mm])
 
         doc.build(story)
-        suffix = "_".join(str(x) for x in (report_data.get("source_run_ids") or [])[:3]) or "results"
-        return RenderedExport(buffer.getvalue(), "application/pdf", f"airport_run_report_{suffix}.pdf")
+        return RenderedExport(
+            buffer.getvalue(),
+            "application/pdf",
+            f"airport_run_report_{_filename_suffix(report_data)}.pdf",
+        )
 
     def render(self, report_data: Mapping[str, Any], fmt: str) -> RenderedExport:
         normalized = str(fmt or "").strip().lower()
@@ -309,7 +408,11 @@ class ResultExportService:
             return self.render_pdf(report_data)
         if normalized == "csv":
             return self.render_csv(report_data)
-        raise ResultExportError("format must be pdf or csv")
+        if normalized == "json":
+            return self.render_json(report_data)
+        if normalized == "xml":
+            return self.render_xml(report_data)
+        raise ResultExportError("format must be pdf, csv, json or xml")
 
 
 __all__ = [
@@ -318,4 +421,5 @@ __all__ = [
     "RenderedExport",
     "build_tidy_rows",
     "CSV_COLUMNS",
+    "SUPPORTED_FORMATS",
 ]

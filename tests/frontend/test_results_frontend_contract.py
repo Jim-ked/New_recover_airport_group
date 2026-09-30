@@ -318,6 +318,8 @@ process.stdout.write(JSON.stringify({{
             self.assertIn(token, JS)
         self.assertIn("permissions?.includes('results.export')", JS)
         self.assertIn("/api/results/export-file", JS)
+        for fmt in ("pdf", "csv", "json", "xml"):
+            self.assertIn(f'data-export-format="{fmt}"', HTML)
         switch = extract_function(JS, "setWorkspace")
         self.assertNotIn("state.payload=null", switch.replace(" ", ""))
         self.assertNotIn("openOverlay()", switch)

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import csv
+import io
+import json
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from backend.algorithm.runner import run_once
@@ -11,6 +15,7 @@ from backend.services.run_result_service import RunResultService
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.web.results_api import ResultsApi
+from backend.web.flask_results import create_results_blueprint
 from tests.algorithm.test_runner import RunnerFakeModel, fixed_cluster_selector
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
@@ -257,7 +262,52 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual(["EXPORT"], response.body["source_run_ids"])
         self.assertEqual("EXPORT", response.body["data"]["run"]["run_id"])
         self.assertEqual("source_ready", response.body["rendering"]["status"])
-        self.assertEqual(["pdf", "csv"], response.body["rendering"]["supported_formats"])
+        self.assertEqual(["pdf", "csv", "json", "xml"], response.body["rendering"]["supported_formats"])
+
+    def test_export_file_route_downloads_all_formats_from_the_same_permission_path(self):
+        from flask import Flask
+
+        ds = self._scenario("DS1")
+        self._persist(make_snapshot(run_id="EXPORT-FILE", cluster_enabled=False, scenario=ds))
+        app = Flask(__name__)
+        app.register_blueprint(create_results_blueprint(
+            api=self.api,
+            principal_resolver=lambda _request: Principal("ADMIN", is_admin=True),
+        ))
+        client = app.test_client()
+        expected = {
+            "pdf": ("application/pdf", ".pdf"),
+            "csv": ("text/csv; charset=utf-8", ".csv"),
+            "json": ("application/json; charset=utf-8", ".json"),
+            "xml": ("application/xml; charset=utf-8", ".xml"),
+        }
+
+        for fmt, (content_type, extension) in expected.items():
+            with self.subTest(fmt=fmt):
+                response = client.post("/api/results/export-file", json={
+                    "kind": "single_run", "run_id": "EXPORT-FILE", "format": fmt,
+                })
+                self.assertEqual(200, response.status_code)
+                self.assertEqual(content_type, response.headers["Content-Type"])
+                self.assertIn("attachment", response.headers["Content-Disposition"])
+                self.assertIn(extension, response.headers["Content-Disposition"])
+                self.assertTrue(response.data)
+                if fmt == "json":
+                    self.assertEqual("report-data.v1", json.loads(response.data)["schema_version"])
+                elif fmt == "xml":
+                    self.assertEqual("report_data", ET.fromstring(response.data).tag)
+                elif fmt == "csv":
+                    rows = list(csv.DictReader(io.StringIO(response.data.decode("utf-8-sig"))))
+                    self.assertGreater(len(rows), 1)
+                else:
+                    self.assertTrue(response.data.startswith(b"%PDF-"))
+                    self.assertIn(b"/FontFile2", response.data)
+
+        invalid = client.post("/api/results/export-file", json={
+            "kind": "single_run", "run_id": "EXPORT-FILE", "format": "xlsx",
+        })
+        self.assertEqual(400, invalid.status_code)
+        self.assertEqual("RESULT_EXPORT_INVALID", invalid.get_json()["error"]["code"])
 
     def test_viewer_can_read_results_but_principal_without_results_permission_cannot(self):
         ds = self._scenario("DS1")
