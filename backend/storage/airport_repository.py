@@ -719,8 +719,19 @@ class AirportRepository:
             )
         for row in profile.resource_stocks:
             conn.execute(
-                "INSERT INTO airport_resource_stocks (airport_id, resource_type_id, quantity) VALUES (?, ?, ?)",
-                (profile.airport_id, row.resource_type_id, row.initial_quantity),
+                """
+                INSERT INTO airport_resource_stocks (
+                    airport_id, resource_type_id, quantity,
+                    replenishment_capacity_per_window, storage_capacity
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    profile.airport_id,
+                    row.resource_type_id,
+                    row.initial_quantity,
+                    row.replenishment_capacity_per_window,
+                    row.storage_capacity,
+                ),
             )
 
     def save_airport_bundle(

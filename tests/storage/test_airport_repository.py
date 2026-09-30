@@ -258,6 +258,44 @@ class AirportRepositoryTests(unittest.TestCase):
         self.assertEqual(16, after.aircraft_support[0].initial_quantity)
         self.assertEqual(8, after.capacity_per_window)
 
+    def test_airport_bundle_roundtrip_preserves_dynamic_inventory_contract(self) -> None:
+        airport = self._master_airports()[0]
+        self.repo.save_resource_type(
+            ResourceType.from_mapping(
+                {
+                    "resource_type_id": "MUN-BUNDLE",
+                    "name": "Bundle munition",
+                    "category": "munition",
+                    "unit": "t",
+                }
+            )
+        )
+        profile = AirportOperationalProfile.from_mapping(
+            {
+                "airport_id": airport.airport_id,
+                "configuration_complete": True,
+                "capacity_per_window": 8,
+                "aircraft_support": [],
+                "resource_stocks": [
+                    {
+                        "resource_type_id": "MUN-BUNDLE",
+                        "initial_quantity": 220,
+                        "replenishment_capacity_per_window": 15,
+                        "storage_capacity": 232,
+                    }
+                ],
+            }
+        )
+
+        self.repo.save_airport_bundle(
+            airport=airport,
+            operational_profile=profile,
+            create_only=True,
+        )
+
+        saved = self.repo.get_operational_profile(airport.airport_id)
+        self.assertEqual(profile.resource_stocks, saved.resource_stocks)
+
 
 if __name__ == "__main__":
     unittest.main()
