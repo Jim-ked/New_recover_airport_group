@@ -35,6 +35,125 @@ const ACTIVITY_LABELS = {
   run_failed: '运行失败',
 };
 
+const LOG_LEVEL_LABELS = {
+  DEBUG: '调试',
+  INFO: '信息',
+  WARNING: '警告',
+  ERROR: '错误',
+};
+
+const ALGORITHM_LOG_MESSAGES = {
+  prepare: '数据准备：正在构建运行输入',
+  cluster: '候选搜索：应用遗传算法、模拟退火算法和粒子群算法进行候选方案搜索与优化',
+  paths: '路径构建：正在生成可行航次路径',
+  model: '模型构建：正在建立调度优化模型',
+  solve: '精确求解：正在执行调度方案求解',
+  solution: '结果处理：正在校验并整理求解结果',
+  complete: '算法求解完成',
+};
+
+const EVENT_LOG_MESSAGES = {
+  worker_started: '运行服务已接收任务，开始执行本次运行',
+  run_succeeded: '运行完成：结果已生成并保存',
+  run_cancelled: '运行已取消',
+  run_assessment_failed: '结果处理：指标评估结果保存失败',
+};
+
+const FAILURE_LOG_MESSAGES = {
+  INFEASIBLE: '运行失败：当前约束条件下模型不可行，未找到满足约束的调度方案',
+  NO_FEASIBLE_SOLUTION: '运行失败：求解结束，但未获得可行调度方案',
+  MODEL_CONFIGURATION_ERROR: '运行失败：模型配置或运行输入不符合求解要求',
+  ALGORITHM_ERROR: '运行失败：算法求解过程中发生异常',
+  WORKER_ERROR: '运行失败：运行服务执行过程中发生异常',
+  SNAPSHOT_MISSING: '运行失败：本次运行所需的冻结输入不存在或无法读取',
+};
+
+const SOLVER_STATUS_LABELS = {
+  unknown: '求解状态未知',
+  userinterrupt: '求解已被中断',
+  nodelimit: '达到节点数量限制',
+  totalnodelimit: '达到总节点数量限制',
+  stallnodelimit: '达到停滞节点限制',
+  timelimit: '达到求解时限',
+  memlimit: '达到内存限制',
+  gaplimit: '达到最优性间隙限制',
+  sollimit: '达到可行解数量限制',
+  bestsollimit: '达到改进解数量限制',
+  restartlimit: '达到重启次数限制',
+  primallimit: '达到原始目标限制',
+  duallimit: '达到对偶目标限制',
+  optimal: '已获得最优解',
+  infeasible: '模型不可行',
+  unbounded: '模型无界',
+  inforunbd: '模型不可行或无界',
+};
+
+const STAGE_LOG_MESSAGES = {
+  data_preparation: '数据准备状态已更新',
+  candidate_generation: '候选搜索状态已更新',
+  quick_evaluation: '快速评估状态已更新',
+  exact_optimization: '精确求解状态已更新',
+  persistence: '结果处理状态已更新',
+};
+
+function runFailureCode(event, run) {
+  const code = event?.payload?.failure_code || run?.failure?.code;
+  return typeof code === 'string' && code.trim() ? code.trim() : null;
+}
+
+function runLogDetails(event) {
+  const payload = event?.payload || {};
+  const details = [];
+  if (typeof payload.solver_status === 'string' && payload.solver_status.trim()) {
+    const solverStatus = payload.solver_status.trim().toLowerCase();
+    details.push(`求解状态：${SOLVER_STATUS_LABELS[solverStatus] || '求解器返回未识别状态'}`);
+  }
+  if (typeof payload.gap === 'number' && Number.isFinite(payload.gap) && payload.gap >= 0) {
+    details.push(`最优性间隙：${formatPercent(payload.gap, { digits: 2 })}`);
+  }
+  if (typeof payload.solve_time_s === 'number' && Number.isFinite(payload.solve_time_s) && payload.solve_time_s >= 0) {
+    details.push(`求解用时：${formatDecimal(payload.solve_time_s)} 秒`);
+  }
+  return details;
+}
+
+function formatRunLogMessage(event, run = null) {
+  const eventName = typeof event?.event === 'string' ? event.event : '';
+  const level = typeof event?.level === 'string' ? event.level.toUpperCase() : 'INFO';
+  const payloadFailureCode = typeof event?.payload?.failure_code === 'string'
+    ? event.payload.failure_code.trim()
+    : '';
+  let message;
+
+  if (eventName === 'run_failed' || payloadFailureCode) {
+    const failureCode = eventName === 'run_failed' ? runFailureCode(event, run) : payloadFailureCode;
+    message = failureCode
+      ? FAILURE_LOG_MESSAGES[failureCode] || `运行失败：未识别的错误类型（错误代码：${failureCode}）`
+      : '运行发生未识别异常';
+  } else if (eventName === 'algorithm_stage') {
+    message = ALGORITHM_LOG_MESSAGES[event?.payload?.internal_stage]
+      || STAGE_LOG_MESSAGES[event?.stage]
+      || '运行状态已更新';
+  } else if (eventName === 'run_assessment_persisted') {
+    message = event?.payload?.assessment_status === 'available'
+      ? '结果处理：指标评估结果已生成并保存'
+      : '结果处理：指标评估暂不可用';
+  } else {
+    message = EVENT_LOG_MESSAGES[eventName]
+      || (level === 'ERROR' ? '运行发生未识别异常' : '运行状态已更新');
+  }
+
+  const details = runLogDetails(event);
+  return details.length ? `${message}（${details.join('；')}）` : message;
+}
+
+function formatRunLogEvent(event, run = null) {
+  const level = typeof event?.level === 'string' ? event.level.toUpperCase() : 'INFO';
+  const levelLabel = LOG_LEVEL_LABELS[level] || '信息';
+  const time = typeof event?.time === 'string' && event.time.trim() ? `${event.time.trim()} ` : '';
+  return `${time}${levelLabel}｜${formatRunLogMessage(event, run)}`;
+}
+
 const PREFERENCE_LABELS = {
   sortie_max: '出动架次优先',
   resource_min: '资源消耗优先',
@@ -693,12 +812,15 @@ function currentActivity(run, events) {
   if (!run) return '尚未开始运行';
   if (run.status === 'queued') return state.workerStatus.connected ? '运行任务已进入队列，等待运行服务接收。' : '运行服务当前不可用，任务仍在队列中。';
   if (run.status === 'succeeded') return '运行完成，结果已保存';
-  if (run.status === 'failed') return '运行失败';
+  if (run.status === 'failed') {
+    const failureEvent = [...events].reverse().find((event) => event.event === 'run_failed');
+    return formatRunLogMessage(failureEvent || { level: 'ERROR', event: 'run_failed', payload: {} }, run);
+  }
   if (run.status === 'cancelled') return '运行已取消';
   const latest = events[events.length - 1];
   if (!latest) return '等待结构化运行事件…';
   const internal = latest.payload?.internal_stage;
-  return ACTIVITY_LABELS[latest.event] || ACTIVITY_LABELS[internal] || latest.message || '等待结构化运行事件…';
+  return ACTIVITY_LABELS[latest.event] || ACTIVITY_LABELS[internal] || formatRunLogMessage(latest, run);
 }
 
 function renderEvents() {
@@ -716,18 +838,15 @@ function renderEvents() {
   for (const event of events) {
     const line = document.createElement('div');
     line.className = `log-line level-${String(event.level || '').toLowerCase()}`;
-    const time = event.time ? `${event.time} ` : '';
-    line.textContent = `${time}${event.level} [${event.stage}/${event.event}] ${event.message}`;
+    line.textContent = formatRunLogEvent(event, run);
     refs.logBox.append(line);
   }
   if (state.logAutoScroll) refs.logBox.scrollTop = refs.logBox.scrollHeight;
 }
 
 function logText() {
-  return displayEvents().map((event) => {
-    const time = event.time ? `${event.time} ` : '';
-    return `${time}${event.level || ''} [${event.stage || ''}/${event.event || ''}] ${event.message || ''}`.trim();
-  }).join('\n');
+  const run = displayRun();
+  return displayEvents().map((event) => formatRunLogEvent(event, run)).join('\n');
 }
 
 async function copyLog() {

@@ -82,6 +82,185 @@ class RunFrontendContractTests(unittest.TestCase):
         self.assertNotRegex(RUN_JS, r"message\.(?:startsWith|includes|match|search)\(")
         self.assertNotRegex(RUN_JS, r"new\s+RegExp\([^\n]*message")
 
+    def test_user_visible_run_logs_use_one_structured_chinese_formatter(self):
+        formatter_block = RUN_JS[
+            RUN_JS.index("const LOG_LEVEL_LABELS"):RUN_JS.index("const PREFERENCE_LABELS")
+        ]
+        render_events = RUN_JS.split("function renderEvents()", 1)[1].split("\nfunction ", 1)[0]
+        log_text = RUN_JS.split("function logText()", 1)[1].split("\nfunction ", 1)[0]
+        current_activity = RUN_JS.split("function currentActivity(run, events)", 1)[1].split("\nfunction ", 1)[0]
+
+        self.assertNotIn("event.message", RUN_JS)
+        self.assertNotRegex(RUN_JS, r"message\.(?:startsWith|includes|match|search)\(")
+        self.assertIn("formatRunLogEvent(event, run)", render_events)
+        self.assertIn("formatRunLogEvent(event, run)", log_text)
+        self.assertIn("const text = logText();", extract_async_function(RUN_JS, "copyLog"))
+        self.assertIn("const text = logText();", RUN_JS.split("function exportLog()", 1)[1].split("\nfunction ", 1)[0])
+        self.assertIn("formatRunLogMessage", current_activity)
+        self.assertNotIn("latest.message", current_activity)
+
+        script = f"""
+const formatDecimal = (value, options = {{}}) => Number(value).toFixed(options.minimumFractionDigits || 0);
+const formatPercent = (value, {{digits = 1}} = {{}}) => `${{(Number(value) * 100).toFixed(digits)}}%`;
+{formatter_block}
+
+const event = (overrides = {{}}) => ({{
+  time: '20:15:21',
+  level: 'INFO',
+  stage: 'data_preparation',
+  event: 'algorithm_stage',
+  message: 'THIS ENGLISH MESSAGE MUST NEVER BE SHOWN',
+  payload: {{internal_stage: 'prepare'}},
+  ...overrides,
+}});
+const run = (code = null) => ({{failure: code ? {{code}} : null}});
+
+const normal = ['prepare', 'cluster', 'paths', 'model', 'solve', 'solution', 'complete']
+  .map((internal_stage) => formatRunLogEvent(event({{
+    stage: internal_stage === 'prepare' ? 'data_preparation'
+      : ['cluster', 'paths'].includes(internal_stage) ? 'candidate_generation'
+      : ['model', 'solve'].includes(internal_stage) ? 'exact_optimization'
+      : 'persistence',
+    payload: {{internal_stage}},
+  }})));
+const failures = Object.fromEntries([
+  'INFEASIBLE',
+  'NO_FEASIBLE_SOLUTION',
+  'MODEL_CONFIGURATION_ERROR',
+  'ALGORITHM_ERROR',
+  'WORKER_ERROR',
+  'SNAPSHOT_MISSING',
+  'FUTURE_FAILURE',
+].map((failure_code) => [failure_code, formatRunLogEvent(event({{
+  level: 'ERROR', event: 'run_failed', payload: {{failure_code}},
+}}), run())]));
+const solverStatuses = Object.fromEntries([
+  'unknown', 'userinterrupt', 'nodelimit', 'totalnodelimit', 'stallnodelimit',
+  'timelimit', 'memlimit', 'gaplimit', 'sollimit', 'bestsollimit',
+  'restartlimit', 'primallimit', 'duallimit', 'optimal', 'infeasible',
+  'unbounded', 'inforunbd', 'future_status',
+].map((solver_status) => [solver_status, formatRunLogEvent(event({{
+  event: 'run_succeeded', stage: 'persistence',
+  payload: {{solver_status, gap: 0.0128, solve_time_s: 120}},
+}}))]));
+console.log(JSON.stringify({{
+  normal,
+  worker: formatRunLogEvent(event({{event: 'worker_started'}})),
+  succeeded: formatRunLogEvent(event({{event: 'run_succeeded', stage: 'persistence'}})),
+  cancelled: formatRunLogEvent(event({{level: 'WARNING', event: 'run_cancelled', stage: 'persistence'}})),
+  assessmentAvailable: formatRunLogEvent(event({{
+    event: 'run_assessment_persisted', stage: 'persistence', payload: {{assessment_status: 'available'}},
+  }})),
+  assessmentUnavailable: formatRunLogEvent(event({{
+    level: 'WARNING', event: 'run_assessment_persisted', stage: 'persistence',
+    payload: {{assessment_status: 'unavailable', unavailable_reason: 'english raw reason'}},
+  }})),
+  assessmentFailed: formatRunLogEvent(event({{
+    level: 'WARNING', event: 'run_assessment_failed', stage: 'persistence',
+    payload: {{error: 'english raw error'}},
+  }})),
+  snapshotFromRun: formatRunLogEvent(event({{
+    level: 'ERROR', event: 'run_failed', payload: {{}},
+  }}), run('SNAPSHOT_MISSING')),
+  failures,
+  solverStatuses,
+  unknownInfo: formatRunLogEvent(event({{event: 'future_event', payload: {{}}}})),
+  unknownError: formatRunLogEvent(event({{level: 'ERROR', event: 'future_event', payload: {{}}}})),
+  unknownErrorCode: formatRunLogEvent(event({{
+    level: 'ERROR', event: 'future_failure_event', payload: {{failure_code: 'FUTURE_EVENT_FAILURE'}},
+  }})),
+}}));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        result = json.loads(completed.stdout)
+
+        normal_text = "\n".join(result["normal"])
+        for phrase in (
+            "数据准备：正在构建运行输入",
+            "候选搜索：应用遗传算法、模拟退火算法和粒子群算法进行候选方案搜索与优化",
+            "路径构建：正在生成可行航次路径",
+            "模型构建：正在建立调度优化模型",
+            "精确求解：正在执行调度方案求解",
+            "结果处理：正在校验并整理求解结果",
+            "算法求解完成",
+        ):
+            self.assertIn(phrase, normal_text)
+        for algorithm in ("遗传算法", "模拟退火算法", "粒子群算法"):
+            self.assertEqual(1, normal_text.count(algorithm))
+        self.assertNotIn("遗传算法", "\n".join((result["normal"][0], result["normal"][2])))
+
+        self.assertIn("运行服务已接收任务，开始执行本次运行", result["worker"])
+        self.assertIn("运行完成：结果已生成并保存", result["succeeded"])
+        self.assertIn("运行已取消", result["cancelled"])
+        self.assertIn("指标评估结果已生成并保存", result["assessmentAvailable"])
+        self.assertIn("指标评估暂不可用", result["assessmentUnavailable"])
+        self.assertIn("指标评估结果保存失败", result["assessmentFailed"])
+        self.assertIn("冻结输入不存在或无法读取", result["snapshotFromRun"])
+
+        expected_failures = {
+            "INFEASIBLE": "当前约束条件下模型不可行",
+            "NO_FEASIBLE_SOLUTION": "未获得可行调度方案",
+            "MODEL_CONFIGURATION_ERROR": "模型配置或运行输入不符合求解要求",
+            "ALGORITHM_ERROR": "算法求解过程中发生异常",
+            "WORKER_ERROR": "运行服务执行过程中发生异常",
+            "SNAPSHOT_MISSING": "冻结输入不存在或无法读取",
+            "FUTURE_FAILURE": "未识别的错误类型（错误代码：FUTURE_FAILURE）",
+        }
+        for code, phrase in expected_failures.items():
+            self.assertIn(phrase, result["failures"][code])
+
+        expected_statuses = {
+            "unknown": "求解状态未知",
+            "userinterrupt": "求解已被中断",
+            "nodelimit": "达到节点数量限制",
+            "totalnodelimit": "达到总节点数量限制",
+            "stallnodelimit": "达到停滞节点限制",
+            "timelimit": "达到求解时限",
+            "memlimit": "达到内存限制",
+            "gaplimit": "达到最优性间隙限制",
+            "sollimit": "达到可行解数量限制",
+            "bestsollimit": "达到改进解数量限制",
+            "restartlimit": "达到重启次数限制",
+            "primallimit": "达到原始目标限制",
+            "duallimit": "达到对偶目标限制",
+            "optimal": "已获得最优解",
+            "infeasible": "模型不可行",
+            "unbounded": "模型无界",
+            "inforunbd": "模型不可行或无界",
+            "future_status": "求解器返回未识别状态",
+        }
+        for status, phrase in expected_statuses.items():
+            self.assertIn(phrase, result["solverStatuses"][status])
+            self.assertNotIn("THIS ENGLISH", result["solverStatuses"][status])
+        self.assertIn("最优性间隙：1.28%", result["solverStatuses"]["timelimit"])
+        self.assertIn("求解用时：120 秒", result["solverStatuses"]["timelimit"])
+
+        self.assertIn("信息｜", result["worker"])
+        self.assertIn("警告｜", result["cancelled"])
+        self.assertIn("错误｜", result["failures"]["INFEASIBLE"])
+        for text in (
+            normal_text,
+            result["worker"],
+            result["succeeded"],
+            result["cancelled"],
+            result["assessmentUnavailable"],
+            result["assessmentFailed"],
+            result["unknownInfo"],
+            result["unknownError"],
+        ):
+            self.assertNotRegex(text, r"\b(?:DEBUG|INFO|WARNING|ERROR)\b")
+            self.assertNotIn("THIS ENGLISH", text)
+        self.assertIn("运行状态已更新", result["unknownInfo"])
+        self.assertIn("运行发生未识别异常", result["unknownError"])
+        self.assertIn("未识别的错误类型（错误代码：FUTURE_EVENT_FAILURE）", result["unknownErrorCode"])
+
     def test_cluster_and_core_airport_bounds_match_frozen_domain(self):
         self.assertRegex(RUN_JS, r"size\s*<\s*1\s*\|\|\s*size\s*>\s*8")
         self.assertIn("checked.length > 2", RUN_JS)
