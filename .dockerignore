@@ -1,0 +1,49 @@
+# Source control, local interpreters and caches
+.git/
+.venv/
+venv/
+.pytest_cache/
+.tmp/
+**/__pycache__/
+*.py[cod]
+
+# Secrets and machine-local configuration
+.env*
+!.env.example
+
+# Persistent application state and databases
+runtime/
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Large independently mounted resource packs
+resources/tiles/
+resources/experiments/
+
+# Development, tests, audits and generated deliverables
+tests/
+tools/
+docs/
+docs/audits/
+output/
+patch-check/
+patchwork/
+tmp/
+*.pdf
+*.log
+*.patch
+*_status.txt
+*.zip
+
+# Platform-specific deployment files are not Linux image runtime inputs
+deploy/windows/
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.bak
+s -ExecutionPolicy*

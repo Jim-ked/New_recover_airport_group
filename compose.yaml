@@ -1,0 +1,42 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: airport-group:delivery
+    command: ["python", "-m", "backend", "serve"]
+    restart: unless-stopped
+    environment:
+      AIRPORT_GROUP_HOST: 0.0.0.0
+      AIRPORT_GROUP_PORT: 8080
+      AIRPORT_GROUP_RUNTIME_ROOT: /app/runtime
+      AIRPORT_GROUP_DB_PATH: /app/runtime/db/airport_group.sqlite3
+      AIRPORT_GROUP_TILE_ROOT: /app/resources/tiles
+      AIRPORT_GROUP_GIS_TILE_TEMPLATE: /tiles/{source}/{z}/{x}/{y}.jpg
+      AIRPORT_GROUP_SECRET_KEY: ${AIRPORT_GROUP_SECRET_KEY:?Set AIRPORT_GROUP_SECRET_KEY to at least 32 characters}
+      AIRPORT_GROUP_BOOTSTRAP_ADMIN_LOGIN: ${AIRPORT_GROUP_BOOTSTRAP_ADMIN_LOGIN:-}
+      AIRPORT_GROUP_BOOTSTRAP_ADMIN_PASSWORD: ${AIRPORT_GROUP_BOOTSTRAP_ADMIN_PASSWORD:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./runtime:/app/runtime
+      - ./resources/tiles:/app/resources/tiles:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/login', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    image: airport-group:delivery
+    command: ["python", "-m", "backend", "worker"]
+    restart: unless-stopped
+    environment:
+      AIRPORT_GROUP_RUNTIME_ROOT: /app/runtime
+      AIRPORT_GROUP_DB_PATH: /app/runtime/db/airport_group.sqlite3
+    volumes:
+      - ./runtime:/app/runtime
+    depends_on:
+      web:
+        condition: service_healthy
