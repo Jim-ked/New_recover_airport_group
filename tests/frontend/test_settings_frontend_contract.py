@@ -72,6 +72,7 @@ class SettingsFrontendContractTests(unittest.TestCase):
         ):
             self.assertIn(token, SETTINGS_HTML + SETTINGS_JS)
         self.assertNotIn("setInterval", SETTINGS_JS)
+        self.assertIn("action_label", SETTINGS_JS)
 
     def test_role_labels_are_formal_and_old_labels_are_absent(self):
         combined = SETTINGS_HTML + SETTINGS_JS

@@ -83,7 +83,10 @@ def build_results_api(db_path: str | Path) -> ResultsApi:
         run_repository=runs,
         snapshot_repository=snapshots,
     )
-    return ResultsApi(result_service=result_service)
+    return ResultsApi(
+        result_service=result_service,
+        assessment_repository=AssessmentRepository(db_path),
+    )
 
 
 def build_assessment_results_api(db_path: str | Path) -> AssessmentResultsApi:

@@ -10,13 +10,11 @@ $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $PythonPath = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
-$LocalEnvironment = Join-Path $ProjectRoot '.env.local.ps1'
+$EnvironmentLoader = Join-Path $PSScriptRoot 'load_environment.ps1'
 $ServePattern = '(?i)(?:^|\s)-m\s+backend\s+serve(?:\s|$)'
 $WorkerPattern = '(?i)(?:^|\s)-m\s+backend\s+worker(?:\s|$)'
 
-if (Test-Path -LiteralPath $LocalEnvironment -PathType Leaf) {
-    . $LocalEnvironment
-}
+. $EnvironmentLoader
 
 $WebHost = if ([string]::IsNullOrWhiteSpace($env:AIRPORT_GROUP_HOST)) {
     '127.0.0.1'

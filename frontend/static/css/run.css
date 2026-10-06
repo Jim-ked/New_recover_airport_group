@@ -467,6 +467,7 @@
 }
 .link-button:hover:not(:disabled) { text-decoration: underline; }
 .link-button:disabled { color: #637986; cursor: not-allowed; }
+.link-button.danger { color: #ef8c8c; }
 .count-badge {
   min-width: 22px;
   height: 20px;

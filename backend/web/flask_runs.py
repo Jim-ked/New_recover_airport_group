@@ -136,6 +136,16 @@ def create_run_blueprint(
             return render(api.detail(run_id, principal=principal))
         return invoke(action)
 
+    @bp.delete("/runs/<run_id>")
+    def delete_run(run_id: str):
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            guard_mutation(principal)
+            return render(api.delete(run_id, principal=principal))
+        return invoke(action)
+
     @bp.get("/runs/<run_id>/events")
     def run_events(run_id: str):
         def action():

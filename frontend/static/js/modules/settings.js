@@ -378,6 +378,8 @@ function openCreateUser() {
 // Audit workspace
 function resourceLabel(resourceType) { return RESOURCE_LABELS[resourceType] || '系统资源'; }
 function formatAuditAction(event) {
+  const serverLabel = String(event.action_label || '').trim();
+  if (serverLabel) return serverLabel;
   const method = String(event.request_method || '').toUpperCase();
   const path = String(event.request_path || '');
   const resource = resourceLabel(event.resource_type);

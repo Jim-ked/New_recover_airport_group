@@ -17,6 +17,10 @@ class SecurityServiceError(RuntimeError):
     pass
 
 
+class SecurityReportNotFoundError(SecurityServiceError):
+    pass
+
+
 class SecurityService:
     def __init__(
         self,
@@ -224,9 +228,18 @@ class SecurityService:
         return self.repository.list_audit_reports()
 
     def read_audit_report(self, report_id: str) -> tuple[bytes, str, str]:
+        if (
+            not isinstance(report_id, str)
+            or not report_id.strip()
+            or report_id != report_id.strip()
+            or report_id in {".", ".."}
+            or "/" in report_id
+            or "\\" in report_id
+        ):
+            raise SecurityServiceError("audit report id is invalid")
         report = self.repository.get_audit_report(report_id)
         if report is None:
-            raise SecurityServiceError("audit report was not found")
+            raise SecurityReportNotFoundError("audit report was not found")
         target = self._inside(self.report_root, report.report_path, "report")
         if not target.is_file():
             raise SecurityServiceError("audit report file is missing")
@@ -234,4 +247,4 @@ class SecurityService:
         return target.read_bytes(), mimetype, target.name
 
 
-__all__ = ["SecurityService", "SecurityServiceError"]
+__all__ = ["SecurityService", "SecurityServiceError", "SecurityReportNotFoundError"]

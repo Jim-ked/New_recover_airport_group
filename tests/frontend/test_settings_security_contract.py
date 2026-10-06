@@ -38,6 +38,12 @@ class SettingsSecurityContractTests(unittest.TestCase):
         for token in (".security-workspace", ".security-chip", ".security-grid"):
             self.assertIn(token, CSS)
 
+    def test_existing_report_download_uses_get(self) -> None:
+        self.assertRegex(
+            JS,
+            r"apiDownload\(`/api/security/audit-reports/\$\{encodeURIComponent\(button\.dataset\.downloadReport\)\}/file`,\s*\{ method: ['\"]GET['\"] \}\)",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

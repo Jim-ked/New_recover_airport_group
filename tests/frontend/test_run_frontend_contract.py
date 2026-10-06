@@ -447,6 +447,19 @@ console.log(JSON.stringify({{
         for label in ("自动滚动", "回到最新", "复制", "导出日志"):
             self.assertIn(label, RUN_HTML)
 
+    def test_terminal_history_delete_is_permission_gated_confirmed_and_refreshes(self):
+        render_history = RUN_JS.split("function renderHistory()", 1)[1].split("\nfunction ", 1)[0]
+        delete_run = extract_async_function(RUN_JS, "deleteHistoricalRun")
+
+        self.assertIn("can('runs.delete')", render_history)
+        self.assertIn("deleteHistoricalRun(run)", render_history)
+        self.assertIn("run.run_id", delete_run)
+        self.assertIn("该运行及其结果会被永久删除", delete_run)
+        self.assertIn("method: 'DELETE'", delete_run)
+        self.assertIn("await refreshRuns()", delete_run)
+        self.assertIn("state.inspectRunId === run.run_id", delete_run)
+        self.assertIn("state.activeRunId === run.run_id", delete_run)
+
     def test_mutations_send_csrf_from_cookie(self):
         self.assertIn("csrftoken", API_JS)
         self.assertIn("X-CSRF-Token", API_JS)

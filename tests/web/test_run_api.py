@@ -12,10 +12,13 @@ from backend.domain.catalog import AircraftResourceRequirement, AircraftType, Re
 from backend.domain.mission import Mission, MissionAircraftRequirement
 from backend.domain.situation import Situation, SituationAirport
 from backend.storage.airport_repository import AirportRepository
+from backend.storage.audit_repository import AuditRepository
 from backend.storage.run_repository import RunRepository
 from backend.storage.situation_repository import SituationRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.services.run_submission_service import SolverProbeResult
+from backend.web.audit_api import AuditApi
+from backend.web.app import create_app
 from backend.web.composition import build_run_api
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
@@ -387,6 +390,69 @@ class RunApiTests(unittest.TestCase):
         denied = self.api.validate({"situation_id": "S1", "run_config": self.config}, principal=self.u2)
         self.assertEqual(403, denied.status)
         self.assertEqual("FORBIDDEN", denied.body["error"]["code"])
+
+    def test_delete_requires_admin_permission_and_maps_missing_and_active_runs(self):
+        created = self.api.submit(self.body, principal=self.u1)
+        run_id = created.body["run_id"]
+
+        denied = self.api.delete(run_id, principal=self.u1)
+        self.assertEqual(403, denied.status)
+        self.assertEqual("PERMISSION_DENIED", denied.body["error"]["code"])
+
+        active = self.api.delete(run_id, principal=self.admin)
+        self.assertEqual(409, active.status)
+        self.assertEqual("RUN_STATE_CONFLICT", active.body["error"]["code"])
+
+        self.runs.request_cancel(run_id)
+        deleted = self.api.delete(run_id, principal=self.admin)
+        self.assertEqual(200, deleted.status)
+        self.assertEqual({"run_id": run_id, "deleted": True}, deleted.body)
+
+        detail = self.api.detail(run_id, principal=self.admin)
+        self.assertEqual(404, detail.status)
+        self.assertEqual("RUN_NOT_FOUND", detail.body["error"]["code"])
+        events = self.api.events(run_id, principal=self.admin)
+        self.assertEqual(404, events.status)
+        self.assertEqual("RUN_NOT_FOUND", events.body["error"]["code"])
+
+        missing = self.api.delete(run_id, principal=self.admin)
+        self.assertEqual(404, missing.status)
+        self.assertEqual("RUN_NOT_FOUND", missing.body["error"]["code"])
+
+    def test_flask_delete_route_uses_mutation_guard(self):
+        created = self.api.submit(self.body, principal=self.u1)
+        run_id = created.body["run_id"]
+        self.runs.request_cancel(run_id)
+        guarded = []
+        audit_repository = AuditRepository(self.db)
+        app = create_app(
+            run_api=self.api,
+            principal_resolver=lambda _request: self.admin,
+            mutation_guard=lambda request, principal: guarded.append(
+                (request.method, principal.user_id)
+            ),
+            audit_api=AuditApi(repository=audit_repository),
+            enable_ui=False,
+        )
+
+        response = app.test_client().delete(f"/api/runs/{run_id}")
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual({"run_id": run_id, "deleted": True}, response.get_json())
+        self.assertEqual([("DELETE", "ADMIN")], guarded)
+
+        audit_rows, audit_total = audit_repository.query(
+            actor_user_id="ADMIN", resource_type="runs", resource_id=run_id,
+            outcome="success",
+        )
+        self.assertEqual(1, audit_total)
+        audit = audit_rows[0]
+        self.assertEqual("admin", audit.actor_role)
+        self.assertEqual("DELETE /api/runs/<run_id>", audit.action)
+        self.assertEqual("DELETE", audit.request_method)
+        self.assertEqual(f"/api/runs/{run_id}", audit.request_path)
+        self.assertEqual(200, audit.response_status)
+        self.assertTrue(audit.created_at)
 
         admin = self.api.validate({"situation_id": "S1", "run_config": self.config}, principal=self.admin)
         self.assertEqual(200, admin.status)

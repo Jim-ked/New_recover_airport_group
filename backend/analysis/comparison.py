@@ -815,6 +815,7 @@ def _frozen_labels(snapshot: RunSnapshot) -> Dict[str, Dict[str, str]]:
     situation = payload.get("situation") or {}
     catalogs = payload.get("catalogs") or {}
     airports: Dict[str, str] = {}
+    airport_short_names: Dict[str, str] = {}
     for item in situation.get("airports") or []:
         airport = item.get("airport") if isinstance(item, Mapping) else None
         if not isinstance(airport, Mapping):
@@ -822,6 +823,9 @@ def _frozen_labels(snapshot: RunSnapshot) -> Dict[str, Dict[str, str]]:
         airport_id = airport.get("airport_id")
         if isinstance(airport_id, str) and airport_id:
             airports[airport_id] = str(airport.get("airport_name") or airport_id)
+            airport_short_names[airport_id] = str(
+                airport.get("iata_code") or airport.get("icao_code") or airport_id
+            )
     missions: Dict[str, str] = {}
     for mission in situation.get("missions") or []:
         if not isinstance(mission, Mapping):
@@ -836,7 +840,12 @@ def _frozen_labels(snapshot: RunSnapshot) -> Dict[str, Dict[str, str]]:
         aircraft_type_id = item.get("aircraft_type_id")
         if isinstance(aircraft_type_id, str) and aircraft_type_id:
             aircraft[aircraft_type_id] = str(item.get("name") or aircraft_type_id)
-    return {"airports": airports, "missions": missions, "aircraft": aircraft}
+    return {
+        "airports": airports,
+        "airport_short_names": airport_short_names,
+        "missions": missions,
+        "aircraft": aircraft,
+    }
 
 
 def _comparison_summary(metrics: Mapping[str, Any]) -> Dict[str, Any]:

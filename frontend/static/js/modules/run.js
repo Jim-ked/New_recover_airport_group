@@ -1048,6 +1048,13 @@ function renderHistory() {
       });
       actions.prepend(resultButton);
     }
+    if (can('runs.delete')) {
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button'; deleteButton.className = 'link-button danger'; deleteButton.textContent = '删除';
+      deleteButton.title = '删除该历史运行及其全部专属结果';
+      deleteButton.addEventListener('click', () => deleteHistoricalRun(run));
+      actions.append(deleteButton);
+    }
     const ownerCell = td(run.owner_user_id || '—');
     ownerCell.dataset.adminOwnerColumn = '';
     ownerCell.hidden = !state.isAdmin;
@@ -1070,6 +1077,27 @@ async function inspectHistoricalRun(run) {
     state.inspectEvents = payload.events || [];
     renderCurrentRun();
     switchView('log');
+  } catch (error) { handleError(error); }
+}
+
+async function deleteHistoricalRun(run) {
+  if (!can('runs.delete') || !run?.run_id) return;
+  const confirmed = window.confirm(
+    `确认删除历史运行 ${run.run_id}？\n该运行及其结果会被永久删除，且无法恢复。`,
+  );
+  if (!confirmed) return;
+  try {
+    await apiFetch(`/api/runs/${encodeURIComponent(run.run_id)}`, { method: 'DELETE' });
+    if (state.inspectRunId === run.run_id) {
+      state.inspectRunId = null;
+      state.inspectRun = null;
+      state.inspectEvents = [];
+      state.view = 'overview';
+    }
+    if (state.activeRunId === run.run_id) setActiveRun(null);
+    if (state.lastSubmittedRunId === run.run_id) state.lastSubmittedRunId = null;
+    showMessage(`已删除历史运行 ${shortRunId(run.run_id)}`, 'success');
+    await refreshRuns();
   } catch (error) { handleError(error); }
 }
 

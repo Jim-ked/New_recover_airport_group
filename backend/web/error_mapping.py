@@ -11,7 +11,7 @@ from backend.domain.indicator import IndicatorValidationError
 from backend.domain.mission import MissionValidationError
 from backend.domain.run_config import RunConfigValidationError
 from backend.domain.security import SecurityValidationError
-from backend.services.security_service import SecurityServiceError
+from backend.services.security_service import SecurityReportNotFoundError, SecurityServiceError
 from backend.algorithm.assessment.ahp_weights import AHPError
 from backend.algorithm.assessment.fuzzy_comprehensive import FuzzyInputError
 from backend.domain.situation import SituationValidationError
@@ -130,6 +130,9 @@ def map_expected_error(exc: Exception) -> ApiResponse | None:
         (RunConfigValidationError, RunSnapshotValidationError, ODDistanceServiceError, RunSnapshotServiceError),
     ):
         return ApiResponse(error_body("RUN_VALIDATION_FAILED", str(exc), field=_field(exc)), 422)
+
+    if isinstance(exc, SecurityReportNotFoundError):
+        return ApiResponse(error_body("SECURITY_REPORT_NOT_FOUND", str(exc)), 404)
 
     if isinstance(exc, SecurityServiceError):
         return ApiResponse(error_body("SECURITY_OPERATION_FAILED", str(exc)), 422)

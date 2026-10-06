@@ -67,6 +67,6 @@ $('securityCreateReport')?.addEventListener('click', async () => {
 });
 $('reportTableBody')?.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-download-report]'); if (!button) return;
-  try { const file = await apiDownload(`/api/security/audit-reports/${encodeURIComponent(button.dataset.downloadReport)}/file`); saveBlob(file); }
+  try { const file = await apiDownload(`/api/security/audit-reports/${encodeURIComponent(button.dataset.downloadReport)}/file`, { method: 'GET' }); saveBlob(file); }
   catch (error) { showState('securityReportState', error?.message || '报告下载失败'); }
 });

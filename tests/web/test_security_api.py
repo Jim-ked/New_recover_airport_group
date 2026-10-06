@@ -77,6 +77,8 @@ class SecurityApiTests(unittest.TestCase):
         )
         downloaded = app.test_client().get(f"/api/security/audit-reports/{report_id}/file")
         self.assertEqual(200, downloaded.status_code)
+        self.assertEqual("text/csv", downloaded.mimetype)
+        self.assertTrue(downloaded.data.startswith(b"\xef\xbb\xbf"))
         self.assertEqual("private, no-store", downloaded.headers["Cache-Control"])
         self.assertIn("attachment", downloaded.headers["Content-Disposition"])
 
@@ -88,6 +90,61 @@ class SecurityApiTests(unittest.TestCase):
         )
         denied = denied_app.test_client().get("/api/security/backups")
         self.assertEqual(401, denied.status_code)
+
+    def test_generated_pdf_can_be_downloaded_with_get(self) -> None:
+        report = self.api.generate_audit_report({"format": "pdf"}, principal=self.admin)
+        report_id = report.body["id"]
+        app = create_app(
+            run_api=build_run_api(self.db_path),
+            security_api=self.api,
+            principal_resolver=lambda _request: self.admin,
+            enable_ui=False,
+        )
+
+        downloaded = app.test_client().get(
+            f"/api/security/audit-reports/{report_id}/file"
+        )
+
+        self.assertEqual(200, downloaded.status_code)
+        self.assertEqual("application/pdf", downloaded.mimetype)
+        self.assertTrue(downloaded.data.startswith(b"%PDF"))
+
+    def test_missing_report_download_returns_404(self) -> None:
+        app = create_app(
+            run_api=build_run_api(self.db_path),
+            security_api=self.api,
+            principal_resolver=lambda _request: self.admin,
+            enable_ui=False,
+        )
+
+        downloaded = app.test_client().get(
+            "/api/security/audit-reports/missing-report/file"
+        )
+
+        self.assertEqual(404, downloaded.status_code)
+
+    def test_invalid_report_id_is_rejected(self) -> None:
+        response = self.api.download_audit_report("..", principal=self.admin)
+
+        self.assertEqual(422, response.status)
+        self.assertIn("invalid", response.body["error"]["message"])
+
+    def test_report_download_requires_audit_read_permission(self) -> None:
+        report = self.api.generate_audit_report({"format": "csv"}, principal=self.admin)
+        report_id = report.body["id"]
+        no_permissions = Principal("restricted-user", permissions=frozenset())
+        app = create_app(
+            run_api=build_run_api(self.db_path),
+            security_api=self.api,
+            principal_resolver=lambda _request: no_permissions,
+            enable_ui=False,
+        )
+
+        downloaded = app.test_client().get(
+            f"/api/security/audit-reports/{report_id}/file"
+        )
+
+        self.assertEqual(403, downloaded.status_code)
 
 
 if __name__ == "__main__":

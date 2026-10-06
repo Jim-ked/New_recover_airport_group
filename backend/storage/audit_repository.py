@@ -9,6 +9,158 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 from backend.storage.run_repository import canonical_json
 
 
+RESOURCE_LABELS = {
+    "airports": "机场",
+    "missions": "任务模板",
+    "aircraft-types": "机型",
+    "resource-types": "保障资源",
+    "base-data": "基础数据导入",
+    "aircraft-resource-requirements": "机型资源关系",
+    "situations": "情境",
+    "indicators": "指标",
+    "indicator-sets": "指标集",
+    "experts": "专家",
+    "expert-scores": "专家评分",
+    "indicator-weights": "指标权重",
+    "runs": "算法运行",
+    "results": "结果分析",
+    "users": "用户",
+    "auth": "认证",
+    "audit-events": "审计日志",
+    "me": "当前账户",
+}
+
+
+def audit_action_label(
+    *,
+    request_method: str,
+    request_path: str,
+    resource_type: Optional[str],
+) -> str:
+    """Return the business action wording shown in the audit workspace."""
+
+    method = str(request_method or "").upper()
+    path = str(request_path or "")
+    resource = RESOURCE_LABELS.get(resource_type or "", "系统资源")
+
+    if path == "/api/auth/login":
+        return "登录"
+    if path == "/api/auth/logout":
+        return "退出登录"
+    if path == "/api/auth/change-password":
+        return "修改密码"
+
+    if resource_type == "users":
+        if path.endswith("/role"):
+            return "修改用户角色"
+        if path.endswith("/disabled"):
+            return "修改用户状态"
+        if path.endswith("/reset-password"):
+            return "重置用户密码"
+        if method == "POST":
+            return "新建用户"
+        return "浏览账户"
+
+    if resource_type == "runs":
+        if path == "/api/runs/validate":
+            return "校验运行条件"
+        if path == "/api/runs" and method == "POST":
+            return "提交算法运行"
+        if path.endswith("/cancel"):
+            return "取消运行"
+        if path.endswith("/retry"):
+            return "重试运行"
+        if path.endswith("/events"):
+            return "查看运行日志"
+        if path.endswith("/metrics"):
+            return "查看运行指标"
+        if path.endswith("/solution"):
+            return "查看运行结果"
+        if path.endswith("/runtime"):
+            return "查看运行态势"
+        if path.endswith("/situation"):
+            return "查看运行情境"
+        return "查看算法运行"
+
+    if resource_type == "results":
+        if "export" in path:
+            return "导出分析结果"
+        if "damage-candidates" in path:
+            return "查看结果比较候选"
+        if "comparable-runs" in path:
+            return "查看可比较运行"
+        if "comparison" in path:
+            return "查看结果比较"
+        return "查看结果分析"
+
+    if resource_type == "situations":
+        if "/working-copy/" in path:
+            return "处理情境工作副本"
+        if method == "POST":
+            return "新建情境"
+        if method == "PUT":
+            return "修改情境"
+        if method == "DELETE":
+            return "删除情境"
+        return "查看情境"
+
+    nouns = {
+        "airports": "机场",
+        "missions": "任务模板",
+        "aircraft-types": "机型",
+        "resource-types": "保障资源",
+        "indicators": "指标",
+        "indicator-sets": "指标集",
+        "experts": "专家",
+        "expert-scores": "专家评分",
+    }
+    noun = nouns.get(resource_type or "")
+    if noun:
+        if method == "POST":
+            return f"新建{noun}"
+        if method == "PUT":
+            return f"修改{noun}"
+        if method == "DELETE":
+            return f"删除{noun}"
+        return f"查看{noun}"
+
+    if method == "GET":
+        return f"查看{resource}"
+    if method == "PUT":
+        return f"修改{resource}"
+    if method == "DELETE":
+        return f"删除{resource}"
+    return f"执行{resource}操作"
+
+
+def _keyword_matches(record: "AuditEventRecord", query: str) -> bool:
+    needle = str(query).strip().casefold()
+    if not needle:
+        return True
+    values = (
+        audit_action_label(
+            request_method=record.request_method,
+            request_path=record.request_path,
+            resource_type=record.resource_type,
+        ),
+        RESOURCE_LABELS.get(record.resource_type or ""),
+        record.action,
+        record.request_path,
+        record.resource_type,
+        record.resource_id,
+        record.actor_user_id,
+        record.actor_role,
+        record.source_address,
+        record.response_status,
+        record.outcome,
+    )
+    return any(
+        needle in str(value).casefold()
+        for value in values
+        if value is not None and str(value) != ""
+    )
+
+
 class AuditRepositoryError(RuntimeError):
     pass
 
@@ -46,6 +198,11 @@ class AuditEventRecord:
             "actor_user_id": self.actor_user_id,
             "actor_role": self.actor_role,
             "action": self.action,
+            "action_label": audit_action_label(
+                request_method=self.request_method,
+                request_path=self.request_path,
+                resource_type=self.resource_type,
+            ),
             "resource_type": self.resource_type,
             "resource_id": self.resource_id,
             "request_method": self.request_method,
@@ -168,9 +325,6 @@ class AuditRepository:
             if value is not None:
                 clauses.append(f"{field}=?")
                 params.append(value)
-        if action_query is not None:
-            clauses.append("lower(action) LIKE ?")
-            params.append(f"%{action_query.lower()}%")
         if created_after is not None:
             clauses.append("created_at>=?")
             params.append(created_after)
@@ -178,6 +332,22 @@ class AuditRepository:
             clauses.append("created_at<=?")
             params.append(created_before)
         where = " AND ".join(clauses)
+
+        if action_query is not None:
+            # The UI shows business labels such as “提交算法运行” and “查看机场”,
+            # while the stored action is a route fact such as “POST /api/runs”.
+            # Keyword search therefore evaluates both the business wording and the
+            # technical/object fields before applying pagination.
+            with self.connect() as conn:
+                rows = conn.execute(
+                    f"SELECT * FROM audit_events WHERE {where} ORDER BY created_at DESC, audit_id DESC",
+                    params,
+                ).fetchall()
+            records = [self._row(row) for row in rows]
+            matched = [record for record in records if _keyword_matches(record, action_query)]
+            total = len(matched)
+            return matched[offset:offset + limit], total
+
         with self.connect() as conn:
             total = int(conn.execute(f"SELECT COUNT(*) FROM audit_events WHERE {where}", params).fetchone()[0])
             rows = conn.execute(
@@ -187,4 +357,7 @@ class AuditRepository:
         return [self._row(row) for row in rows], total
 
 
-__all__ = ["AuditRepository", "AuditRepositoryError", "AuditEventRecord"]
+__all__ = [
+    "AuditRepository", "AuditRepositoryError", "AuditEventRecord",
+    "RESOURCE_LABELS", "audit_action_label",
+]

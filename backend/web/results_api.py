@@ -6,6 +6,7 @@ from backend.analysis.comparison import MAX_ANALYSIS_RUNS
 from backend.auth.principal import Principal
 from backend.services.result_export_service import SUPPORTED_FORMATS
 from backend.services.run_result_service import RunResultService
+from backend.storage.assessment_repository import AssessmentRepository
 from backend.web.error_mapping import map_expected_error
 from backend.web.http import (
     ApiInputError,
@@ -20,8 +21,34 @@ from backend.web.http import (
 class ResultsApi:
     """Thin Results HTTP adapter over canonical successful Run facts."""
 
-    def __init__(self, *, result_service: RunResultService) -> None:
+    def __init__(
+        self,
+        *,
+        result_service: RunResultService,
+        assessment_repository: AssessmentRepository | None = None,
+    ) -> None:
         self.results = result_service
+        self.assessments = assessment_repository
+
+    def _current_assessments(self, run_ids: list[str]) -> dict[str, Any]:
+        """Pass through only formal evaluations matching the exported Run facts."""
+
+        if self.assessments is None:
+            return {}
+        output: dict[str, Any] = {}
+        for run_id in run_ids:
+            evaluation = self.assessments.get_run_evaluation(run_id)
+            record = self.results.runs.get(run_id)
+            if (
+                evaluation is None
+                or record is None
+                or evaluation.status != "available"
+                or record.snapshot_hash != evaluation.snapshot_hash
+                or record.metrics_hash != evaluation.metrics_hash
+            ):
+                continue
+            output[run_id] = evaluation.to_dict()
+        return output
 
     @staticmethod
     def _handle(call) -> ApiResponse:
@@ -329,6 +356,7 @@ class ResultsApi:
                 "kind": kind,
                 "source_run_ids": list(source_ids),
                 "data": data,
+                "assessments": self._current_assessments(list(source_ids)),
                 "rendering": {
                     "status": "source_ready",
                     "supported_formats": list(SUPPORTED_FORMATS),

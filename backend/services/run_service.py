@@ -150,6 +150,15 @@ class RunService:
         record = self.get(run_id, actor_user_id=actor_user_id, is_admin=is_admin)
         return self.runs.request_cancel(record.run_id)
 
+    def delete_terminal(
+        self, run_id: str, *, actor_user_id: str, is_admin: bool = False
+    ) -> bool:
+        record = self.get(run_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        deleted = self.runs.delete_terminal(record.run_id)
+        if not deleted:
+            raise RunNotFoundError(f"run not found: {run_id}")
+        return True
+
     def events(
         self,
         run_id: str,

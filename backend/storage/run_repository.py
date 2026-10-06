@@ -484,6 +484,71 @@ class RunRepository:
             ).fetchall()
         return [self._event_from_row(row) for row in rows]
 
+    def delete_terminal(self, run_id: str) -> bool:
+        """Delete one terminal Run and its private persistence closure atomically.
+
+        Situation/base-data rows and audit history are deliberately outside this closure.
+        ``assessment_result`` and the immutable snapshot need explicit deletes because
+        neither is a cascading child of ``runs``.
+        """
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise RunRepositoryError("run_id must be nonblank")
+        run_id = run_id.strip()
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT status FROM runs WHERE run_id=?", (run_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            if row["status"] in {"queued", "running"}:
+                raise RunTransitionError(
+                    f"cannot delete active Run with status={row['status']}"
+                )
+            if row["status"] not in {"succeeded", "failed", "cancelled"}:
+                raise RunTransitionError(
+                    f"cannot delete Run with unknown status={row['status']}"
+                )
+
+            conn.execute(
+                "DELETE FROM assessment_result WHERE source_run_id=?", (run_id,)
+            )
+            conn.execute("DELETE FROM run_results WHERE run_id=?", (run_id,))
+            conn.execute("DELETE FROM runs WHERE run_id=?", (run_id,))
+            conn.execute(
+                "DELETE FROM run_input_snapshots WHERE run_id=?", (run_id,)
+            )
+
+            remaining = {
+                "runs": conn.execute(
+                    "SELECT COUNT(*) FROM runs WHERE run_id=?", (run_id,)
+                ).fetchone()[0],
+                "run_events": conn.execute(
+                    "SELECT COUNT(*) FROM run_events WHERE run_id=?", (run_id,)
+                ).fetchone()[0],
+                "run_results": conn.execute(
+                    "SELECT COUNT(*) FROM run_results WHERE run_id=?", (run_id,)
+                ).fetchone()[0],
+                "run_input_snapshots": conn.execute(
+                    "SELECT COUNT(*) FROM run_input_snapshots WHERE run_id=?", (run_id,)
+                ).fetchone()[0],
+                "assessment_result": conn.execute(
+                    "SELECT COUNT(*) FROM assessment_result WHERE source_run_id=?", (run_id,)
+                ).fetchone()[0],
+                "assessment_run_evaluation": conn.execute(
+                    "SELECT COUNT(*) FROM assessment_run_evaluation WHERE run_id=?", (run_id,)
+                ).fetchone()[0],
+                "assessment_indicator_value": conn.execute(
+                    "SELECT COUNT(*) FROM assessment_indicator_value WHERE run_id=?", (run_id,)
+                ).fetchone()[0],
+            }
+            leftovers = sorted(table for table, count in remaining.items() if count)
+            if leftovers:
+                raise RunRepositoryError(
+                    f"Run delete left private rows behind: {leftovers}"
+                )
+        return True
+
     def delete_terminal_batch(
         self,
         *,
@@ -538,6 +603,9 @@ class RunRepository:
             if active:
                 raise RunRepositoryError(f"cannot delete active Run batch: {active}")
 
+            conn.execute(
+                f"DELETE FROM assessment_result WHERE source_run_id IN ({placeholders})", ids
+            )
             conn.execute(
                 f"DELETE FROM run_results WHERE run_id IN ({placeholders})", ids
             )

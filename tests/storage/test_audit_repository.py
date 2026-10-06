@@ -37,6 +37,31 @@ class AuditRepositoryTests(unittest.TestCase):
         self.assertEqual(1, denied_total)
         self.assertEqual("A1", denied[0].resource_id)
 
+    def test_keyword_query_matches_displayed_business_action_and_object_fields(self):
+        run = self.repo.append(
+            actor_user_id="U1", actor_role="operator", action="POST /api/runs",
+            resource_type="runs", request_method="POST", request_path="/api/runs",
+            response_status=201, outcome="success",
+        )
+        airport = self.repo.append(
+            actor_user_id="U1", actor_role="admin", action="GET /api/airports/<airport_id>",
+            resource_type="airports", resource_id="AP179", request_method="GET",
+            request_path="/api/airports/AP179", response_status=200, outcome="success",
+        )
+
+        rows, total = self.repo.query(action_query="提交算法运行")
+        self.assertEqual(1, total)
+        self.assertEqual(run.audit_id, rows[0].audit_id)
+
+        rows, total = self.repo.query(action_query="机场")
+        self.assertEqual(1, total)
+        self.assertEqual(airport.audit_id, rows[0].audit_id)
+
+        rows, total = self.repo.query(action_query="AP179")
+        self.assertEqual(1, total)
+        self.assertEqual(airport.audit_id, rows[0].audit_id)
+        self.assertEqual("查看机场", airport.to_dict()["action_label"])
+
     def test_append_reads_record_with_the_same_connection(self):
         original_connect = self.repo.connect
         connection_count = 0

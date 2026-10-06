@@ -471,6 +471,10 @@ class ComparisonTests(unittest.TestCase):
             outputs[0]["labels"]["airports"][payload["situation"]["airports"][0]["airport"]["airport_id"]],
         )
         self.assertEqual(
+            payload["situation"]["airports"][0]["airport"]["airport_id"],
+            outputs[0]["labels"]["airport_short_names"][payload["situation"]["airports"][0]["airport"]["airport_id"]],
+        )
+        self.assertEqual(
             payload["situation"]["missions"][0]["name"],
             outputs[0]["labels"]["missions"][payload["situation"]["missions"][0]["mission_id"]],
         )

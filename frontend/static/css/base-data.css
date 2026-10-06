@@ -83,6 +83,8 @@
 
 .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .edit-grid .wide{grid-column:1/-1}
+.control.invalid{border-color:#d65b5b;box-shadow:0 0 0 1px rgba(214,91,91,.22)}
+.field-error{margin-top:4px;color:#ff9f9f;font-size:10px;line-height:1.35}
 .textarea-control{padding:8px 10px;resize:vertical;min-height:70px}
 .form-section{border-top:1px solid var(--line-soft);padding-top:12px;margin-top:12px}
 .form-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}

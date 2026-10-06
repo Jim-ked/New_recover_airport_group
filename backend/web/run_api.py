@@ -329,6 +329,18 @@ class RunApi:
 
         return self._handle(action)
 
+    def delete(self, run_id: str, *, principal: Principal) -> ApiResponse:
+        def action() -> ApiResponse:
+            principal.require_permission("runs.delete")
+            self.runs.delete_terminal(
+                run_id,
+                actor_user_id=principal.user_id,
+                is_admin=principal.is_admin,
+            )
+            return ApiResponse({"run_id": run_id, "deleted": True}, 200)
+
+        return self._handle(action)
+
 
     def situation(self, run_id: str, *, principal: Principal) -> ApiResponse:
         def action() -> ApiResponse:

@@ -11,7 +11,9 @@ from pathlib import Path
 from backend.algorithm.runner import run_once
 from backend.auth.principal import Principal
 from backend.domain.damage import DamageScenario
+from backend.domain.assessment import IndicatorAssessmentValue, RunIndicatorAssessment
 from backend.services.run_result_service import RunResultService
+from backend.services.result_export_service import build_pdf_report_model
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.web.results_api import ResultsApi
@@ -84,6 +86,44 @@ class ResultsApiTests(unittest.TestCase):
               "damage_scenario_id": "DS1", "preference_mode": "sortie_max"}],
             candidates.body["items"],
         )
+
+        export = self.api.export_data(
+            {"kind": "damage_comparison", "r0_run_id": "R0", "r1_run_id": "R1", "r2_run_id": "R2"},
+            principal=Principal("ADMIN", is_admin=True),
+        )
+        report = build_pdf_report_model(export.body)
+        self.assertEqual(
+            [("无损毁基准", "R0"), ("损毁未组群", "R1"), ("损毁后组群优化", "R2")],
+            report["runs"],
+        )
+        self.assertEqual(
+            ["损毁影响对照", "组群效果对照"],
+            [section["title"] for section in report["comparison_sections"]],
+        )
+        self.assertEqual(
+            ["无损毁基准", "损毁未组群", "损毁后组群优化"],
+            [row[0] for row in report["run_summary_rows"]],
+        )
+        objective_index = report["summary_headers"].index("目标函数 J")
+        completion_index = report["summary_headers"].index("任务完成率")
+        solver_rows = export.body["data"]["solver_comparison"]["by_run"]
+        role_by_run = {
+            run_id: role for role, run_id in export.body["data"]["roles"].items()
+        }
+        for row in report["run_summary_rows"]:
+            self.assertEqual(solver_rows[row[1]]["objective"], row[objective_index])
+            self.assertEqual(
+                export.body["data"]["comparison_summary"][role_by_run[row[1]]]["completion_ratio"],
+                row[completion_index],
+            )
+        self.assertEqual(
+            {"F1", "F2", "F3", "J"},
+            {row[0] for section in report["comparison_sections"] for row in section["objective_rows"]},
+        )
+        self.assertIn("损毁后", report["conclusions"][0])
+        self.assertIn("启用组群后", report["conclusions"][1])
+        self.assertIn("机场承接结构", report["conclusions"][2])
+        self.assertIn("departure_timeline", {chart["id"] for chart in report["charts"]})
 
     def test_noncomparable_roles_return_422_not_best_effort_comparison(self):
         ds = self._scenario("DS1")
@@ -285,6 +325,64 @@ class ResultsApiTests(unittest.TestCase):
         self.assertEqual("EXPORT", response.body["data"]["run"]["run_id"])
         self.assertEqual("source_ready", response.body["rendering"]["status"])
         self.assertEqual(["pdf", "csv", "json", "xml"], response.body["rendering"]["supported_formats"])
+
+    def test_export_data_passes_through_only_current_persisted_assessment(self):
+        ds = self._scenario("DS1")
+        self._persist(make_snapshot(run_id="ASSESSED", cluster_enabled=False, scenario=ds))
+        record = self.runs.get("ASSESSED")
+        evaluation = RunIndicatorAssessment(
+            run_id="ASSESSED",
+            snapshot_hash=record.snapshot_hash,
+            metrics_hash=record.metrics_hash,
+            indicator_set_id="INDSET-RUN-ASSESSMENT-V1",
+            indicator_set_version="run-assessment.v1",
+            indicators=(IndicatorAssessmentValue(
+                indicator_id="IND:task",
+                code="task_completion_rate",
+                name="任务履行率",
+                raw_value=0.9,
+                normalized_value=0.9,
+                weight=1.0,
+                weight_source="ahp",
+                calculation_type="metrics.summary.completion_ratio",
+                evidence={"metrics_path": "summary.completion_ratio"},
+            ),),
+            status="available",
+            calculation_version="run-indicator-assessment.v1",
+            weight_source="ahp",
+            weight_trace={"consistency_ratio": 0.0},
+            support_index=0.9,
+            overall_membership={"very_high": 1.0},
+            weighted_composite=0.9,
+            risk_score=0.1,
+            risk_level=1,
+            risk_status="available",
+        )
+        repository = type(
+            "AssessmentReader",
+            (),
+            {"get_run_evaluation": lambda _self, run_id: evaluation if run_id == "ASSESSED" else None},
+        )()
+        api = ResultsApi(result_service=self.service, assessment_repository=repository)
+
+        response = api.export_data(
+            {"kind": "single_run", "run_id": "ASSESSED"},
+            principal=Principal("ADMIN", is_admin=True),
+        )
+
+        self.assertEqual(200, response.status)
+        self.assertEqual(0.9, response.body["assessments"]["ASSESSED"]["support_index"])
+        self.assertEqual("任务履行率", response.body["assessments"]["ASSESSED"]["indicators"][0]["name"])
+
+        stale = RunIndicatorAssessment(
+            **{**evaluation.__dict__, "snapshot_hash": "0" * 64}
+        )
+        repository.get_run_evaluation = lambda _run_id: stale
+        stale_response = api.export_data(
+            {"kind": "single_run", "run_id": "ASSESSED"},
+            principal=Principal("ADMIN", is_admin=True),
+        )
+        self.assertEqual({}, stale_response.body["assessments"])
 
     def test_export_file_route_downloads_all_formats_from_the_same_permission_path(self):
         from flask import Flask

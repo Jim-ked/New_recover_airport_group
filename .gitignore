@@ -23,6 +23,12 @@ runtime/runs/*
 runtime/logs/*
 runtime/temp/*
 runtime/worker-status.json
+runtime/migration-validation-*/
+runtime/security/
+runtime/stage*-browser/
+runtime/v5-rebuild-*/
+runtime/*-test-temp/
+runtime/tmp*/
 !runtime/db/.gitkeep
 !runtime/content/.gitkeep
 !runtime/runs/.gitkeep

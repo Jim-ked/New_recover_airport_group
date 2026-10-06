@@ -32,6 +32,12 @@ class AuditApiTests(unittest.TestCase):
         self.assertEqual(200, ok.status)
         self.assertEqual(1, ok.body["total"])
         self.assertEqual("POST /api/runs", ok.body["items"][0]["action"])
+        self.assertEqual("提交算法运行", ok.body["items"][0]["action_label"])
+
+        keyword = self.api.list(principal=Principal("A", is_admin=True), q="算法运行")
+        self.assertEqual(200, keyword.status)
+        self.assertEqual(1, keyword.body["total"])
+        self.assertEqual("提交算法运行", keyword.body["items"][0]["action_label"])
 
     def test_resource_target_does_not_treat_collection_action_as_object_id(self):
         self.assertEqual(("runs", "RUN-1"), derive_resource_target("/api/runs/RUN-1/retry"))

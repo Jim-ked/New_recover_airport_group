@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.services.run_service import RunAccessError, RunService
+from backend.services.run_service import RunAccessError, RunNotFoundError, RunService
 from backend.storage.run_repository import RunRepository
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 
@@ -70,6 +70,21 @@ class RunServiceTests(unittest.TestCase):
         self.assertEqual({"R1", "R2", "R3"}, {row.run_id for row in admin_rows + second_page})
         self.assertEqual(2, operator_total)
         self.assertEqual({"R1", "R3"}, {row.run_id for row in operator_rows})
+
+    def test_delete_terminal_preserves_access_scope_and_reports_missing_run(self):
+        self.service.submit(
+            run_id="R1", owner_user_id="U1", situation_id="S1",
+            run_config={}, od_distances=[],
+        )
+        self.repo.request_cancel("R1")
+
+        with self.assertRaises(RunAccessError):
+            self.service.delete_terminal("R1", actor_user_id="U2")
+        self.assertTrue(
+            self.service.delete_terminal("R1", actor_user_id="ADMIN", is_admin=True)
+        )
+        with self.assertRaises(RunNotFoundError):
+            self.service.delete_terminal("MISSING", actor_user_id="ADMIN", is_admin=True)
 
 
 if __name__ == "__main__":

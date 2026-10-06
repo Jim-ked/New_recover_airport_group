@@ -41,6 +41,7 @@ ADMIN_PERMISSIONS = OPERATOR_PERMISSIONS | frozenset({
     "users.admin",
     "results.export",
     "audit.read",
+    "runs.delete",
 })
 ROLE_PERMISSIONS = {
     "viewer": VIEWER_PERMISSIONS,
