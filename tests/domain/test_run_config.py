@@ -6,6 +6,29 @@ from backend.domain.run_config import RunConfig, RunConfigValidationError
 
 
 class RunConfigTests(unittest.TestCase):
+    def test_missing_database_aircraft_weight_defaults_to_one(self):
+        config = RunConfig.from_mapping({
+            "preference_mode": "sortie_max", "cluster_enabled": False,
+            "aircraft_type_weight": {}, "mip_time_limit_s": 120,
+        }).with_default_aircraft_weights(["AC001"])
+        self.assertEqual({"AC001": 1.0}, config.aircraft_type_weight)
+        self.assertEqual((("AC001", 1.0),), config.aircraft_type_weights)
+
+    def test_default_aircraft_weights_preserve_explicit_values_and_other_settings(self):
+        original = RunConfig.from_mapping({
+            "preference_mode": "sortie_max", "cluster_enabled": False,
+            "aircraft_type_weight": {"AC001": 1.7}, "mip_time_limit_s": 120,
+            "f2_resource_reference_quantities": {"RS001": 12000},
+            "f2_resource_weights": {"RS001": 0.5},
+            "f3_time_reference_slots": 16, "f3_tardiness_coefficient": 1,
+        })
+        resolved = original.with_default_aircraft_weights(["AC001", "AC002"])
+        self.assertEqual({"AC001": 1.7, "AC002": 1.0}, resolved.aircraft_type_weight)
+        for field, value in original.to_dict().items():
+            if field != "aircraft_type_weight":
+                self.assertEqual(value, resolved.to_dict()[field])
+        self.assertEqual({"AC001": 1.7}, original.aircraft_type_weight)
+
     def test_presets_resolve_to_non_extreme_original_weights(self):
         cases = {
             "sortie_max": [0.8, 0.1, 0.1],
@@ -78,6 +101,17 @@ class RunConfigTests(unittest.TestCase):
             cfg.validate_against(
                 airport_ids=["A1"], damage_scenario_ids=["DS1"], aircraft_type_ids=["fighter"]
             )
+
+    def test_validate_against_ignores_unused_aircraft_weight_ids(self):
+        cfg = RunConfig.from_mapping({
+            "preference_mode": "sortie_max", "cluster_enabled": False,
+            "aircraft_type_weight": {"AC001": 1.2, "fighter": 1.0, "OTHER_SCENE": 2.0},
+            "mip_time_limit_s": 120,
+        })
+        cfg.validate_against(
+            airport_ids=["A1"], damage_scenario_ids=[], aircraft_type_ids=["AC001"]
+        )
+        self.assertEqual(1.2, cfg.aircraft_type_weight["AC001"])
 
     def test_algorithm_seed_defaults_to_42_and_is_frozen(self):
         cfg = RunConfig.from_mapping({

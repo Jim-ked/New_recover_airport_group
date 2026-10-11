@@ -9,6 +9,7 @@ from backend.domain.objective_profile import (
 )
 from backend.domain.run_config import RunConfig
 from backend.domain.run_snapshot import ODDistance, RunSnapshot
+from backend.services.scenario_objective_calibration import load_scenario_f2_calibration
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.storage.situation_repository import SituationRepository
@@ -58,19 +59,27 @@ class RunSnapshotService:
         resource_types = self.airports.list_resource_types()
         requirements = self.airports.list_aircraft_resource_requirements()
 
-        # New Runs resolve the named server-owned profile before canonicalization.  A
-        # pre-built RunConfig is retained only for trusted lower-level/historical callers;
-        # it still has to pass the same completeness and semantic checks below.
-        canonical_config = (
-            run_config
-            if isinstance(run_config, RunConfig)
-            else RunConfig.from_mapping(resolve_objective_profile(run_config))
+        scenario_calibration = load_scenario_f2_calibration(
+            self.situations.db_path, situation.situation_id
         )
+        # Resolve new Runs before freezing. Trusted pre-built configs retain non-F2
+        # settings; historical snapshot loading does not call this service.
+        if isinstance(run_config, RunConfig):
+            canonical_config = run_config
+            if scenario_calibration is not None:
+                canonical_config = RunConfig.from_mapping({
+                    **run_config.to_dict(), **scenario_calibration,
+                })
+        else:
+            canonical_config = RunConfig.from_mapping(resolve_objective_profile(
+                run_config, scenario_calibration=scenario_calibration,
+            ))
         used_aircraft = sorted({
             row.aircraft_type_id
             for mission in situation.missions
             for row in mission.aircraft_requirements
         })
+        canonical_config = canonical_config.with_default_aircraft_weights(used_aircraft)
         used_aircraft_set = set(used_aircraft)
         used_resources = sorted({
             row.resource_type_id

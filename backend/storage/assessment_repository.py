@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from backend.domain.assessment import (
     AssessmentAirportRisk,
-    AssessmentComparison,
     AssessmentResult,
     IndicatorAssessmentValue,
     RunIndicatorAssessment,
@@ -90,6 +90,67 @@ class AssessmentRepository:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM assessment_result WHERE id=?", (result_id,)).fetchone()
         return self._result(row) if row is not None else None
+
+    def persist_run_capacity_results(
+        self, results: Sequence[AssessmentResult], *, dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Insert one complete projection atomically; never overwrite derived facts."""
+        if not results or len({row.airport_id for row in results}) != len(results):
+            raise AssessmentRepositoryError("capacity results must contain unique airports")
+        first = results[0]
+        provenance = (first.source_run_id, first.snapshot_hash, first.metrics_hash)
+        if not all(provenance) or any(
+            (row.source_run_id, row.snapshot_hash, row.metrics_hash) != provenance
+            or row.metric_kind != "capacity_availability_v1" for row in results
+        ):
+            raise AssessmentRepositoryError("capacity results require one complete Run provenance")
+        expected = {row.id: row for row in results}
+        if len(expected) != len(results):
+            raise AssessmentRepositoryError("capacity result IDs must be unique")
+        outcome = {"generated": 0, "skipped": 0, "conflict": 0, "failed": 0}
+        with self.connect() as conn:
+            conn.execute("BEGIN" if dry_run else "BEGIN IMMEDIATE")
+            current = conn.execute(
+                """SELECT r.status,r.snapshot_hash,s.snapshot_hash AS stored_snapshot_hash,rr.metrics_hash
+                   FROM runs r JOIN run_input_snapshots s USING(run_id)
+                   JOIN run_results rr USING(run_id) WHERE r.run_id=?""",
+                (first.source_run_id,),
+            ).fetchone()
+            if current is None or current["status"] != "succeeded" or (
+                current["snapshot_hash"], current["stored_snapshot_hash"], current["metrics_hash"]
+            ) != (first.snapshot_hash, first.snapshot_hash, first.metrics_hash):
+                return {**outcome, "status": "conflict", "conflict": len(results),
+                        "reason": "canonical Run provenance changed before persistence"}
+            ids = list(expected)
+            existing = conn.execute(
+                f"SELECT * FROM assessment_result WHERE id IN ({','.join('?' for _ in ids)}) "
+                "OR (source_run_id=? AND metric_kind='capacity_availability_v1')",
+                [*ids, first.source_run_id],
+            ).fetchall()
+            for raw in existing:
+                saved = self._result(raw)
+                candidate = expected.get(saved.id)
+                if candidate is None or replace(saved, created_at=None) != replace(candidate, created_at=None):
+                    return {**outcome, "status": "conflict", "conflict": len(results),
+                            "reason": f"stored capacity facts/provenance conflict: {saved.id}"}
+            saved_ids = {row["id"] for row in existing}
+            missing = [row for row in results if row.id not in saved_ids]
+            outcome["skipped"] = len(existing)
+            if not missing:
+                return {**outcome, "status": "skipped"}
+            if dry_run:
+                return {**outcome, "status": "eligible", "would_generate": len(missing)}
+            for result in missing:
+                values = asdict(result)
+                values["curves"] = canonical_json({str(step): value for step, value in result.curves})
+                values.pop("created_at")
+                columns = list(values)
+                conn.execute(
+                    f"INSERT INTO assessment_result ({','.join(columns)}) "
+                    f"VALUES ({','.join('?' for _ in columns)})",
+                    [values[name] for name in columns],
+                )
+            return {**outcome, "status": "generated", "generated": len(missing)}
 
     def list_results(
         self,
@@ -176,49 +237,6 @@ class AssessmentRepository:
         with self.connect() as conn:
             rows = conn.execute("SELECT * FROM assessment_airport_risk ORDER BY airport_id").fetchall()
         return [AssessmentAirportRisk.from_mapping(dict(row)) for row in rows]
-
-    def save_comparison(self, comparison: AssessmentComparison) -> AssessmentComparison:
-        with self.connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO assessment_comparison (
-                    id, base_airport_id, base_scenario_type, compared_airport_id,
-                    compared_scenario_type, conclusion, log, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
-                ON CONFLICT(id) DO UPDATE SET
-                    base_airport_id=excluded.base_airport_id,
-                    base_scenario_type=excluded.base_scenario_type,
-                    compared_airport_id=excluded.compared_airport_id,
-                    compared_scenario_type=excluded.compared_scenario_type,
-                    conclusion=excluded.conclusion,
-                    log=excluded.log,
-                    created_at=excluded.created_at
-                """,
-                (
-                    comparison.id,
-                    comparison.base_airport_id,
-                    comparison.base_scenario_type,
-                    comparison.compared_airport_id,
-                    comparison.compared_scenario_type,
-                    comparison.conclusion,
-                    comparison.log,
-                    comparison.created_at,
-                ),
-            )
-        return comparison
-
-    def list_comparisons(self, *, limit: int = 50, offset: int = 0) -> tuple[list[AssessmentComparison], int]:
-        if not 1 <= limit <= 500:
-            raise AssessmentRepositoryError("limit must be in [1,500]")
-        if offset < 0:
-            raise AssessmentRepositoryError("offset must be nonnegative")
-        with self.connect() as conn:
-            total = int(conn.execute("SELECT COUNT(*) FROM assessment_comparison").fetchone()[0])
-            rows = conn.execute(
-                "SELECT * FROM assessment_comparison ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
-        return [AssessmentComparison.from_mapping(dict(row)) for row in rows], total
 
     def save_run_evaluation(self, evaluation: RunIndicatorAssessment) -> RunIndicatorAssessment:
         with self.connect() as conn:

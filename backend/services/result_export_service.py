@@ -230,6 +230,8 @@ def build_tidy_rows(report_data: Mapping[str, Any]) -> list[Dict[str, str]]:
     rows: list[Dict[str, str]] = []
     for run_id in report_data.get("source_run_ids") or []:
         rows.append(_row(kind, "source", "run_id", run_id, entity_type="run", entity_id=str(run_id)))
+        identity = (data.get('run_identities') or {}).get(run_id) or {}
+        rows.extend(_flatten_scalar_map(kind, 'run_identity', identity, entity_type='run', entity_id=str(run_id)))
 
     if kind == "single_run":
         run = data.get("run") or {}
@@ -1297,6 +1299,9 @@ def build_pdf_report_model(report_data: Mapping[str, Any]) -> Dict[str, Any]:
         "title": _REPORT_KIND_LABELS.get(kind, "仿真结果报告"),
         "source_run_ids": source_run_ids,
         "runs": runs,
+        "run_identity_rows": [(rid, identity.get('situation_title') or identity.get('title'),
+                               identity.get('subtitle'), identity.get('short_id'))
+                              for rid, identity in (data.get('run_identities') or {}).items()],
         "summary_headers": ["对象", "运行编号"] + [_METRIC_LABELS[metric] for metric in _SUMMARY_METRICS],
         "run_summary_rows": run_summary_rows,
         "focus_rows": focus_rows,
@@ -1575,6 +1580,9 @@ class ResultExportService:
 
         object_title = "运行对象" if report["kind"] == "single_run" else "比较对象"
         add_table(object_title, ["对象", "运行编号"], report["runs"], widths=[38 * mm, 205 * mm])
+        if report['run_identity_rows']:
+            add_table('Run 来源识别', ['完整 Run ID', '情境与损毁方案', '配置与运行时间（北京时间）', '追踪编号'],
+                      report['run_identity_rows'])
         if report["condition_rows"]:
             if report["kind"] == "configuration_comparison":
                 add_table("关键配置差异", ["配置项", "基准配置", "对照配置"], report["condition_rows"])

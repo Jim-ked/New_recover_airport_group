@@ -6,6 +6,8 @@ from backend.analysis.comparison import MAX_ANALYSIS_RUNS
 from backend.auth.principal import Principal
 from backend.services.result_export_service import SUPPORTED_FORMATS
 from backend.services.run_result_service import RunResultService
+from backend.services.run_comparison_record_service import RunComparisonRecordService
+from backend.storage.run_comparison_repository import RunComparisonRepository
 from backend.storage.assessment_repository import AssessmentRepository
 from backend.web.error_mapping import map_expected_error
 from backend.web.http import (
@@ -29,6 +31,10 @@ class ResultsApi:
     ) -> None:
         self.results = result_service
         self.assessments = assessment_repository
+        self.comparison_records = RunComparisonRecordService(
+            result_service=result_service,
+            repository=RunComparisonRepository(result_service.runs.db_path),
+        )
 
     def _current_assessments(self, run_ids: list[str]) -> dict[str, Any]:
         """Pass through only formal evaluations matching the exported Run facts."""
@@ -100,6 +106,15 @@ class ResultsApi:
             )
         return self._handle(action)
 
+    def save_comparison_record(self, raw_body: Any, *, principal: Principal) -> ApiResponse:
+        def action():
+            saved, created = self.comparison_records.save(raw_body, principal=principal)
+            return ApiResponse({'record': saved, 'created': created}, 201 if created else 200)
+        return self._handle(action)
+
+    def comparison_record(self, record_id: str, *, principal: Principal) -> ApiResponse:
+        return self._handle(lambda: ApiResponse(self.comparison_records.get(record_id, principal=principal), 200))
+
     def damage_comparison(self, raw_body: Any, *, principal: Principal) -> ApiResponse:
         def action() -> ApiResponse:
             principal.require_permission("results.read")
@@ -109,13 +124,8 @@ class ResultsApi:
             r1 = required_nonblank_string(body, "r1_run_id")
             r2 = required_nonblank_string(body, "r2_run_id")
             return ApiResponse(
-                self.results.compare_r0_r1_r2(
-                    r0_run_id=r0,
-                    r1_run_id=r1,
-                    r2_run_id=r2,
-                    actor_user_id=principal.user_id,
-                    is_admin=principal.is_admin,
-                ),
+                self.comparison_records.preview('damage_effect',
+                    {'r0_run_id':r0, 'r1_run_id':r1, 'r2_run_id':r2}, principal=principal),
                 200,
             )
         return self._handle(action)
@@ -148,13 +158,10 @@ class ResultsApi:
                     field="comparison_run_id",
                 )
             return ApiResponse(
-                self.results.compare_multi_scenario(
-                    run_ids=tuple(run_ids),
-                    baseline_run_id=baseline_run_id,
-                    comparison_run_id=comparison_run_id,
-                    actor_user_id=principal.user_id,
-                    is_admin=principal.is_admin,
-                ),
+                self.comparison_records.preview('multi_scenario', {
+                    'run_ids':run_ids, 'baseline_run_id':baseline_run_id or run_ids[0],
+                    'comparison_run_id':comparison_run_id or next(rid for rid in run_ids if rid != (baseline_run_id or run_ids[0])),
+                }, principal=principal),
                 200,
             )
         return self._handle(action)
@@ -186,13 +193,10 @@ class ResultsApi:
                     field="comparison_run_id",
                 )
             return ApiResponse(
-                self.results.compare_configuration(
-                    run_ids=tuple(run_ids),
-                    baseline_run_id=baseline_run_id,
-                    comparison_run_id=comparison_run_id,
-                    actor_user_id=principal.user_id,
-                    is_admin=principal.is_admin,
-                ),
+                self.comparison_records.preview('configuration', {
+                    'run_ids':run_ids, 'baseline_run_id':baseline_run_id,
+                    'comparison_run_id':comparison_run_id or next(rid for rid in run_ids if rid != baseline_run_id),
+                }, principal=principal),
                 200,
             )
         return self._handle(action)
@@ -351,6 +355,11 @@ class ResultsApi:
                     "kind must be single_run, damage_comparison, scenario_comparison or configuration_comparison",
                     field="kind",
                 )
+            data['run_identities'] = {
+                rid: self.results.get_run_detail(rid, actor_user_id=principal.user_id,
+                                                is_admin=principal.is_admin)['display_identity']
+                for rid in source_ids
+            }
             return ApiResponse({
                 "schema_version": "report-data.v1",
                 "kind": kind,

@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('start', 'stop', 'status')]
-    [string]$Action
+    [string]$Action,
+    [string]$SceneDatabase,
+    [switch]$StatusJson
 )
 
 Set-StrictMode -Version Latest
@@ -15,6 +17,56 @@ $ServePattern = '(?i)(?:^|\s)-m\s+backend\s+serve(?:\s|$)'
 $WorkerPattern = '(?i)(?:^|\s)-m\s+backend\s+worker(?:\s|$)'
 
 . $EnvironmentLoader
+
+# Explicit scene selection is applied AFTER local/default environment loading.
+# The ordinary start/check/init/worker entrypoints keep their canonical DB policy.
+if (-not [string]::IsNullOrWhiteSpace($SceneDatabase)) {
+    if (-not [System.IO.Path]::IsPathRooted($SceneDatabase) -or
+        -not (Test-Path -LiteralPath $SceneDatabase -PathType Leaf)) {
+        Write-Error 'Scene database must be an existing absolute file path.'
+        exit 2
+    }
+    $selectedDatabase = [System.IO.Path]::GetFullPath($SceneDatabase)
+    if ($selectedDatabase -eq $env:AIRPORT_GROUP_DB_PATH) {
+        Write-Error 'The canonical database cannot be selected as a scene database.'
+        exit 2
+    }
+    $env:AIRPORT_GROUP_DB_PATH = $selectedDatabase
+}
+$LifecycleState = Join-Path $ProjectRoot 'runtime\logs\web_lifecycle_state.json'
+
+function Read-LifecycleState {
+    if (Test-Path -LiteralPath $LifecycleState -PathType Leaf) {
+        try {
+            $state = Get-Content -LiteralPath $LifecycleState -Raw | ConvertFrom-Json
+            $owner = Get-ProcessRecord -ProcessId ([int]$state.owner_pid)
+            if ($null -ne $owner -and $owner.CreationDate.ToUniversalTime().ToString('o') -eq $state.owner_created_at) {
+                return $state
+            }
+        }
+        catch { return $null }
+    }
+    return $null
+}
+
+function Save-LifecycleState {
+    New-Item -ItemType Directory -Path (Split-Path -Parent $LifecycleState) -Force | Out-Null
+    $owner = Get-ProcessRecord -ProcessId $PID
+    if ($null -eq $owner) { throw 'Unable to identify lifecycle process.' }
+    $state = @{ db_path = $env:AIRPORT_GROUP_DB_PATH; owner_pid = $PID
+                owner_created_at = $owner.CreationDate.ToUniversalTime().ToString('o') }
+    [System.IO.File]::WriteAllText($LifecycleState, ($state | ConvertTo-Json -Compress),
+        (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Test-DatabaseSelection {
+    if (@(Get-ProjectWebProcesses).Count -eq 0 -and @(Get-ProjectWorkerProcesses).Count -eq 0) {
+        return $true
+    }
+    $state = Read-LifecycleState
+    if ($null -eq $state) { return [string]::IsNullOrWhiteSpace($SceneDatabase) }
+    return ([string]$state.db_path -eq $env:AIRPORT_GROUP_DB_PATH)
+}
 
 $WebHost = if ([string]::IsNullOrWhiteSpace($env:AIRPORT_GROUP_HOST)) {
     '127.0.0.1'
@@ -77,6 +129,20 @@ function Get-ProjectWorkerLeafProcesses {
     @($workers | Where-Object { $parentIds -notcontains [int]$_.ProcessId })
 }
 
+function Stop-ProjectProcess {
+    param([Parameter(Mandatory = $true)]$ProcessRecord)
+    $current = Get-ProcessRecord -ProcessId ([int]$ProcessRecord.ProcessId)
+    if ($null -eq $current -or $current.CreationDate -ne $ProcessRecord.CreationDate) { return }
+    if (-not (Test-ProjectWebProcess $current) -and -not (Test-ProjectWorkerProcess $current)) { return }
+    try { Stop-Process -Id ([int]$current.ProcessId) -ErrorAction Stop }
+    catch {
+        # The foreground lifecycle may have stopped this Worker concurrently.
+        # Keep real permission/termination failures visible, tolerate only exit.
+        $remaining = Get-ProcessRecord -ProcessId ([int]$current.ProcessId)
+        if ($null -ne $remaining -and $remaining.CreationDate -eq $current.CreationDate) { throw }
+    }
+}
+
 function Get-WebListeners {
     @(
         Get-NetTCPConnection -LocalPort $WebPort -State Listen -ErrorAction SilentlyContinue |
@@ -132,6 +198,21 @@ function Show-Status {
     return 2
 }
 
+function Show-JsonStatus {
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+    $listeners = @(Get-WebListeners)
+    $workers = @(Get-ProjectWorkerLeafProcesses)
+    $owned = $listeners.Count -gt 0 -and (Test-OnlyProjectListeners -Listeners $listeners)
+    $state = Read-LifecycleState
+    $database = if ($null -ne $state) { [string]$state.db_path }
+                elseif ($owned -or $workers.Count -gt 0) { '<unknown>' }
+                else { $env:AIRPORT_GROUP_DB_PATH }
+    $webIds = if ($owned) { @($listeners | ForEach-Object { [int]$_.OwningProcess }) } else { @() }
+    @{ running = [bool]$owned; port_occupied = [bool]($listeners.Count -gt 0 -and -not $owned)
+       web_pids = @($webIds); worker_pids = @($workers | ForEach-Object { [int]$_.ProcessId })
+       db_path = $database; port = $WebPort } | ConvertTo-Json -Compress
+}
+
 function Stop-ProjectWeb {
     $listeners = @(Get-WebListeners)
     if ($listeners.Count -gt 0 -and -not (Test-OnlyProjectListeners -Listeners $listeners)) {
@@ -143,6 +224,7 @@ function Stop-ProjectWeb {
     $processes = @(Get-ProjectWebProcesses)
     $workers = @(Get-ProjectWorkerProcesses)
     if ($processes.Count -eq 0 -and $workers.Count -eq 0) {
+        if (Test-Path -LiteralPath $LifecycleState) { Remove-Item -LiteralPath $LifecycleState }
         Write-Host "The current project Web service is not running."
         return 0
     }
@@ -151,9 +233,7 @@ function Stop-ProjectWeb {
     $ordered = @($processes | Sort-Object @{ Expression = { if ($listenerIds -contains [int]$_.ProcessId) { 0 } else { 1 } } })
     Write-Host "Stopping the current project Web/Worker service: Web PID=$($listenerIds -join ', '); Worker PID=$(@($workers | ForEach-Object { $_.ProcessId }) -join ', ')"
     foreach ($process in @($ordered + $workers)) {
-        if ($null -ne (Get-ProcessRecord -ProcessId ([int]$process.ProcessId))) {
-            Stop-Process -Id ([int]$process.ProcessId) -ErrorAction Stop
-        }
+        Stop-ProjectProcess -ProcessRecord $process
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -173,11 +253,13 @@ function Stop-ProjectWeb {
         return 5
     }
     Write-Host "The current project Web service stopped. Port $WebPort is free."
+    if (Test-Path -LiteralPath $LifecycleState) { Remove-Item -LiteralPath $LifecycleState }
     return 0
 }
 
 switch ($Action) {
     'status' {
+        if ($StatusJson) { Show-JsonStatus; exit 0 }
         exit (Show-Status)
     }
     'stop' {
@@ -188,6 +270,11 @@ switch ($Action) {
             Write-Error "Project Python was not found: $PythonPath"
             exit 2
         }
+        if (-not (Test-DatabaseSelection)) {
+            Write-Host 'The current project is using a different or unknown database. Stop it before switching scenes.'
+            exit 6
+        }
+        New-Item -ItemType Directory -Path (Join-Path $ProjectRoot 'runtime\logs') -Force | Out-Null
         $listeners = @(Get-WebListeners)
         if ($listeners.Count -gt 0) {
             if (Test-OnlyProjectListeners -Listeners $listeners) {
@@ -225,15 +312,26 @@ switch ($Action) {
         }
         $webExitCode = 0
         try {
+            Save-LifecycleState
             & $PythonPath -m backend serve
             $webExitCode = $LASTEXITCODE
         } finally {
             if ($workerStartedHere -and $null -ne $worker) {
+                # Windows venv Python may spawn a real interpreter child. Stop
+                # only children owned by this Worker invocation, then its wrapper.
+                $children = @(Get-ProjectWorkerProcesses | Where-Object { [int]$_.ParentProcessId -eq $worker.Id })
+                foreach ($child in $children) {
+                    Stop-ProjectProcess -ProcessRecord $child
+                }
                 $workerProcess = Get-ProcessRecord -ProcessId $worker.Id
                 if (Test-ProjectWorkerProcess $workerProcess) {
-                    Stop-Process -Id $worker.Id -ErrorAction Stop
+                    Stop-ProjectProcess -ProcessRecord $workerProcess
                     Write-Host "Worker started by this lifecycle invocation was stopped. PID=$($worker.Id)"
                 }
+            }
+            $state = Read-LifecycleState
+            if ($null -ne $state -and [int]$state.owner_pid -eq $PID) {
+                Remove-Item -LiteralPath $LifecycleState -ErrorAction SilentlyContinue
             }
         }
         exit $webExitCode

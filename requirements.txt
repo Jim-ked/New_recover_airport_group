@@ -10,3 +10,6 @@ reportlab>=4,<5
 
 # Cross-platform production WSGI host for the formal Windows/Linux startup entrypoint.
 waitress>=3,<4
+
+# Standard Excel files for Base Data import/export.
+openpyxl>=3.1.5,<4

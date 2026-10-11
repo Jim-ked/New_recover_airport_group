@@ -53,7 +53,7 @@ def create_assessment_results_blueprint(
     def comparisons():
         return invoke(
             lambda principal: api.comparisons(
-                principal=principal, limit=request.args.get("limit")
+                principal=principal, limit=request.args.get("limit"), offset=request.args.get('offset')
             )
         )
 

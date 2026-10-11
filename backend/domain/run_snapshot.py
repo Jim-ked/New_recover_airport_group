@@ -5,7 +5,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, NoReturn, Sequence, Tuple
+from typing import Any, Dict, Mapping, NoReturn, Sequence, Tuple
 
 from backend.domain.catalog import AircraftResourceRequirement, AircraftType, ResourceType
 from backend.domain.run_config import RunConfig
@@ -243,6 +243,26 @@ class RunSnapshot:
             "od_distances": [actual[k].to_dict() for k in sorted(actual)],
             "run_config": config_copy,
         }
+        if run_config.resource_inventory_model == "physical_inventory_v1":
+            # Freeze the existing V5 contract from this exact Situation value. No
+            # mutable repository/configuration may be consulted at execution time.
+            storage: Dict[str, Dict[str, float]] = {}
+            for item in situation.airports:
+                storage[item.airport_id] = {}
+                for stock in item.operational_profile.resource_stocks:
+                    capacity = stock.storage_capacity
+                    field = f"dynamic_inventory.storage_capacity.{item.airport_id}.{stock.resource_type_id}"
+                    if (isinstance(capacity, bool) or not isinstance(capacity, (int, float))
+                            or not math.isfinite(float(capacity)) or capacity < 0):
+                        _fail(field, "physical_inventory_v1 requires finite nonnegative storage_capacity")
+                    if stock.initial_quantity is not None and capacity < stock.initial_quantity:
+                        _fail(field, "storage_capacity must not be below initial_quantity")
+                    storage[item.airport_id][stock.resource_type_id] = capacity
+            payload["schema"] = DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA
+            payload["dynamic_inventory"] = {
+                "semantics": "physical_inventory_v1",
+                "storage_capacity": storage,
+            }
         payload_json = _canonical_json(payload)
         return cls(
             run_id=run_id,
@@ -259,7 +279,7 @@ class RunSnapshot:
         after canonical JSON normalization.
         """
         schema = self.to_dict().get("schema")
-        if schema != SNAPSHOT_SCHEMA:
+        if schema not in SUPPORTED_SNAPSHOT_SCHEMAS:
             _fail(
                 "payload_json.schema",
                 f"historical snapshot schema {schema!r} cannot be cloned for retry",
@@ -274,6 +294,37 @@ class RunSnapshot:
             content_hash=_sha256(payload_json),
             payload_json=payload_json,
         )
+
+    def validate_for_execution(self) -> None:
+        """Reject silent inventory-model changes without breaking historical reads.
+
+        __post_init__ checks the immutable record's identity/hash only. These stricter
+        semantics apply when queuing/retrying or building actual algorithm inputs.
+        """
+        payload = self.to_dict()
+        config = payload.get("run_config")
+        if not isinstance(config, Mapping):
+            _fail("run_config", "frozen run_config must be an object")
+        model = config.get("resource_inventory_model", "legacy_budget_v4")
+        if not isinstance(model, str):
+            _fail("run_config.resource_inventory_model", "frozen inventory model must be a string")
+        expected_schema = {
+            "legacy_budget_v4": SNAPSHOT_SCHEMA,
+            "physical_inventory_v1": DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA,
+        }.get(model)
+        if expected_schema is None or payload.get("schema") != expected_schema:
+            _fail("payload_json.schema", f"snapshot schema/model mismatch: {payload.get('schema')!r}/{model!r}")
+        if expected_schema == SNAPSHOT_SCHEMA:
+            if "dynamic_inventory" in payload:
+                _fail("dynamic_inventory", "v4 snapshot must not contain dynamic_inventory")
+            return
+        contract = payload.get("dynamic_inventory")
+        if not isinstance(contract, Mapping):
+            _fail("dynamic_inventory", "v5 snapshot requires dynamic_inventory contract")
+        if contract.get("semantics") != "physical_inventory_v1":
+            _fail("dynamic_inventory.semantics", "v5 inventory semantics must be physical_inventory_v1")
+        if not isinstance(contract.get("storage_capacity"), Mapping):
+            _fail("dynamic_inventory.storage_capacity", "v5 storage_capacity must be an object")
 
     def to_dict(self) -> Dict[str, Any]:
         # New object every call: callers cannot mutate the frozen internal representation.

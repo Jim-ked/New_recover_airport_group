@@ -18,6 +18,7 @@ from tools.dev_validation.rebuild_v5_experiment import (
     verify_archive,
 )
 from backend.storage.assessment_repository import AssessmentRepository
+from tests.tools.test_rebuild_v5_comprehensive_assessment import legacy_comparison_rows
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -128,6 +129,13 @@ class RebuildV5ExperimentTests(unittest.TestCase):
         definition = load_definition(MANIFEST)
         with tempfile.TemporaryDirectory() as temp_dir:
             destination = pathlib.Path(temp_dir) / "experiment.sqlite3"
+            legacy = legacy_comparison_rows(ARCHIVE)
+            if legacy:
+                with self.assertRaisesRegex(RuntimeError, 'nonempty'):
+                    prepare_experiment_database(archive_path=ARCHIVE, destination=destination, definition=definition)
+                self.assertEqual(legacy, legacy_comparison_rows(destination))
+                self.assertEqual(legacy, legacy_comparison_rows(ARCHIVE))
+                return
             prepared = prepare_experiment_database(
                 archive_path=ARCHIVE,
                 destination=destination,
@@ -176,6 +184,16 @@ class RebuildV5ExperimentTests(unittest.TestCase):
     def test_archive_can_project_traceable_capacity_observations_and_strict_comparisons(self) -> None:
         definition = load_definition(MANIFEST)
         with tempfile.TemporaryDirectory() as temp_dir:
+            legacy = legacy_comparison_rows(ARCHIVE)
+            if legacy:
+                import shutil
+                database = pathlib.Path(temp_dir) / 'archive-copy.sqlite'
+                shutil.copy2(ARCHIVE, database)
+                comparisons = validate_experiment_comparisons(database, definition)
+                self.assertEqual(0, comparisons['persisted_records'])
+                self.assertEqual(9, comparisons['research_evidence_count'])
+                self.assertEqual(legacy, legacy_comparison_rows(database))
+                return
             database = prepare_experiment_database(
                 archive_path=ARCHIVE,
                 destination=pathlib.Path(temp_dir) / "experiment.sqlite3",
@@ -183,6 +201,8 @@ class RebuildV5ExperimentTests(unittest.TestCase):
             )
             assessment = project_experiment_assessment(database, definition)
             comparisons = validate_experiment_comparisons(database, definition)
+            self.assertEqual(0, comparisons['persisted_records'])
+            self.assertEqual(9, comparisons['research_evidence_count'])
 
             self.assertEqual(66, assessment["result_count"])
             self.assertEqual("unavailable", assessment["risk"]["status"])

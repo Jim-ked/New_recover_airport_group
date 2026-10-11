@@ -11,6 +11,7 @@ from tools.dev_validation.complete_v5_assessment_acceptance import (
     execute_security_acceptance,
 )
 from backend.storage.security_repository import SecurityRepository
+from tests.tools.test_rebuild_v5_comprehensive_assessment import legacy_comparison_rows
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,6 +42,13 @@ class V5AssessmentAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "v5.sqlite3"
             shutil.copy2(V5_DATABASE, database)
+            legacy = legacy_comparison_rows(database)
+            if legacy:
+                self.assertEqual(9, len(legacy))
+                with self.assertRaisesRegex(RuntimeError, 'nonempty'):
+                    evaluate_v5_assessments(database, MANIFEST)
+                self.assertEqual(legacy, legacy_comparison_rows(database))
+                return
             actual = evaluate_v5_assessments(database, MANIFEST)
 
         self.assertEqual(11, actual["evaluation_count"])

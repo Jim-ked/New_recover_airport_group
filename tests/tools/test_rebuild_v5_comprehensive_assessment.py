@@ -42,6 +42,14 @@ def formal_state(database: Path) -> dict[str, object]:
         }
 
 
+def legacy_comparison_rows(database: Path):
+    with closing(sqlite3.connect(database)) as connection:
+        columns = {row[1] for row in connection.execute('PRAGMA table_info(assessment_comparison)')}
+        if 'base_scenario_type' in columns:
+            return connection.execute('SELECT * FROM assessment_comparison ORDER BY id').fetchall()
+    return []
+
+
 @unittest.skipUnless(V5_DATABASE.exists(), "repaired V5 database is an external acceptance asset")
 class RebuildV5ComprehensiveAssessmentTests(unittest.TestCase):
     def test_rebuild_rejects_missing_formal_weight_source_without_fallback(self) -> None:
@@ -57,14 +65,17 @@ class RebuildV5ComprehensiveAssessmentTests(unittest.TestCase):
                 connection.execute("DELETE FROM assessment_run_evaluation")
                 connection.commit()
 
+            legacy = legacy_comparison_rows(database)
             with self.assertRaisesRegex(
-                ComprehensiveAssessmentRebuildError, "weights are unavailable"
+                RuntimeError if legacy else ComprehensiveAssessmentRebuildError,
+                "nonempty" if legacy else "weights are unavailable"
             ):
                 rebuild_v5_comprehensive_assessments(
                     database=database,
                     manifest=MANIFEST,
                     backup_dir=root / "backups",
                 )
+            self.assertEqual(legacy, legacy_comparison_rows(database))
             with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(
                     0,
@@ -82,6 +93,14 @@ class RebuildV5ComprehensiveAssessmentTests(unittest.TestCase):
                 connection.execute("DELETE FROM assessment_run_evaluation")
                 connection.commit()
             before = formal_state(database)
+            legacy = legacy_comparison_rows(database)
+            if legacy:
+                self.assertEqual(9, len(legacy))  # Frozen research evidence is retained.
+                with self.assertRaisesRegex(RuntimeError, 'nonempty'):
+                    rebuild_v5_comprehensive_assessments(database=database, manifest=MANIFEST, backup_dir=root/'backups')
+                self.assertEqual(legacy, legacy_comparison_rows(database))
+                self.assertEqual(before, formal_state(database))
+                return
 
             first = rebuild_v5_comprehensive_assessments(
                 database=database,
@@ -107,7 +126,7 @@ class RebuildV5ComprehensiveAssessmentTests(unittest.TestCase):
                 second["weight_provenance"]["config_hash"], r"^[0-9a-f]{64}$"
             )
             self.assertEqual(66, second["preserved"]["capacity_results"])
-            self.assertEqual(9, second["preserved"]["comparisons"])
+            self.assertEqual(before['comparisons'], second["preserved"]["comparisons"])
             self.assertTrue(Path(first["backup"]["path"]).is_file())
             self.assertTrue(Path(second["backup"]["path"]).is_file())
             self.assertNotEqual(first["backup"]["path"], second["backup"]["path"])

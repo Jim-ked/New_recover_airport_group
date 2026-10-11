@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api-client.js';
+import { formatRunIdentity } from '../utils/run-identity.js';
 import { formatDecimal, formatHhi, formatInteger, formatPercent, formatSeconds } from './number-display.js';
 
 const PREFERENCE_LABELS = { sortie_max: '出动架次优先', resource_min: '资源消耗优先', time_min: '时间代价优先', custom: '自定义权重' };
@@ -35,7 +36,6 @@ function percent(value, digits = 1) { return formatPercent(value, { digits }); }
 function number(value, digits = 2) { return formatDecimal(value, { minimumFractionDigits: digits, maximumFractionDigits: digits }); }
 function windowLabel(value) { return Number.isInteger(value) ? `T${value}` : '—'; }
 function recorded(value, formatter = String) { return value === null || value === undefined || (typeof value === 'number' && !Number.isFinite(value)) ? '未记录' : formatter(value); }
-function shortRunId(id) { const raw = String(id || ''); const hash = /^RUN-([a-f0-9]{8})/i.exec(raw); if (hash) return `Run ${hash[1].toUpperCase()}`; const suffix = raw.replace(/^RUN-/i, '') || '—'; return `Run ${suffix.length > 18 ? `${suffix.substring(0, 17)}…` : suffix}`; }
 function airportName(id) { return state.airportById.get(id)?.airport_name || id || '—'; }
 function airportDisplay(id) { const match = /^AP(\d+)$/i.exec(String(id || '')); const prefix = match ? `${match[1].padStart(3, '0')} ` : ''; return `${prefix}${airportName(id).replace(/\s+(?:International\s+|General\s+)?(?:Airport|Air Base)$/i, '').trim() || id || '—'}`; }
 function missionName(id) { return state.missionById.get(id)?.name || id || '—'; }
@@ -48,16 +48,13 @@ function buildIndexes() {
   for (const mission of state.situation?.missions || []) if (mission.mission_id) state.missionById.set(mission.mission_id, mission);
 }
 function renderBadges() {
-  const damageId = state.runConfig?.damage_scenario_id;
-  const damage = (state.situation?.damage_scenarios || []).find((row) => row.damage_scenario_id === damageId);
-  const situationName = state.situation?.name || state.run.situation_id;
-  const runId = text('span', shortRunId(state.run.run_id), 'single-run-id'); runId.title = state.run.run_id;
-  const situation = text('span', situationName, 'single-context'); situation.title = situationName;
-  const damageStatus = text('span', damage?.name || damageId || '无损毁', 'single-damage-status'); damageStatus.title = damage?.name || damageId || '无损毁';
-  const cluster = text('span', state.runConfig?.cluster_enabled ? '组选开' : '组选关', 'single-cluster-meta'); cluster.title = state.runConfig?.cluster_enabled ? '组选已启用' : '组选未启用';
+  const identity = formatRunIdentity({ ...state.run, run_config: state.runConfig, situation: state.situation });
+  const title = text('div', '', 'single-context'); title.append(text('b', identity.title, 'single-damage-status'));
+  const subtitle = text('div', identity.subtitle, 'single-cluster-meta');
+  const trace = text('div', identity.short_id, 'single-run-id'); trace.title = identity.detail;
   const status = text('span', '', 'single-run-status'); status.title = 'Run 已成功完成'; status.append(text('i', '', 'status-dot'), document.createTextNode('成功'));
-  const divider = () => { const item = text('span', '|', 'single-head-divider'); item.setAttribute('aria-hidden', 'true'); return item; };
-  refs.runBadges.replaceChildren(runId, divider(), situation, divider(), damageStatus, divider(), cluster, divider(), status);
+  const label = text('div', '', 'run-label'); label.title = identity.detail; label.append(title, subtitle, trace);
+  refs.runBadges.replaceChildren(label, status);
 }
 function constraintDetailFacts(run, metrics) {
   const summary = metrics?.summary || {}, technical = metrics?.technical || {};
@@ -379,6 +376,12 @@ function orderedTaskEntries() {
   for (const id of Object.keys(tasks).sort()) if (!orderedIds.includes(id)) orderedIds.push(id); return orderedIds.map((id) => [id, tasks[id]]);
 }
 function taskPanelHeight(taskCount) { const count = Number.isFinite(taskCount) ? Math.max(0, Math.floor(taskCount)) : 0; return Math.min(340, Math.max(182, 68 + count * 38)); }
+function getHeatColor(heat) {
+  const ratio = Math.max(0, Math.min(1, heat));
+  const low = [11, 42, 60], high = [73, 165, 233];
+  const channels = low.map((value, index) => Math.round(value + (high[index] - value) * ratio));
+  return `rgb(${channels.join(', ')})`;
+}
 function renderTaskDistribution() {
   const entries = orderedTaskEntries(), windows = state.metrics.time_axis.windows || [], range = visibleTimelineRange(), aircraftTypes = [...new Set(entries.flatMap(([, row]) => Object.keys(row.scheduled_by_aircraft || {})))].sort();
   refs.content.style.setProperty('--task-panel-height', `${taskPanelHeight(entries.length)}px`); refs.content.dataset.taskCount = String(entries.length);
@@ -392,7 +395,12 @@ function renderTaskDistribution() {
       const cell = document.createElement('i'), numericValue = typeof value === 'number' && Number.isFinite(value) ? value : null, label = windowLabel(windows[index]);
       cell.dataset.windowIndex = String(index); cell.classList.toggle('focused', index === state.selectedWindowIndex); cell.classList.toggle('timeline-window-hidden', index < range.start || index >= range.end);
       if (numericValue === null) { cell.classList.add('task-heat-missing'); cell.title = `${label} · 出动未记录`; cell.setAttribute('aria-label', `${label} · 出动未记录`); }
-      else { cell.style.setProperty('--heat', String(numericValue / maxTimeline)); cell.title = `${label} · 出动 ${integer(numericValue)}`; cell.setAttribute('aria-label', `${label} · 出动 ${integer(numericValue)}`); }
+      else {
+        const heatValue = numericValue / maxTimeline;
+        cell.style.setProperty('--heat', String(heatValue));
+        cell.style.backgroundColor = getHeatColor(heatValue);
+        cell.title = `${label} · 出动 ${integer(numericValue)}`; cell.setAttribute('aria-label', `${label} · 出动 ${integer(numericValue)}`);
+      }
       heat.append(cell);
     });
     const composition = document.createElement('div'); composition.className = 'task-composition'; const bar = document.createElement('div'); bar.className = 'composition-bar'; const scheduledTotal = Object.values(row.scheduled_by_aircraft || {}).reduce((sum, value) => sum + Number(value || 0), 0);

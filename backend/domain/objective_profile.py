@@ -80,13 +80,16 @@ def _merge_fixed_mapping(
     return merged
 
 
-def resolve_objective_profile(raw: Mapping[str, Any]) -> Dict[str, Any]:
+def resolve_objective_profile(
+    raw: Mapping[str, Any], *, scenario_calibration: Mapping[str, Any] | None = None
+) -> Dict[str, Any]:
     """Resolve one explicit profile before canonical RunConfig validation.
 
     Historical snapshots are read through RunConfig directly and are never passed here.
     New Run validation and submission both use this resolver in RunSnapshotService.
     Explicit extra aircraft/resources are permitted for semantically compatible extensions,
     while the established entries cannot be silently redefined under the same profile ID.
+    A validated server-owned scenario calibration replaces both F2 tables as a pair.
     """
 
     if not isinstance(raw, Mapping):
@@ -102,12 +105,16 @@ def resolve_objective_profile(raw: Mapping[str, Any]) -> Dict[str, Any]:
     resolved["aircraft_type_weight"] = _merge_fixed_mapping(
         raw, field="aircraft_type_weight", fixed=_AIRCRAFT_WEIGHTS
     )
-    resolved["f2_resource_reference_quantities"] = _merge_fixed_mapping(
-        raw, field="f2_resource_reference_quantities", fixed=_F2_REFERENCES
-    )
-    resolved["f2_resource_weights"] = _merge_fixed_mapping(
-        raw, field="f2_resource_weights", fixed=_F2_WEIGHTS
-    )
+    if scenario_calibration is None:
+        resolved["f2_resource_reference_quantities"] = _merge_fixed_mapping(
+            raw, field="f2_resource_reference_quantities", fixed=_F2_REFERENCES
+        )
+        resolved["f2_resource_weights"] = _merge_fixed_mapping(
+            raw, field="f2_resource_weights", fixed=_F2_WEIGHTS
+        )
+    else:
+        for field in ("f2_resource_reference_quantities", "f2_resource_weights"):
+            resolved[field] = deepcopy(scenario_calibration[field])
     for field, value in _FIXED_SCALARS.items():
         if field in raw and raw[field] is not None and not _same_number(raw[field], value):
             _fail(field, f"{field} conflicts with {RESEARCH_OBJECTIVE_PROFILE_ID}")

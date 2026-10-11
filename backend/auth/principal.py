@@ -33,6 +33,7 @@ OPERATOR_PERMISSIONS = VIEWER_PERMISSIONS | frozenset({
     "situations.write",
     "indicators.score",
     "runs.execute",
+    "results.comparison.write",
 })
 ADMIN_PERMISSIONS = OPERATOR_PERMISSIONS | frozenset({
     "catalog.write",

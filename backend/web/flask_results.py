@@ -12,7 +12,7 @@ from backend.web.results_api import ResultsApi
 PrincipalResolver = Callable[[Any], Optional[Principal]]
 
 
-def create_results_blueprint(*, api: ResultsApi, principal_resolver: PrincipalResolver):
+def create_results_blueprint(*, api: ResultsApi, principal_resolver: PrincipalResolver, mutation_guard=None):
     try:
         from flask import Blueprint, current_app, jsonify, request
         from werkzeug.exceptions import BadRequest
@@ -65,6 +65,36 @@ def create_results_blueprint(*, api: ResultsApi, principal_resolver: PrincipalRe
             if denied is not None:
                 return denied
             return render(api.damage_candidates(principal=principal))
+        return invoke(action)
+
+    @bp.post('/results/comparison-records')
+    def save_comparison_record():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            principal.require_permission('results.comparison.write')
+            if mutation_guard is not None:
+                mutation_guard(request, principal)
+            response = api.save_comparison_record(request.get_json(force=False, silent=False), principal=principal)
+            if response.status < 400:
+                from flask import g
+                record = response.body['record']
+                g.comparison_audit_resource_id = record['id']
+                g.audit_details = {key: record[key] for key in (
+                    'comparison_mode','base_run_id','compared_run_id','comparison_version')}
+                g.audit_details.update(comparison_id=record['id'], created=response.body['created'],
+                                       disposition='created' if response.body['created'] else 'existing')
+            return render(response)
+        return invoke(action)
+
+    @bp.get('/results/comparison-records/<record_id>')
+    def comparison_record(record_id):
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            return render(api.comparison_record(record_id, principal=principal))
         return invoke(action)
 
     @bp.post("/results/damage-comparison")

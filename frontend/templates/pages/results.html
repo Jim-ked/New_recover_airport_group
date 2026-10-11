@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}结果分析 · 机场群顽存能力仿真系统{% endblock %}
+{% block title %}结果分析 · 机场群顽存能力仿真验证系统{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/results.css') }}">{% endblock %}
 {% block content %}
 <main class="results-page" id="resultsPage" aria-busy="true">
@@ -12,6 +12,8 @@
     </nav>
     <div class="results-head-actions">
       <button id="changeConditionButton" class="btn" type="button">选择Run</button>
+      <button id="saveComparisonButton" class="btn hidden" type="button" disabled>保存比较记录</button>
+      <span id="comparisonSaveStatus" class="comparison-save-status hidden" role="status" aria-live="polite"></span>
       <div id="resultsExport" class="results-export">
         <button id="resultsExportButton" class="btn" type="button" disabled aria-expanded="false">导出</button>
         <div id="resultsExportMenu" class="results-export-menu" aria-hidden="true">
@@ -28,9 +30,9 @@
     <strong id="conditionTitle">损毁与组群</strong>
     <div id="conditionFacts" role="status" aria-live="polite">正在读取可比较运行…</div>
     <div id="focusControls" class="focus-controls hidden">
-      <label>参照<select id="focusBaselineRun" class="mini-select"></select></label>
+      <label>参照<select id="focusBaselineRun" class="mini-select"></select><span id="focusBaselineIdentity" class="focus-run-identity"></span></label>
       <span aria-hidden="true">→</span>
-      <label>对照<select id="focusComparisonRun" class="mini-select"></select></label>
+      <label>对照<select id="focusComparisonRun" class="mini-select"></select><span id="focusComparisonIdentity" class="focus-run-identity"></span></label>
     </div>
     <a id="resultsRunLink" class="btn primary hidden" href="/run">前往算法运行</a>
   </section>
@@ -97,7 +99,7 @@
         <div id="assessmentHeatmap" class="assessment-heatmap"><div class="results-placeholder">加载中…</div></div>
       </article>
       <article class="assessment-card assessment-curve-card">
-        <header class="assessment-card-head"><h3>逐窗指标曲线</h3><select id="assessmentAirportSelect" class="mini-select" aria-label="选择评估机场"></select></header>
+        <header class="assessment-card-head"><h3>逐窗指标曲线</h3><div class="assessment-curve-controls"><label>机场<select id="assessmentAirportSelect" class="mini-select" aria-label="选择评估机场"></select></label><label>Run<select id="assessmentCurveRunSelect" class="mini-select" aria-label="选择曲线 Run"></select></label></div></header>
         <div id="assessmentCurves" class="assessment-curves"><div class="results-placeholder">加载中…</div></div>
         <div id="assessmentCurveLegend" class="results-legend"></div>
       </article>
@@ -118,7 +120,7 @@
         <div id="assessmentRiskTable" class="assessment-risk-table"><div class="results-placeholder">—</div></div>
       </article>
       <article class="assessment-card">
-        <header class="assessment-card-head"><h3>跨场景记录</h3></header>
+        <header class="assessment-card-head"><h3>结果比较记录</h3></header>
         <div id="assessmentComparisons" class="assessment-comparisons"><div class="results-placeholder">—</div></div>
       </article>
     </section>

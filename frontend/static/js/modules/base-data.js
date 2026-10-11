@@ -1,4 +1,4 @@
-import { apiFetch as requestJson, apiText as requestText, ApiError } from './api-client.js';
+import { apiFetch as requestJson, apiUpload as requestUpload, apiDownload, saveBlob, ApiError } from './api-client.js';
 import { getAccount } from './account-context.js';
 import { formatCoordinate, formatDecimal, formatDistance, formatInteger, formatPercent } from './number-display.js';
 import { regionDisplayName, regionDisplayWithCode } from './region-display.js';
@@ -26,10 +26,9 @@ function initialState() { return {
 const state = initialState();
 const refs = {};
 
-function bindRefs(){ Object.assign(refs, { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), searchClear:$('baseDataSearchClear'), chips:$('baseDataFilterChips'), popover:$('baseDataFilterPopover'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') }); }
+function bindRefs(){ Object.assign(refs, { tabs:$('baseDataTabs'), search:$('baseDataSearch'), searchBtn:$('baseDataSearchButton'), searchClear:$('baseDataSearchClear'), chips:$('baseDataFilterChips'), popover:$('baseDataFilterPopover'), title:$('baseDataTableTitle'), count:$('baseDataCount'), wrap:$('baseDataTableWrap'), prev:$('baseDataPrev'), next:$('baseDataNext'), pageInfo:$('baseDataPageInfo'), detailTitle:$('baseDataDetailTitle'), detail:$('baseDataDetailBody'), edit:$('baseDataEditButton'), del:$('baseDataDeleteButton'), add:$('baseDataAddButton'), importBtn:$('baseDataImportButton'), exportBtn:$('baseDataExportButton'), msg:$('baseDataMessage'), importModal:$('baseDataImportModal'), importDataset:$('importDataset'), importFormat:$('importFormat'), importFile:$('importFile'), importMsg:$('importMessage'), importCancel:$('importCancel'), importConfirm:$('importConfirm'), importEncrypted:$('importEncrypted'), exportModal:$('baseDataExportModal'), exportDataset:$('exportDataset'), exportFormat:$('exportFormat'), exportEncrypted:$('exportEncrypted'), exportMsg:$('exportMessage'), exportCancel:$('exportCancel'), exportConfirm:$('exportConfirm'), confirmModal:$('baseDataConfirmModal'), confirmBody:$('baseDataConfirmBody'), confirmCancel:$('baseDataConfirmCancel'), confirmAction:$('baseDataConfirmAction') }); }
 function wasAborted(error){ return error?.name==='AbortError'||error?.body?.name==='AbortError'; }
 async function apiFetch(path,options={}){try{return await requestJson(path,{...options,signal:options.signal||lifecycleController?.signal});}catch(error){if(!mounted&&wasAborted(error))return new Promise(()=>{});throw error;}}
-async function apiText(path,options={}){try{return await requestText(path,{...options,signal:options.signal||lifecycleController?.signal});}catch(error){if(!mounted&&wasAborted(error))return new Promise(()=>{});throw error;}}
 const TAB_META = {
   airports:{title:'机场基础库', singular:'机场', empty:'选择一条机场查看详细信息', searchPlaceholder:'搜索机场编号或名称', endpoint:'/api/airports'},
   missions:{title:'任务库', singular:'任务', empty:'选择一条任务查看详细信息', searchPlaceholder:'搜索任务编号或名称', endpoint:'/api/missions'},
@@ -56,7 +55,6 @@ function showMessage(text,type='info'){ if(!mounted||!refs.msg)return; refs.msg.
 function fieldError(error){ return error instanceof ApiError ? `${error.message}${error.field?`（${error.field}）`:''}` : '操作失败'; }
 function setModal(el,open){ el.classList.toggle('open',open); el.setAttribute('aria-hidden',open?'false':'true'); }
 function confirmAction(text, label='确认'){ return new Promise(resolve=>{ refs.confirmBody.innerHTML=`<div class="inline-message warning">${esc(text)}</div>`; refs.confirmAction.textContent=label; setModal(refs.confirmModal,true); const done=(v)=>{setModal(refs.confirmModal,false); refs.confirmAction.onclick=null; refs.confirmCancel.onclick=null; resolve(v)}; refs.confirmAction.onclick=()=>done(true); refs.confirmCancel.onclick=()=>done(false); }); }
-function downloadBlob(name,text,type){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; document.body.append(a); a.click(); URL.revokeObjectURL(a.href); a.remove(); }
 let editorDirtyBound=false;
 function bindEditorDirty(){if(editorDirtyBound)return;const mark=(event)=>{const control=event.target.closest?.('input,select,textarea');if(!control)return;state.editorDirty=true;clearControlError(control)};refs.detail.addEventListener('input',mark);refs.detail.addEventListener('change',mark);editorDirtyBound=true}
 async function canLeaveEditor(){if(!(state.editing&&state.editorDirty))return true;return confirmAction('当前基础数据表单有未保存修改。继续会放弃这些编辑。','放弃修改')}
@@ -313,7 +311,22 @@ function rowResourceStock(r={}){return `<div class="dynamic-row resource stock-r
 function runwayEndFields(prefix,end={}){return `<div class="runway-end"><strong>${prefix==='low'?'低端':'高端'}</strong><div class="runway-end-grid"><input class="control ${prefix}-ident" data-field="${prefix}_end.ident" placeholder="端标识" value="${esc(val(end?.ident))}"><input class="control ${prefix}-lat" data-field="${prefix}_end.latitude" type="number" step="any" min="-90" max="90" placeholder="纬度" value="${esc(val(end?.latitude))}"><input class="control ${prefix}-lon" data-field="${prefix}_end.longitude" type="number" step="any" min="-180" max="180" placeholder="经度" value="${esc(val(end?.longitude))}"><input class="control ${prefix}-elev" data-field="${prefix}_end.elevation_m" type="number" step="any" placeholder="高程 m" value="${esc(val(end?.elevation_m))}"><input class="control ${prefix}-heading" data-field="${prefix}_end.heading_deg_true" type="number" step="any" min="0" max="360" placeholder="真航向°" value="${esc(val(end?.heading_deg_true))}"><input class="control ${prefix}-disp" data-field="${prefix}_end.displaced_threshold_m" type="number" step="any" min="0" placeholder="移位入口 m" value="${esc(val(end?.displaced_threshold_m))}"></div></div>`}
 function rowRunway(r={}){return `<details class="runway-row"><summary><span>${esc(r.runway_id||'新跑道')}</span><button class="mini-button remove-runway" type="button" aria-label="删除跑道">×</button></summary><div class="runway-editor"><div class="edit-grid"><div class="field"><label>跑道编号</label><input class="control rw-id" data-field="runway_id" required value="${esc(val(r.runway_id))}"></div><div class="field"><label>道面</label><input class="control rw-surface" data-field="surface" value="${esc(val(r.surface))}"></div><div class="field"><label>长度 m</label><input class="control rw-length" data-field="length_m" type="number" min="0" step="any" value="${esc(val(r.length_m))}"></div><div class="field"><label>宽度 m</label><input class="control rw-width" data-field="width_m" type="number" min="0" step="any" value="${esc(val(r.width_m))}"></div><div class="field wide"><label>灯光</label><select class="control rw-lighted" data-field="lighted"><option value="" ${r.lighted==null?'selected':''}>未知</option><option value="true" ${r.lighted===true?'selected':''}>有</option><option value="false" ${r.lighted===false?'selected':''}>无</option></select></div></div>${runwayEndFields('low',r.low_end)}${runwayEndFields('high',r.high_end)}</div></details>`}
 function rowMissionReq(r={}){return `<div class="dynamic-row requirement mission-req-row"><div class="field"><label>机型</label><select class="control row-aircraft" data-field="aircraft_type_id" required>${options(state.aircraft,'aircraft_type_id','name',r.aircraft_type_id)}</select></div><div class="field"><label>需求架次</label><input class="control row-sorties" data-field="required_sorties" type="number" min="1" step="1" data-integer="true" required value="${esc(val(r.required_sorties))}"></div><div class="field"><label>作业/窗</label><input class="control row-work" data-field="tau_work_windows" type="number" min="0" step="1" data-integer="true" required value="${esc(val(r.tau_work_windows))}"></div><button class="mini-button remove-row" type="button">×</button></div>`}
-function rowAircraftResource(r={}){return `<div class="dynamic-row requirement aircraft-res-row"><div class="field"><label>资源</label><select class="control row-resource" data-field="resource_type_id" required>${options(state.resources,'resource_type_id','name',r.resource_type_id)}</select></div><div class="field"><label>计量基础</label><select class="control row-basis" data-field="basis"><option value="per_sortie" ${r.basis==='per_sortie'?'selected':''}>每架次</option><option value="per_hour" ${r.basis==='per_hour'?'selected':''}>每飞行小时</option></select></div><div class="field"><label>数量</label><input class="control row-quantity" data-field="quantity" type="number" min="0" step="any" required value="${esc(val(r.quantity))}"></div><button class="mini-button remove-row" type="button">×</button></div>`}
+function aircraftResourceBasis(resourceId){
+  const item=state.resources.find(x=>(x.resource_type||x).resource_type_id===resourceId);
+  return {fuel:'per_hour',material:'per_sortie',munition:'per_sortie'}[(item?.resource_type||item)?.category]||'';
+}
+function aircraftResourceBasisOption(resourceId){
+  const basis=aircraftResourceBasis(resourceId);
+  return `<option value="${basis}">${basis==='per_hour'?'每飞行小时':basis==='per_sortie'?'每架次':'请先选择资源'}</option>`;
+}
+function bindAircraftResourceBases(){
+  refs.detail.querySelectorAll('.aircraft-res-row').forEach(row=>{
+    const resource=row.querySelector('.row-resource');
+    const sync=()=>{row.querySelector('.row-basis').innerHTML=aircraftResourceBasisOption(resource.value);};
+    resource.onchange=sync; sync();
+  });
+}
+function rowAircraftResource(r={}){return `<div class="dynamic-row requirement aircraft-res-row"><div class="field"><label>资源</label><select class="control row-resource" data-field="resource_type_id" required>${options(state.resources,'resource_type_id','name',r.resource_type_id)}</select></div><div class="field"><label>计量基础</label><select class="control row-basis" data-field="basis" disabled>${aircraftResourceBasisOption(r.resource_type_id)}</select></div><div class="field"><label>数量</label><input class="control row-quantity" data-field="quantity" type="number" min="0" step="any" required value="${esc(val(r.quantity))}"></div><button class="mini-button remove-row" type="button">×</button></div>`}
 function editorAirports(create){
   const a=state.detail?.airport||{},p=state.detail?.operational_profile||{airport_id:a.airport_id||'',configuration_complete:false,aircraft_support:[],resource_stocks:[]};
   const basic=`<div class="edit-grid">${create?'':inputField('技术编号','edAirportId',a.airport_id,'text',false,'readonly','airport_id')}${inputField('名称','edAirportName',a.airport_name,'text',false,'required','airport_name')}${selectField('设施类型','edFacilityType',[['large_airport','大型机场'],['medium_airport','中型机场'],['small_airport','小型机场']],a.facility_type||'medium_airport',false,'facility_type')}${selectField('机场角色','edAirportRole',[['military','军用'],['joint','军民合用'],['civil','民用']],a.role||'military',false,'role')}${inputField('ICAO','edIcao',a.icao_code,'text',false,'','icao_code')}${inputField('IATA','edIata',a.iata_code,'text',false,'','iata_code')}${inputField('区域','edRegion',a.region,'text',false,'','region')}${inputField('城市','edMunicipality',a.municipality,'text',false,'','municipality')}${inputField('经度','edLon',a.longitude,'number',false,'step="any" min="-180" max="180" required','longitude')}${inputField('纬度','edLat',a.latitude,'number',false,'step="any" min="-90" max="90" required','latitude')}${inputField('高程 m','edElevation',a.elevation_m,'number',false,'step="any"','elevation_m')}${inputField('实际机位','edParkingStandCount',a.parking_stand_count,'number',false,'min="0" step="1" data-integer="true"','parking_stand_count')}${selectField('定期服务','edScheduled',[['true','是'],['false','否']],String(a.scheduled_service??false),false,'scheduled_service')}</div><div class="static-assumption"><strong>可用空域</strong><span>全空域</span></div><div class="form-section"><div class="form-section-head"><strong>机场防护措施</strong><span class="field-note"></span></div><ol class="protection-list">${AIRPORT_PROTECTION_MEASURES.map(item=>`<li>${esc(item)}</li>`).join('')}</ol></div>`;
@@ -323,6 +336,7 @@ function editorAirports(create){
   const note=missing.length?`<div class="operations-dependency-note">${missing.join('、')}基础库为空。先在上方对应页签建立类型，随后即可在本机场运行保障数据中引用。</div>`:'';
   return paneTabs('basic')
     + `<div class="airport-data-pane-body" data-airport-section="basic">${basic}${runway}</div>`
+    + `<div class="airport-data-pane-body hidden" data-airport-section="operations">${note}${operations}</div>`;
 }
 function renderEditor(){
   let html=''; const create=state.creating;
@@ -336,7 +350,7 @@ function renderEditor(){
   $('editorCancel').onclick=()=>{state.editorDirty=false;state.editing=false;if(state.creating){state.creating=false;state.detail=null;}renderDetail();render();};
   $('editorSave').onclick=saveEditor;
 }
-function bindEditorRows(){const add=(id,target,fn)=>{const b=$(id);if(b)b.onclick=()=>{state.editorDirty=true;$(target).insertAdjacentHTML('beforeend',fn({}));bindRemoves();};};add('addSupportRow','supportRows',rowAirportSupport);add('addStockRow','stockRows',rowResourceStock);const ar=$('addRunwayRow');if(ar)ar.onclick=()=>{state.editorDirty=true;$('runwayRows').insertAdjacentHTML('beforeend',rowRunway({}));bindRemoves();};add('addMissionReq','missionReqRows',rowMissionReq);add('addAircraftRes','aircraftResRows',rowAircraftResource);bindRemoves();}
+function bindEditorRows(){const add=(id,target,fn)=>{const b=$(id);if(b)b.onclick=()=>{state.editorDirty=true;$(target).insertAdjacentHTML('beforeend',fn({}));bindAircraftResourceBases();bindRemoves();};};add('addSupportRow','supportRows',rowAirportSupport);add('addStockRow','stockRows',rowResourceStock);const ar=$('addRunwayRow');if(ar)ar.onclick=()=>{state.editorDirty=true;$('runwayRows').insertAdjacentHTML('beforeend',rowRunway({}));bindRemoves();};add('addMissionReq','missionReqRows',rowMissionReq);add('addAircraftRes','aircraftResRows',rowAircraftResource);bindAircraftResourceBases();bindRemoves();}
 function bindRemoves(){refs.detail.querySelectorAll('.remove-row').forEach(b=>b.onclick=()=>{state.editorDirty=true;b.closest('.dynamic-row').remove()});refs.detail.querySelectorAll('.remove-runway').forEach(b=>b.onclick=(e)=>{e.preventDefault();state.editorDirty=true;b.closest('.runway-row').remove();});}
 function clearControlError(control){
   if(!control)return;
@@ -442,7 +456,7 @@ function nullableText(id){const x=$(id)?.value.trim();return x?x:null;}
 function runwayEnd(row,prefix){const ident=row.querySelector(`.${prefix}-ident`).value.trim(),lat=num(row.querySelector(`.${prefix}-lat`).value),lon=num(row.querySelector(`.${prefix}-lon`).value),elev=num(row.querySelector(`.${prefix}-elev`).value),heading=num(row.querySelector(`.${prefix}-heading`).value),disp=num(row.querySelector(`.${prefix}-disp`).value);if(!ident&&lat==null&&lon==null&&elev==null&&heading==null&&disp==null)return null;return {ident:ident||null,latitude:lat,longitude:lon,elevation_m:elev,heading_deg_true:heading,displaced_threshold_m:disp}}
 function airportPayload(){const id=$('edAirportId')?.value.trim()||'';const p=state.detail?.operational_profile||{};const runwaysKnown=$('edRunwaysKnown').checked;const runways=runwaysKnown?[...refs.detail.querySelectorAll('.runway-row')].map(r=>({runway_id:r.querySelector('.rw-id').value.trim(),length_m:num(r.querySelector('.rw-length').value),width_m:num(r.querySelector('.rw-width').value),surface:r.querySelector('.rw-surface').value.trim()||null,lighted:r.querySelector('.rw-lighted').value===''?null:r.querySelector('.rw-lighted').value==='true',low_end:runwayEnd(r,'low'),high_end:runwayEnd(r,'high')})):null;const runwayCount=runways===null?null:runways.length;const lengths=(runways||[]).map(r=>r.length_m).filter(v=>v!=null).map(Number);return {airport:{airport_id:id,airport_name:$('edAirportName').value.trim(),facility_type:$('edFacilityType').value,role:$('edAirportRole').value,icao_code:nullableText('edIcao'),iata_code:nullableText('edIata'),region:nullableText('edRegion'),municipality:nullableText('edMunicipality'),longitude:num($('edLon').value),latitude:num($('edLat').value),elevation_m:num($('edElevation').value),scheduled_service:$('edScheduled').value==='true',parking_stand_count:int($('edParkingStandCount').value),runway_count:runwayCount,max_runway_length_m:lengths.length?Math.max(...lengths):null,runways},operational_profile:{airport_id:id,capacity_per_window:int($('edCapacity').value),support_level:p.support_level??null,emergency_response_level:$('edEmergencyResponseLevel').value||null,aircraft_support:rows('.support-row',r=>({aircraft_type_id:r.querySelector('.row-aircraft').value,initial_quantity:int(r.querySelector('.row-initial').value),tau_reset_windows:int(r.querySelector('.row-reset').value)})),resource_stocks:rows('.stock-row',r=>({resource_type_id:r.querySelector('.row-resource').value,initial_quantity:num(r.querySelector('.row-stock').value)}))}};}
 function missionPayload(){return {mission:{mission_id:$('edMissionId').value.trim(),name:$('edMissionName').value.trim(),longitude:num($('edMissionLon').value),latitude:num($('edMissionLat').value),window_start_slot:int($('edMissionStart').value),window_end_slot:int($('edMissionEnd').value),aircraft_requirements:rows('.mission-req-row',r=>({aircraft_type_id:r.querySelector('.row-aircraft').value,required_sorties:int(r.querySelector('.row-sorties').value),tau_work_windows:int(r.querySelector('.row-work').value)}))}};}
-function aircraftPayload(){return {aircraft_type:{aircraft_type_id:$('edAircraftId').value.trim(),name:$('edAircraftName').value.trim(),speed_kmh:num($('edSpeed').value),max_range_km:num($('edRange').value),reserve_ratio:num($('edReserve').value),departure_capacity_occupancy_factor:num($('edDepFactor').value),arrival_capacity_occupancy_factor:num($('edArrFactor').value)},requirements:rows('.aircraft-res-row',r=>({resource_type_id:r.querySelector('.row-resource').value,basis:r.querySelector('.row-basis').value,quantity:Number(r.querySelector('.row-quantity').value)}))};}
+function aircraftPayload(){return {aircraft_type:{aircraft_type_id:$('edAircraftId').value.trim(),name:$('edAircraftName').value.trim(),speed_kmh:num($('edSpeed').value),max_range_km:num($('edRange').value),reserve_ratio:num($('edReserve').value),departure_capacity_occupancy_factor:num($('edDepFactor').value),arrival_capacity_occupancy_factor:num($('edArrFactor').value)},requirements:rows('.aircraft-res-row',r=>({resource_type_id:r.querySelector('.row-resource').value,basis:aircraftResourceBasis(r.querySelector('.row-resource').value),quantity:Number(r.querySelector('.row-quantity').value)}))};}
 function resourcePayload(){return {resource_type:{resource_type_id:$('edResourceId').value.trim(),name:$('edResourceName').value.trim(),category:$('edResourceCategory').value,unit:$('edResourceUnit').value.trim()}};}
 async function refreshAfterChange(){ await load(); try{ await loadLookups(); state.lookupsLoaded=true; }catch(e){ state.lookupsLoaded=false; } }
 async function saveEditor(){const msg=$('editorMessage');msg.classList.add('hidden');if(!validateEditor()){showEditorSaveFailure();return;}try{let result;if(state.tab==='airports'){const payload=airportPayload();if(state.creating)result=await apiFetch('/api/airports',{method:'POST',body:payload});else result=await apiFetch(`/api/airports/${encodeURIComponent(state.selected)}`,{method:'PUT',body:{...payload,expected_revision:state.detail.metadata.revision}});state.selected=result.airport.airport_id;state.detail=result;}
@@ -451,10 +465,55 @@ async function saveEditor(){const msg=$('editorMessage');msg.classList.add('hidd
  else {const payload=resourcePayload();if(state.creating)result=await apiFetch('/api/resource-types',{method:'POST',body:payload});else result=await apiFetch(`/api/resource-types/${encodeURIComponent(state.selected)}`,{method:'PUT',body:{...payload,expected_revision:state.detail.metadata.revision}});state.selected=result.resource_type.resource_type_id;state.detail=result;}
  clearEditorErrors();state.creating=false;state.editing=false;state.editorDirty=false;await refreshAfterChange();showMessage('基础数据已保存。','success');}catch(e){clearEditorErrors();if(e instanceof ApiError&&e.field)setControlError(findEditorControl(e.field),e.message);showEditorSaveFailure();}}
 async function removeSelected(){if(!state.detail)return;const id=state.selected;if(!(await confirmAction(`删除 ${TAB_META[state.tab].singular} ${id}？若当前保存的 Situation 仍引用它，后端会拒绝删除。`,'确认删除')))return;try{const rev=state.detail.metadata.revision;let path;if(state.tab==='airports')path=`/api/airports/${encodeURIComponent(id)}`;else if(state.tab==='missions')path=`/api/missions/${encodeURIComponent(id)}`;else if(state.tab==='aircraft_types')path=`/api/aircraft-types/${encodeURIComponent(id)}`;else path=`/api/resource-types/${encodeURIComponent(id)}`;await apiFetch(path,{method:'DELETE',body:{expected_revision:rev}});state.detail=null;state.selected=null;await refreshAfterChange();showMessage('已删除当前基础数据记录。','success');}catch(e){showMessage(fieldError(e),'error');}}
-async function doImport(){refs.importMsg.classList.add('hidden');const file=refs.importFile.files[0];if(!file){refs.importMsg.textContent='请选择 JSON 或 CSV 文件。';refs.importMsg.className='inline-message error';refs.importMsg.classList.remove('hidden');return;}try{const text=await file.text();let result;if(refs.importFormat.value==='csv'){result=await apiText(`/api/base-data/import?dataset=${encodeURIComponent(refs.importDataset.value)}`,{method:'POST',text,contentType:'text/csv'});}else{const parsed=JSON.parse(text);let body;if(parsed&&parsed.schema==='airport_master_v1'){body=parsed;}else if(Array.isArray(parsed)){body={dataset:refs.importDataset.value,items:parsed};}else if(parsed&&Array.isArray(parsed.items)){body={dataset:refs.importDataset.value,items:parsed.items};}else{throw new Error('JSON 必须是机场主数据文档（airport_master_v1）、对象数组或包含 items 数组。');}result=await apiFetch('/api/base-data/import',{method:'POST',body});}setModal(refs.importModal,false);state.page=0;await load();try{await loadLookups();state.lookupsLoaded=true;}catch(e){state.lookupsLoaded=false;}showMessage(`覆盖完成：新增 ${result.added}，更新 ${result.updated}，删除 ${result.deleted}，当前 ${result.total}。`,'success');}catch(e){refs.importMsg.textContent=e instanceof ApiError?fieldError(e):String(e.message||e);refs.importMsg.className='inline-message error';refs.importMsg.classList.remove('hidden');}}
-async function allRowsForTab(){if(state.tab==='airports'||state.tab==='missions'){let out=[],offset=0,total=1;while(offset<total){const p=new URLSearchParams({limit:'500',offset:String(offset)});const d=await apiFetch(`${TAB_META[state.tab].endpoint}?${p}`);out.push(...(d.items||[]));total=d.total||0;offset+=500;}if(state.tab==='airports'){const full=[];for(const row of out)full.push(await apiFetch(`/api/airports/${encodeURIComponent(row.airport_id)}`));return full;}return out;}return state.items;}
-function exportRows(rows){let items;if(state.tab==='airports')items=rows.map(x=>({airport:x.airport,operational_profile:x.operational_profile}));else if(state.tab==='missions')items=rows.map(x=>x.mission);else if(state.tab==='aircraft_types')items=rows.map(x=>x.aircraft_type);else items=rows.map(x=>x.resource_type);downloadBlob(`${state.tab}-current.json`,JSON.stringify({dataset:state.tab,exported_at:new Date().toISOString(),items},null,2),'application/json;charset=utf-8');}
-async function exportCurrent(){try{const rows=await allRowsForTab();exportRows(rows);showMessage('已导出当前数据集 JSON。','success');}catch(e){showMessage(fieldError(e),'error');}}
+async function doImport(){
+  refs.importMsg.classList.add('hidden');
+  const file=refs.importFile.files[0];
+  if(!file){refs.importMsg.textContent='请选择 JSON、CSV、Excel 或 XML 文件。';refs.importMsg.className='inline-message error';return;}
+  const controller=lifecycleController;
+  refs.importConfirm.disabled=true;refs.importCancel.disabled=true;
+  try{
+    const form=new FormData();
+    form.append('dataset',refs.importDataset.value);form.append('format',refs.importFormat.value);
+    form.append('encrypted',String(refs.importEncrypted.checked));form.append('file',file);
+    const result=await requestUpload('/api/base-data/import-multi',form,{signal:controller.signal});
+    if(!mounted||lifecycleController!==controller)return;
+    setModal(refs.importModal,false);
+    state.page=0;state.editing=false;state.creating=false;state.editorDirty=false;
+    state.selected=null;state.detail=null;state.detailSeq++;
+    await load();
+    if(!mounted||lifecycleController!==controller)return;
+    try{await loadLookups();state.lookupsLoaded=true;}catch(e){state.lookupsLoaded=false;}
+    if(!mounted||lifecycleController!==controller)return;
+    showMessage(`覆盖完成：新增 ${result.added}，更新 ${result.updated}，删除 ${result.deleted}，当前 ${result.total}。`,'success');
+  }catch(e){
+    if(!mounted||lifecycleController!==controller||wasAborted(e))return;
+    refs.importMsg.textContent=e instanceof ApiError?fieldError(e):String(e.message||e);
+    refs.importMsg.className='inline-message error';
+  }finally{
+    if(mounted&&lifecycleController===controller){refs.importConfirm.disabled=false;refs.importCancel.disabled=false;}
+  }
+}
+function exportCurrent(){
+  refs.exportDataset.value=state.tab;refs.exportEncrypted.checked=false;
+  refs.exportMsg.classList.add('hidden');setModal(refs.exportModal,true);
+}
+async function doExport(){
+  const controller=lifecycleController;
+  refs.exportMsg.classList.add('hidden');refs.exportConfirm.disabled=true;
+  try{
+    const file=await apiDownload('/api/base-data/export',{method:'POST',
+      body:{dataset:refs.exportDataset.value,format:refs.exportFormat.value,encrypt:refs.exportEncrypted.checked},
+      signal:controller.signal});
+    if(!mounted||lifecycleController!==controller)return;
+    saveBlob(file);setModal(refs.exportModal,false);showMessage('已导出所选数据集文件。','success');
+  }catch(e){
+    if(!mounted||lifecycleController!==controller||wasAborted(e))return;
+    refs.exportMsg.textContent=e instanceof ApiError?fieldError(e):String(e.message||e);
+    refs.exportMsg.className='inline-message error';
+  }finally{
+    if(mounted&&lifecycleController===controller)refs.exportConfirm.disabled=false;
+  }
+}
 
 function bind(signal){
   refs.tabs.querySelectorAll('button').forEach(b=>b.onclick=async()=>{
@@ -478,10 +537,18 @@ function bind(signal){
   refs.edit.onclick=async()=>{ if(!state.detail||state.editing||state.creating)return; await ensureLookups(); state.editing=true; state.editorDirty=false; renderDetail(); };
   refs.del.onclick=removeSelected;
   refs.add.onclick=async()=>{ if(!(await canLeaveEditor()))return; await ensureLookups(); state.creating=true; state.editing=true; state.editorDirty=false; state.selected=null; state.detail=null; renderDetail(); render(); };
-  refs.importBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; refs.importDataset.value=state.tab; refs.importFile.value=''; refs.importMsg.classList.add('hidden'); setModal(refs.importModal,true); };
+  refs.importBtn.onclick=async()=>{ if(!(await canLeaveEditor()))return; refs.importDataset.value=state.tab; refs.importFile.value=''; refs.importEncrypted.checked=false; refs.importMsg.classList.add('hidden'); setModal(refs.importModal,true); };
   refs.importCancel.onclick=()=>setModal(refs.importModal,false);
   refs.importConfirm.onclick=doImport;
+  refs.importFile.onchange=()=>{
+    const name=refs.importFile.files[0]?.name||'';
+    refs.importEncrypted.checked=/\.sm4$/i.test(name);
+    const match=/\.(json|csv|xlsx|xml)(?:\.sm4)?$/i.exec(name);
+    if(match)refs.importFormat.value=match[1].toLowerCase();
+  };
   refs.exportBtn.onclick=exportCurrent;
+  refs.exportCancel.onclick=()=>setModal(refs.exportModal,false);
+  refs.exportConfirm.onclick=doExport;
   window.addEventListener('beforeunload',e=>{ if(!confirmedExternalLeave&&state.editing&&state.editorDirty){ e.preventDefault(); e.returnValue=''; } },{signal});
 }
 

@@ -24,6 +24,8 @@ from backend.services.run_result_service import (
     RunResultNotReadyError,
     RunResultServiceError,
 )
+from backend.services.run_comparison_record_service import ComparisonConflictError, ComparisonNotFoundError
+from backend.storage.run_comparison_repository import ComparisonInvariantError
 from backend.services.run_service import RunAccessError, RunNotFoundError, RunRetryNotAllowedError
 from backend.services.run_snapshot_service import RunSnapshotServiceError
 from backend.services.run_submission_service import (
@@ -48,6 +50,10 @@ def _field(exc: Exception):
 
 
 def map_expected_error(exc: Exception) -> ApiResponse | None:
+    if isinstance(exc, ComparisonNotFoundError):
+        return ApiResponse(error_body('COMPARISON_NOT_FOUND', 'Comparison record or source not found'), 404)
+    if isinstance(exc, (ComparisonConflictError, ComparisonInvariantError)):
+        return ApiResponse(error_body('COMPARISON_CONFLICT', str(exc)), 409)
     if isinstance(exc, ApiInputError):
         return ApiResponse(error_body(exc.code, str(exc), field=exc.field), 400)
 

@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from backend.domain.run_snapshot import RunSnapshot
 from backend.auth.principal import Principal
-from backend.domain.assessment import AssessmentComparison, AssessmentResult
+from backend.domain.assessment import AssessmentResult
 from backend.services.run_assessment_projection import project_run_capacity_assessment
 from backend.services.run_result_service import RunResultService
 from backend.services.run_service import RunService
@@ -660,6 +660,7 @@ def validate_experiment_comparisons(
     *,
     persist_records: bool = True,
 ) -> Dict[str, Any]:
+    """Validate strict research pairs; persist_records writes an isolated JSON artifact only."""
     api = build_results_api(database)
     principal = Principal(definition.owner_user_id, is_admin=True)
     run_ids = {run.label: run.run_id for run in definition.runs}
@@ -721,26 +722,19 @@ def validate_experiment_comparisons(
         records[(labels[0], labels[1])] = ("configuration", focus)
         checks.append({"mode": "configuration", "labels": list(labels), "eligible": True})
 
+    # Preserve the historical label-pair projection: 12 candidates collapsed to 9
+    # because mode was absent from its identity. This is research evidence only.
+    evidence = [{"base_label":base, "compared_label":current, "mode":mode,
+                 "focus_comparison":focus} for (base,current),(mode,focus) in sorted(records.items())]
+    artifact = Path(database).with_suffix(".comparison-research-evidence.json")
     if persist_records:
-        repository = AssessmentRepository(database)
-        for (base, current), (mode, focus) in sorted(records.items()):
-            repository.save_comparison(
-                AssessmentComparison.from_mapping(
-                    {
-                        "id": f"v5cmp:{base}:{current}",
-                        "base_scenario_type": base,
-                        "compared_scenario_type": current,
-                        "conclusion": _comparison_conclusion(focus),
-                        "log": json.dumps(
-                            {"mode": mode, "focus_comparison": focus},
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    }
-                )
-            )
-    return {"checks": checks, "persisted_records": len(records)}
+        artifact.write_text(json.dumps({"schema_version":"v5-research-comparisons.v1",
+            "historical_identity":"ordered label pair, excluding mode; later modes replaced earlier evidence",
+            "historical_candidate_count":12, "historical_unique_pair_count":len(records),
+            "records":evidence}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"checks":checks, "persisted_records":0, "research_evidence_count":len(records),
+            "research_artifact":str(artifact) if persist_records else None}
+
 
 
 def project_experiment_assessment(
@@ -756,6 +750,7 @@ def project_experiment_assessment(
             project_run_capacity_assessment(
                 run_id=run.run_id,
                 scenario_label=run.label,
+                result_id_prefix="v5cap",
                 run_repository=run_repository,
                 snapshot_repository=snapshot_repository,
                 assessment_repository=assessment_repository,

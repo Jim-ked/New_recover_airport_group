@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
+
 from backend.auth.principal import Principal
 from backend.web.catalog_api import CatalogApi
 from backend.web.error_mapping import map_expected_error
 from backend.web.flask_runs import MutationGuard, PrincipalResolver
-from backend.web.http import error_body
+from backend.web.http import ApiInputError, ApiResponse, error_body
 
 
 def create_catalog_blueprint(
@@ -93,6 +95,66 @@ def create_catalog_blueprint(
             except Exception:
                 pass
             return render(response)
+        return invoke(action)
+
+    @bp.post("/base-data/import-multi")
+    def replace_base_data_multi_format():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            if mutation_guard is not None:
+                mutation_guard(request, principal)
+            principal.require_permission("catalog.write")
+            if any(len(values) != 1 for _, values in request.form.lists()):
+                raise ApiInputError("duplicate upload parameters")
+            if set(request.files) != {"file"} or len(request.files.getlist("file")) != 1:
+                raise ApiInputError("exactly one file upload is required", field="file")
+            from backend.services.data_codec_service import MAX_FILE_BYTES
+            file = request.files["file"]
+            data = file.stream.read(MAX_FILE_BYTES + 1)
+            params = request.form.to_dict()
+            # A named .sm4 file must not be parsed as plaintext if its header is damaged.
+            if (file.filename or "").lower().endswith(".sm4"):
+                params["encrypted"] = True
+            response = api.replace_base_data_multi_format(params, data, principal=principal)
+            if response.status < 400:
+                from flask import g
+                g.audit_details = {"base_data_replace": {
+                    key: response.body.get(key) for key in
+                    ("dataset", "source_format", "mode", "version_history", "added", "updated", "deleted", "total")
+                }}
+            return render(response)
+        return invoke(action)
+
+    @bp.route("/base-data/export", methods=["GET", "POST"])
+    def export_base_data():
+        def action():
+            principal, denied = principal_or_401()
+            if denied is not None:
+                return denied
+            if request.method == "POST":
+                if mutation_guard is not None:
+                    mutation_guard(request, principal)
+                if not request.is_json:
+                    raise ApiInputError("export parameters must be a JSON object")
+                params = request.get_json(force=False, silent=False)
+            else:
+                if any(len(values) != 1 for _, values in request.args.lists()):
+                    raise ApiInputError("duplicate export parameters")
+                params = request.args.to_dict()
+            file = api.export_base_data(params, principal=principal)
+            if isinstance(file, ApiResponse):
+                return render(file)
+            from flask import g, send_file
+            g.audit_details = {"base_data_export": {
+                "dataset": file.dataset, "format": file.format,
+                "encrypted": file.encrypted, "total": file.total,
+            }}
+            response = send_file(io.BytesIO(file.content), mimetype=file.mimetype,
+                                 as_attachment=True, download_name=file.filename, max_age=0)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         return invoke(action)
 
     @bp.get("/airports")

@@ -1,0 +1,58 @@
+{
+  "version": "1.2",
+  "python_version": "3.14.0",
+  "source_directories": [
+    "backend",
+    "frontend",
+    "deploy/windows",
+    "deploy/native",
+    "original_algorithm_overlay",
+    "tools/scenario_db_tool",
+    "resources/seed",
+    "resources/migrations"
+  ],
+  "source_files": [
+    "requirements.txt",
+    "requirements-solver.txt",
+    "docs/scenario-gui.md",
+    "docs/assessment-capacity.md",
+    "docs/result-comparison-records.md",
+    "tests/test_scenario_gui_service.py",
+    "tests/test_delivery_runtime_settings.py",
+    "tests/tools/test_scenario_db_tool.py",
+    "docs/scenario-f2-calibration.md",
+    "docs/base-data-file-formats.md",
+    "tests/domain/test_objective_profile.py",
+    "tests/domain/test_run_config.py",
+    "tests/algorithm/test_model_facts_overlay.py",
+    "tests/algorithm/test_snapshot_adapter.py",
+    "tests/services/test_run_submission_service.py",
+    "tests/services/test_data_codec_service.py",
+    "tests/services/test_sm4_file.py",
+    "tests/services/test_base_data_multi_format.py",
+    "tests/web/test_base_data_files_api.py"
+  ],
+  "database_files": [
+    "runtime/db/airport_group.sqlite3",
+    "runtime/db/scenes/SCN_FUJIAN_001.sqlite3.f2-calibration.json"
+  ],
+  "scene_glob": "runtime/db/scenes/*.sqlite3",
+  "excluded_directories": [
+    ".venv",
+    ".python",
+    ".pytest_cache",
+    "__pycache__",
+    ".git"
+  ],
+  "excluded_suffixes": [
+    ".pyc",
+    ".pyo"
+  ],
+  "tiles": "external: configure setup_native.cmd -TileRoot <existing-directory>",
+  "python_components": [
+    "core.msi",
+    "exe.msi",
+    "lib.msi",
+    "tcltk.msi"
+  ]
+}

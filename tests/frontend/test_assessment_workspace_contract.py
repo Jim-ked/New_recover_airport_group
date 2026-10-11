@@ -11,6 +11,15 @@ CSS = (ROOT / "frontend/static/css/results.css").read_text(encoding="utf-8")
 
 
 class AssessmentWorkspaceContractTests(unittest.TestCase):
+    def test_run_identity_and_frozen_labels_are_displayed_without_recalculating_facts(self):
+        heatmap = JS[JS.index("function renderAssessmentHeatmap"):JS.index("function renderAssessmentCurves")]
+        self.assertIn("overview?.scenario_keys ?? overview?.scenario_types", heatmap)
+        self.assertIn("overview?.run_cells ?? overview?.cells", heatmap)
+        self.assertIn("scenario_labels", heatmap)
+        self.assertIn("source_run_id", heatmap)
+        self.assertIn("row.scenario_label", JS)
+        self.assertNotIn("frozen_baseline", heatmap)
+
     def test_assessment_workspace_is_additive_to_the_three_comparison_modes(self) -> None:
         for mode in ("damage", "multi", "configuration", "assessment"):
             self.assertIn(f'data-workspace="{mode}"', HTML)
@@ -22,6 +31,7 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
             "assessmentHeatmap",
             "assessmentCurves",
             "assessmentAirportSelect",
+            "assessmentCurveRunSelect",
             "assessmentRiskTable",
             "assessmentComparisons",
             "assessmentRunSelect",
@@ -36,7 +46,7 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
             "当前机场暂无评估曲线",
             "尚无综合评价结果",
             "正式评价输入不完整",
-            "暂无跨场景评估对比记录",
+            "暂无结果比较记录，可在结果分析中保存当前重点对照",
             "评估数据读取失败",
         ):
             self.assertIn(message, JS)
@@ -78,7 +88,7 @@ class AssessmentWorkspaceContractTests(unittest.TestCase):
         ):
             self.assertIn(token, CSS)
         self.assertIn(
-            ".assessment-workbench{grid-template-rows:auto minmax(260px,1fr) ",
+            ".assessment-workbench{grid-template-rows:auto 420px ",
             CSS,
         )
         self.assertIn(

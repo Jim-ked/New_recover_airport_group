@@ -3,12 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 from backend.auth.principal import Principal
+from backend.domain.assessment import AssessmentResult
+from backend.services.run_assessment_labels import frozen_run_label
+from backend.services.run_comparison_record_service import RunComparisonRecordService
+from backend.services.run_result_service import RunResultService
+from backend.storage.run_comparison_repository import RunComparisonRepository
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.assessment_repository import AssessmentRepository
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.web.error_mapping import map_expected_error
-from backend.web.http import ApiInputError, ApiResponse, parse_positive_int
+from backend.web.http import ApiInputError, ApiResponse, parse_positive_int, parse_nonnegative_int
 
 
 class AssessmentResultsApi:
@@ -26,6 +31,10 @@ class AssessmentResultsApi:
         self.airports = airport_repository
         self.runs = run_repository
         self.snapshots = snapshot_repository
+        self.comparison_records = RunComparisonRecordService(
+            result_service=RunResultService(run_repository=run_repository, snapshot_repository=snapshot_repository),
+            repository=RunComparisonRepository(run_repository.db_path),
+        )
 
     @staticmethod
     def _handle(call) -> ApiResponse:
@@ -47,15 +56,15 @@ class AssessmentResultsApi:
                 for airport in self.airports.list_airports()
             }
             cells: dict[str, dict[str, dict[str, Any]]] = {}
+            run_cells: dict[str, dict[str, dict[str, Any]]] = {}
+            scenario_labels: dict[str, str] = {}
             scenarios: set[str] = set()
             metric_kinds: set[str] = set()
             for result in results:
                 airport_cells = cells.setdefault(result.airport_id, {})
-                if result.scenario_type in airport_cells:
-                    continue
                 scenarios.add(result.scenario_type)
                 metric_kinds.add(result.metric_kind)
-                airport_cells[result.scenario_type] = {
+                cell = {
                     "result_id": result.id,
                     "support_index": result.initial_capacity,
                     "metric_kind": result.metric_kind,
@@ -71,6 +80,12 @@ class AssessmentResultsApi:
                     "steps": len(result.curves),
                     "created_at": result.created_at,
                 }
+                # Keep the legacy latest-per-label matrix, and add an instance matrix.
+                airport_cells.setdefault(result.scenario_type, cell)
+                key = result.source_run_id or f"legacy:{result.scenario_type}"
+                run_cells.setdefault(result.airport_id, {}).setdefault(key, cell)
+                if key not in scenario_labels:
+                    scenario_labels[key] = self._scenario_label(result)
             return ApiResponse(
                 {
                     "schema_version": "assessment-visual.v1",
@@ -78,6 +93,9 @@ class AssessmentResultsApi:
                     "airport_ids": sorted(cells),
                     "airport_names": airport_names,
                     "cells": cells,
+                    "scenario_keys": list(scenario_labels),
+                    "scenario_labels": scenario_labels,
+                    "run_cells": run_cells,
                     "metric_kinds": sorted(metric_kinds),
                     "risks": [
                         {
@@ -119,6 +137,8 @@ class AssessmentResultsApi:
                         {
                             "result_id": result.id,
                             "scenario_type": result.scenario_type,
+                            "scenario_key": result.source_run_id or f"legacy:{result.scenario_type}",
+                            "scenario_label": self._scenario_label(result),
                             "created_at": result.created_at,
                             "steps": [step for step, _ in result.curves],
                             "support": [support for _, support in result.curves],
@@ -148,32 +168,19 @@ class AssessmentResultsApi:
 
         return self._handle(action)
 
-    def comparisons(self, *, principal: Principal, limit: Any = None) -> ApiResponse:
+    def _scenario_label(self, result: AssessmentResult) -> str:
+        if result.source_run_id:
+            snapshot = self.snapshots.get(result.source_run_id)
+            if snapshot is not None and snapshot.content_hash == result.snapshot_hash:
+                return frozen_run_label(snapshot.to_dict())
+        return result.scenario_type
+
+    def comparisons(self, *, principal: Principal, limit: Any = None, offset: Any = None) -> ApiResponse:
         def action() -> ApiResponse:
             principal.require_permission("results.read")
             parsed_limit = parse_positive_int(limit, field="limit", default=50, maximum=500)
-            records, total = self.assessment.list_comparisons(limit=parsed_limit)
-            return ApiResponse(
-                {
-                    "schema_version": "assessment-visual.v1",
-                    "items": [
-                        {
-                            "id": record.id,
-                            "base_airport_id": record.base_airport_id,
-                            "base_scenario_type": record.base_scenario_type,
-                            "compared_airport_id": record.compared_airport_id,
-                            "compared_scenario_type": record.compared_scenario_type,
-                            "conclusion": record.conclusion,
-                            "log": record.log,
-                            "created_at": record.created_at,
-                        }
-                        for record in records
-                    ],
-                    "total": total,
-                },
-                200,
-            )
-
+            parsed_offset = parse_nonnegative_int(offset, field="offset", default=0, maximum=1000000)
+            return ApiResponse(self.comparison_records.list(principal=principal, limit=parsed_limit, offset=parsed_offset), 200)
         return self._handle(action)
 
     def evaluations(self, *, principal: Principal, limit: Any = None) -> ApiResponse:

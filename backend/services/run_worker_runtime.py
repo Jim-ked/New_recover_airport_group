@@ -4,6 +4,8 @@ from pathlib import Path
 
 from backend.services.run_result_service import RunResultService
 from backend.services.run_indicator_assessment import RunIndicatorAssessmentService
+from backend.services.run_capacity_assessment import RunCapacityAssessmentService
+from backend.services.run_derived_artifacts import RunDerivedArtifactsService
 from backend.services.run_service import RunService
 from backend.services.run_snapshot_service import RunSnapshotService
 from backend.services.run_worker import RunWorker
@@ -41,12 +43,18 @@ def build_run_worker_loop(
         run_service=run_service,
         result_service=result_service,
         snapshot_repository=snapshots,
-        post_success_hook=RunIndicatorAssessmentService(
-            run_repository=runs,
-            snapshot_repository=snapshots,
-            indicator_repository=IndicatorRepository(db_path),
-            assessment_repository=AssessmentRepository(db_path),
-        ).evaluate,
+        derived_artifacts_hook=RunDerivedArtifactsService(
+            capacity=RunCapacityAssessmentService(
+                run_repository=runs, snapshot_repository=snapshots,
+                assessment_repository=AssessmentRepository(db_path),
+            ),
+            indicators=RunIndicatorAssessmentService(
+                run_repository=runs, snapshot_repository=snapshots,
+                indicator_repository=IndicatorRepository(db_path),
+                assessment_repository=AssessmentRepository(db_path),
+            ),
+            run_service=run_service,
+        ).generate,
     )
     return RunWorkerLoop(
         queue_repository=runs,

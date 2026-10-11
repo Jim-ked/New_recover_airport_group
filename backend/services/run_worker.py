@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from backend.algorithm.runner import (
@@ -69,12 +71,14 @@ class RunWorker:
         snapshot_repository: RunSnapshotRepository,
         algorithm_runner: AlgorithmRunner = run_once,
         post_success_hook: PostSuccessHook | None = None,
+        derived_artifacts_hook: PostSuccessHook | None = None,
     ) -> None:
         self.run_service = run_service
         self.results = result_service
         self.snapshots = snapshot_repository
         self.algorithm_runner = algorithm_runner
         self.post_success_hook = post_success_hook
+        self.derived_artifacts_hook = derived_artifacts_hook
 
     def _check_cancel(self, run_id: str) -> None:
         if self.run_service.worker_cancel_requested(run_id):
@@ -177,37 +181,6 @@ class RunWorker:
                     "solve_time_s": result.solve_time_s,
                 },
             )
-            if self.post_success_hook is not None:
-                try:
-                    assessment = self.post_success_hook(run_id)
-                    status = str(getattr(assessment, "status", "available"))
-                    self._append(
-                        run_id,
-                        level="INFO" if status == "available" else "WARNING",
-                        stage="persistence",
-                        event="run_assessment_persisted",
-                        message=(
-                            "Formal indicator assessment persisted"
-                            if status == "available"
-                            else "Formal indicator assessment is unavailable"
-                        ),
-                        payload={
-                            "assessment_status": status,
-                            "unavailable_reason": getattr(assessment, "unavailable_reason", None),
-                        },
-                    )
-                except Exception as exc:
-                    # Canonical Run success is authoritative. A derived assessment failure
-                    # is observable but must never rewrite the completed optimization.
-                    self._append(
-                        run_id,
-                        level="WARNING",
-                        stage="persistence",
-                        event="run_assessment_failed",
-                        message="Formal indicator assessment could not be persisted",
-                        payload={"error": str(exc)},
-                    )
-            return record
 
         except RunWorkerCancelled:
             record = self.run_service.mark_cancelled_by_worker(run_id)
@@ -317,6 +290,48 @@ class RunWorker:
                 payload={"failure_code": "WORKER_ERROR"},
             )
             return record
+
+        self._complete_derived_artifacts(run_id)
+        return record
+
+    def _complete_derived_artifacts(self, run_id: str) -> None:
+        try:
+            if self.derived_artifacts_hook is not None:
+                self.derived_artifacts_hook(run_id)
+            if self.post_success_hook is not None:
+                try:
+                    assessment = self.post_success_hook(run_id)
+                    status = str(getattr(assessment, "status", "available"))
+                    self._append(
+                        run_id,
+                        level="INFO" if status == "available" else "WARNING",
+                        stage="persistence",
+                        event="run_assessment_persisted",
+                        message=(
+                            "Formal indicator assessment persisted"
+                            if status == "available"
+                            else "Formal indicator assessment is unavailable"
+                        ),
+                        payload={
+                            "assessment_status": status,
+                            "unavailable_reason": getattr(assessment, "unavailable_reason", None),
+                        },
+                    )
+                except Exception as exc:
+                    # Canonical Run success is authoritative. A derived assessment failure
+                    # is observable but must never rewrite the completed optimization.
+                    self._append(
+                        run_id,
+                        level="WARNING",
+                        stage="persistence",
+                        event="run_assessment_failed",
+                        message="Formal indicator assessment could not be persisted",
+                        payload={"error": str(exc)},
+                    )
+        except Exception:
+            logging.getLogger("airport_group.worker").exception(
+                "post-success hook/event failed; canonical Run remains succeeded run_id=%s", run_id
+            )
 
 
 __all__ = ["RunWorker", "RunWorkerError", "RunWorkerCancelled", "PostSuccessHook"]

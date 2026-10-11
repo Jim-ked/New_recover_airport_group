@@ -10,7 +10,6 @@ from backend.auth.principal import Principal
 from backend.domain.airport import AirportBase
 from backend.domain.assessment import (
     AssessmentAirportRisk,
-    AssessmentComparison,
     AssessmentResult,
     IndicatorAssessmentValue,
     RunIndicatorAssessment,
@@ -101,19 +100,10 @@ class AssessmentResultsApiTests(unittest.TestCase):
                 {"airport_id": "AP1", "risk_level": 4, "risk_score": 0.72}
             )
         )
-        self.repository.save_comparison(
-            AssessmentComparison.from_mapping(
-                {
-                    "id": "CMP-1",
-                    "base_airport_id": "AP1",
-                    "base_scenario_type": "medium",
-                    "compared_airport_id": "AP2",
-                    "compared_scenario_type": "high",
-                    "conclusion": "二号机场恢复较慢",
-                    "log": "正式评估记录",
-                }
-            )
-        )
+        from dataclasses import replace
+        from backend.storage.run_comparison_repository import RunComparisonRepository
+        from tests.storage.test_run_comparison_records import record
+        RunComparisonRepository(self.db_path).insert_or_get_existing(replace(record(owner='viewer'), id='CMP-1'))
 
     def test_overview_is_empty_without_persisted_assessment(self) -> None:
         response = self.api.overview(principal=self.viewer)

@@ -3,17 +3,35 @@ from __future__ import annotations
 import pathlib
 import sys
 import unittest
+from copy import deepcopy
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from backend.algorithm.snapshot_adapter import build_algorithm_input
+from backend.domain.run_config import RunConfig
 from tests.algorithm.test_snapshot_adapter import make_snapshot
 from original_algorithm_overlay.model import decision_vars as dv
 from original_algorithm_overlay.model import model_facts as mf
 
 
 class ModelFactsOverlayTests(unittest.TestCase):
+    def test_default_weight_preserves_existing_f1_f2_f3_coefficients(self):
+        bundle, maps = self._fixture()
+        expected = mf.objective_coefficients(
+            bundle.ds, maps, bundle.run_params,
+            {**bundle.runtime, "aircraft_type_weight": {"fighter": 1.0}},
+        )
+        config = RunConfig.from_mapping({
+            **make_snapshot().to_dict()["run_config"], "aircraft_type_weight": {},
+        }).with_default_aircraft_weights(["fighter"])
+        actual = mf.objective_coefficients(
+            bundle.ds, maps, bundle.run_params,
+            {**bundle.runtime, "aircraft_type_weight": config.aircraft_type_weight},
+        )
+        self.assertEqual(expected, actual)
+        self.assertTrue(all(row.f1 == 1.0 for row in actual.values()))
+
     def _fixture(self):
         b = build_algorithm_input(make_snapshot())
         maps = dv.build_path_map(b.ds, b.run_params, {"enabled": True, "S": ["A1", "A2"]})
@@ -84,6 +102,54 @@ class ModelFactsOverlayTests(unittest.TestCase):
         )[p.key]
         self.assertAlmostEqual(1.2, with_core.f1)
         self.assertEqual(with_core.f1, without_core.f1)
+
+    def test_fujian_aircraft_weights_ignore_unused_keys_and_preserve_all_components(self):
+        b, _ = self._fixture()
+        types = [f"AC{i:03d}" for i in range(1, 8)]
+        ds, params = deepcopy(b.ds), deepcopy(b.run_params)
+        template = params["aircrafts"].pop("fighter")
+        for aircraft in types:
+            params["aircrafts"][aircraft] = deepcopy(template)
+        # An unused catalog entry must not require an F1 weight either.
+        params["aircrafts"]["UNUSED"] = deepcopy(template)
+        for mission in ds["static"]["missions"]:
+            for field in ("required_sorties", "tau_work"):
+                value = mission[field].pop("fighter")
+                mission[field].update({aircraft: value for aircraft in types})
+        for airport in ds["static"]["airports"]:
+            for field in ("supported_aircraft", "tau_reset"):
+                value = airport[field].pop("fighter")
+                airport[field].update({aircraft: value for aircraft in types})
+        maps = dv.build_path_map(ds, params, {"enabled": False})
+        weights = {aircraft: 1.0 + i / 10 for i, aircraft in enumerate(types)}
+        runtime = dict(b.runtime, aircraft_type_weight=weights)
+        expected = mf.objective_coefficients(ds, maps, params, runtime)
+        runtime["aircraft_type_weight"] = {
+            **weights, "fighter": 1.0, "bomber": 1.0, "transport": 0.9,
+            "OTHER_SCENE": 2.0,
+        }
+        actual = mf.objective_coefficients(ds, maps, params, runtime)
+        self.assertEqual(set(types), {p.aircraft_type_id for p in maps.path_records})
+        self.assertEqual(expected, actual)
+        for p in maps.path_records:
+            self.assertEqual(weights[p.aircraft_type_id], actual[p.key].f1)
+
+    def test_unused_catalog_aircraft_needs_no_weight_but_used_aircraft_does(self):
+        b, maps = self._fixture()
+        b.run_params["aircrafts"]["UNUSED"] = deepcopy(b.run_params["aircrafts"]["fighter"])
+        rows = mf.objective_coefficients(b.ds, maps, b.run_params, b.runtime)
+        self.assertTrue(rows)
+        runtime = dict(b.runtime, aircraft_type_weight={"UNUSED": 1.0, "bomber": 1.0})
+        with self.assertRaisesRegex(mf.ModelFactError, "missing for aircraft type: fighter"):
+            mf.objective_coefficients(b.ds, maps, b.run_params, runtime)
+
+    def test_used_aircraft_weight_must_be_positive_and_finite(self):
+        b, maps = self._fixture()
+        for value in (0, -1, float("nan"), float("inf"), None):
+            with self.subTest(value=value):
+                runtime = dict(b.runtime, aircraft_type_weight={"fighter": value})
+                with self.assertRaisesRegex(mf.ModelFactError, "fighter"):
+                    mf.objective_coefficients(b.ds, maps, b.run_params, runtime)
 
     def test_f2_uses_fixed_per_resource_references_and_weights(self):
         b, maps = self._fixture()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Mapping, NoReturn, Optional, Sequence, Tuple
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
@@ -108,8 +108,8 @@ class RunConfig:
 
     Preset modes freeze their resolved objective weights. Custom mode applies the
     existing non-zero-floor rule and then normalizes to sum to one. Objective calibration
-    fields are optional only for loading legacy snapshots; model construction rejects
-    missing values instead of restoring historical coefficient defaults.
+    fields are optional only for loading legacy snapshots. New Runs fill missing
+    aircraft weights from their actual task aircraft before checking calibration.
     """
 
     damage_scenario_id: Optional[str]
@@ -274,14 +274,19 @@ class RunConfig:
         if self.damage_scenario_id is not None and self.damage_scenario_id not in scenarios:
             _fail("damage_scenario_id", "selected damage_scenario_id is not in Situation")
 
-        known_types = set(aircraft_type_ids)
-        unknown_types = sorted({k for k, _ in self.aircraft_type_weights} - known_types)
-        if self.objective_profile_id == "research_objective_v1":
-            # The versioned profile freezes all established standard weights even when a
-            # particular Situation uses only a subset of those catalog rows.
-            unknown_types = sorted(set(unknown_types) - {"fighter", "bomber", "transport"})
-        if unknown_types:
-            _fail("aircraft_type_weight", f"unknown aircraft type weights: {unknown_types}")
+        # Unused weights may belong to another scene or the default profile. Task
+        # aircraft coverage is checked by require_objective_calibration instead.
+
+    def with_default_aircraft_weights(
+        self, aircraft_type_ids: Sequence[str] | None
+    ) -> "RunConfig":
+        """Fill new-Run task aircraft only; preserve explicit and frozen values."""
+        if aircraft_type_ids is None or isinstance(aircraft_type_ids, (str, bytes)):
+            _fail("aircraft_type_weight", "cannot determine actual aircraft type IDs")
+        weights = dict(self.aircraft_type_weights)
+        for aircraft_id in aircraft_type_ids:
+            weights.setdefault(_id(aircraft_id, "aircraft_type_ids"), 1.0)
+        return replace(self, aircraft_type_weights=tuple(sorted(weights.items())))
 
     def require_objective_calibration(
         self,

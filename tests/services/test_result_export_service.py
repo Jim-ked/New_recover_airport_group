@@ -83,6 +83,20 @@ def _rich_comparison_source(kind: str):
 
 
 class ComparisonExportRowsTests(unittest.TestCase):
+    def test_csv_and_pdf_keep_configuration_time_and_trace_for_each_source(self):
+        source = _rich_comparison_source('scenario_comparison')
+        source['data']['run_identities'] = {
+            'BASE': {'title': '损毁方案', 'situation_title': '情境 · 损毁方案',
+                     'subtitle': '出动优先 · 组群开启(K=4) · 10-10 13:42',
+                     'short_id': 'R-7193A5B2', 'detail': '完整配置'}
+        }
+        rows = build_tidy_rows(source)
+        identities = {row['metric']: row['value'] for row in rows if row['section'] == 'run_identity'}
+        self.assertEqual('R-7193A5B2', identities['short_id'])
+        self.assertIn('13:42', identities['subtitle'])
+        pdf = build_pdf_report_model(source)
+        self.assertEqual(('BASE', '情境 · 损毁方案', source['data']['run_identities']['BASE']['subtitle'], 'R-7193A5B2'), pdf['run_identity_rows'][0])
+
     def test_comparison_export_preserves_focus_relation_components_and_full_timeline(self):
         source = {
             "schema_version": "report-data.v1",

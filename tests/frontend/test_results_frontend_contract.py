@@ -63,13 +63,13 @@ class ResultsFrontendContractTests(unittest.TestCase):
 
     def test_run_identity_uses_short_mode_names_and_keeps_full_id_in_title(self):
         identity = extract_function(JS, "runIdentity")
-        for token in ("payload?.roles", "D${index}", "基准方案", "方案${alternativeIndex + 2}"):
+        for token in ("payload?.roles", "D${index}", "基准方案", "对照方案", "!candidate && index >= 0", "formatRunIdentity"):
             self.assertIn(token, identity)
-        self.assertIn("damage_scenario?.name", identity)
-        self.assertIn("cluster_enabled", identity)
+        self.assertNotIn("Math.max(0", identity)
+        self.assertIn("run_identities", identity)
         condition = extract_function(JS, "renderCondition")
         self.assertIn('class="run-identity"', condition)
-        self.assertIn('title="${esc(id)}"', condition)
+        self.assertIn('title="${esc(runIdentity(id).detail)}"', condition)
         self.assertIn("selectionLabel", condition)
         self.assertIn("refs.focusBaseline.title", condition)
         self.assertIn("refs.focusComparison.title", condition)

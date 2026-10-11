@@ -113,6 +113,27 @@ export function saveBlob({ blob, filename }) {
   }
 }
 
+export async function apiUpload(path, form, { signal = undefined } = {}) {
+  let response;
+  try {
+    // The browser supplies multipart Content-Type with its boundary.
+    response = await fetch(path, { method: 'POST', headers: mutationHeaders('POST', false),
+      credentials: 'same-origin', body: form, signal });
+  } catch (error) {
+    throw new ApiError('无法连接后端服务', { code: 'NETWORK_ERROR', body: error });
+  }
+  let payload = null;
+  try { payload = await response.json(); } catch (_) { payload = null; }
+  if (!response.ok) {
+    emitAuthRequired(response, payload);
+    const info = payload?.error || {};
+    throw new ApiError(info.message || `上传失败（HTTP ${response.status}）`, {
+      status: response.status, code: info.code || 'HTTP_ERROR', field: info.field || null, body: payload,
+    });
+  }
+  return payload;
+}
+
 export async function apiText(path, { method = 'POST', text = '', contentType = 'text/plain', signal = undefined } = {}) {
   const upper = method.toUpperCase();
   const headers = { Accept: 'application/json', 'Content-Type': contentType };

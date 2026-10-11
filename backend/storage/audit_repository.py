@@ -83,6 +83,8 @@ def audit_action_label(
         return "查看算法运行"
 
     if resource_type == "results":
+        if method == 'POST' and path == '/api/results/comparison-records':
+            return '保存结果比较'
         if "export" in path:
             return "导出分析结果"
         if "damage-candidates" in path:

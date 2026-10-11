@@ -1,0 +1,2 @@
+# Standalone tool dependency; the main web/solver runtime is unchanged.
+openpyxl>=3.1.5,<4

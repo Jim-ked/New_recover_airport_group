@@ -737,12 +737,26 @@ class ComparisonTests(unittest.TestCase):
             out["conclusions"][1],
         )
 
-    def test_multi_scenario_accepts_six_strictly_comparable_runs(self):
+    def test_multi_scenario_rejects_same_configuration_repeat_as_distinct_damage(self):
         base = make_snapshot(cluster_enabled=False, run_id="S0")
+        _result, metrics = solve(base)
+        repeat = with_frozen_config(base, run_id="S1")
+        repeat_metrics = copy.deepcopy(metrics)
+        repeat_metrics["run_id"] = "S1"
+        with self.assertRaisesRegex(ComparisonError, "同一损毁方案"):
+            build_multi_scenario_comparison([(base, metrics), (repeat, repeat_metrics)])
+
+    def test_multi_scenario_accepts_six_strictly_comparable_runs(self):
+        scenarios = []
+        for index in range(6):
+            raw = scenario().to_dict()
+            raw['damage_scenario_id'] = f'DS{index}'
+            scenarios.append(DamageScenario.from_mapping(raw))
+        base = make_snapshot(scenario=scenarios[0], available_scenarios=tuple(scenarios), cluster_enabled=False, run_id="S0")
         _result, metrics = solve(base)
         rows = []
         for index in range(6):
-            snapshot = with_frozen_config(base, run_id=f"S{index}")
+            snapshot = with_frozen_config(base, run_id=f"S{index}", damage_scenario_id=f"DS{index}")
             item_metrics = copy.deepcopy(metrics)
             item_metrics["run_id"] = snapshot.run_id
             rows.append((snapshot, item_metrics))

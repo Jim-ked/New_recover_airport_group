@@ -10,6 +10,7 @@ from backend.domain.run_config import RunConfig
 from backend.domain.run_snapshot import (
     DYNAMIC_INVENTORY_SNAPSHOT_SCHEMA,
     RunSnapshot,
+    RunSnapshotValidationError,
     SUPPORTED_SNAPSHOT_SCHEMAS,
 )
 from backend.domain.situation import ResourceReplenishment, Situation
@@ -57,6 +58,12 @@ def _catalogs_from_payload(raw: Mapping[str, Any]):
             AircraftResourceRequirement.from_mapping(v)
             for v in raw.get("aircraft_resource_requirements", [])
         )
+        resources_by_id = {resource.resource_type_id: resource for resource in resources}
+        for index, row in enumerate(requirements):
+            resource = resources_by_id.get(row.resource_type_id)
+            if resource is None:
+                raise ValueError(f"resource type metadata missing: {row.resource_type_id}")
+            row.validate_resource(resource, field=f"aircraft_resource_requirements[{index}].basis")
     except (TypeError, ValueError) as exc:
         raise AlgorithmInputError(f"invalid frozen catalog data in RunSnapshot: {exc}") from exc
     return aircraft, resources, requirements
@@ -628,6 +635,10 @@ def build_algorithm_input(snapshot: RunSnapshot) -> AlgorithmInputBundle:
 
     if not isinstance(snapshot, RunSnapshot):
         raise AlgorithmInputError("snapshot must be RunSnapshot")
+    try:
+        snapshot.validate_for_execution()
+    except RunSnapshotValidationError as exc:
+        raise AlgorithmInputError(f"invalid snapshot execution contract: {exc}") from exc
     payload = snapshot.to_dict()
     if payload.get("schema") not in SUPPORTED_SNAPSHOT_SCHEMAS:
         raise AlgorithmInputError(f"unsupported snapshot schema: {payload.get('schema')!r}")

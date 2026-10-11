@@ -8,6 +8,7 @@ from typing import Any, Dict, Mapping, NoReturn, Optional, Union
 JsonNumber = Union[int, float]
 RESOURCE_CATEGORIES = frozenset({"fuel", "material", "munition"})
 CONSUMPTION_BASES = frozenset({"per_sortie", "per_hour"})
+RESOURCE_CONSUMPTION_BASES = {"fuel": "per_hour", "material": "per_sortie", "munition": "per_sortie"}
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 
 
@@ -150,6 +151,12 @@ class AircraftResourceRequirement:
     resource_type_id: str
     basis: str
     quantity: JsonNumber
+
+    def validate_resource(self, resource: ResourceType, *, field: str = "basis") -> None:
+        expected = RESOURCE_CONSUMPTION_BASES.get(resource.category)
+        if expected is None or self.basis != expected:
+            _fail(field, f"resource {self.resource_type_id} ({resource.category}) requires basis {expected}; "
+                         f"got {self.basis} for aircraft {self.aircraft_type_id}")
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "AircraftResourceRequirement":

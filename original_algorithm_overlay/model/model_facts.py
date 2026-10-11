@@ -101,16 +101,16 @@ def _type_weights(runtime: Mapping[str, Any], aircraft_types: Sequence[str]) -> 
     raw = runtime.get("aircraft_type_weight") or {}
     if not isinstance(raw, dict):
         raise ModelFactError("aircraft_type_weight must be object")
-    unknown = sorted(set(raw) - set(aircraft_types))
-    if unknown:
-        raise ModelFactError(f"unknown aircraft_type_weight key: {unknown[0]}")
     missing = sorted(set(aircraft_types) - set(raw))
     if missing:
         raise ModelFactError(f"aircraft_type_weight missing for aircraft type: {missing[0]}")
     out: Dict[str, float] = {}
-    for f, value in raw.items():
-        v = float(value)
-        if v <= 0:
+    for f in aircraft_types:
+        try:
+            v = float(raw[f])
+        except (TypeError, ValueError) as exc:
+            raise ModelFactError(f"aircraft_type_weight must be positive: {f}") from exc
+        if not isfinite(v) or v <= 0:
             raise ModelFactError(f"aircraft_type_weight must be positive: {f}")
         out[f] = v
     return out
@@ -247,7 +247,14 @@ def objective_coefficients(
     aircraft_cfg = run_params.get("aircrafts") or {}
     if not isinstance(aircraft_cfg, dict):
         raise ModelFactError("run_params.aircrafts must be an object")
-    types = sorted(str(key) for key in aircraft_cfg)
+    # F1 needs weights for task aircraft, not every catalog/default-profile entry.
+    types = sorted({
+        aircraft_type_id
+        for mission in ds["static"]["missions"]
+        for aircraft_type_id in (
+            set(mission.get("required_sorties") or {}) | set(mission.get("tau_work") or {})
+        )
+    })
     type_w = _type_weights(runtime, types)
     references = _configured_positive_mapping(runtime, "f2_resource_reference_quantities")
     resource_weights = _configured_positive_mapping(runtime, "f2_resource_weights")

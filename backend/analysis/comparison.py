@@ -1866,6 +1866,9 @@ def build_multi_scenario_comparison(
         raise ComparisonError("comparison_run_id must differ from baseline_run_id")
 
     base_snapshot = rows[0][0]
+    scenario_ids = [(_config(snapshot.to_dict())).get("damage_scenario_id") for snapshot, _metrics in rows]
+    if len(set(scenario_ids)) != len(scenario_ids):
+        raise ComparisonError("同一损毁方案只能选择一次 Run；同配置重复运行不代表不同损毁方案")
     for snapshot, _metrics in rows[1:]:
         check_multi_scenario_comparable(base_snapshot, snapshot).require()
     slot_minutes, windows = _require_common_metrics_contract(rows)

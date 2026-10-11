@@ -87,7 +87,7 @@ class RunSnapshotTests(unittest.TestCase):
         payload["situation"]["name"] = "changed"
         self.assertEqual("S", snap.to_dict()["situation"]["name"])
 
-    def test_persisted_v5_snapshot_is_readable_but_cannot_be_cloned_for_retry(self) -> None:
+    def test_persisted_v5_snapshot_is_readable_and_clones_without_changing_business_inputs(self) -> None:
         aircraft, resources, reqs = self._catalogs()
         current = RunSnapshot.build(
             run_id="R-V5", situation=self._situation(), aircraft_types=aircraft,
@@ -112,8 +112,11 @@ class RunSnapshotTests(unittest.TestCase):
         )
 
         self.assertEqual("run_input_snapshot_v5", historical.to_dict()["schema"])
-        with self.assertRaisesRegex(RunSnapshotValidationError, "historical snapshot schema"):
-            historical.clone_for_run("R-V5-RETRY")
+        cloned = historical.clone_for_run("R-V5-RETRY")
+        expected = historical.to_dict()
+        expected["run_id"] = "R-V5-RETRY"
+        self.assertEqual(cloned.to_dict(), expected)
+        self.assertNotEqual(cloned.content_hash, historical.content_hash)
 
     def test_snapshot_requires_complete_airport_configuration(self) -> None:
         aircraft, resources, reqs = self._catalogs()

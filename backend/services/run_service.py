@@ -62,6 +62,7 @@ class RunService:
     def submit_snapshot(self, *, snapshot: RunSnapshot, owner_user_id: str) -> RunRecord:
         if not isinstance(snapshot, RunSnapshot):
             raise TypeError("snapshot must be RunSnapshot")
+        snapshot.validate_for_execution()
         # The repository commits snapshot + queued RunRecord in one transaction. No Run
         # can point at a mutable Situation or a not-yet-persisted input closure.
         return self.runs.create_queued(snapshot=snapshot, owner_user_id=owner_user_id)

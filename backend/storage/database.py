@@ -30,6 +30,7 @@ from backend.storage.migrations.v023_assessment_run_provenance import apply as a
 from backend.storage.migrations.v024_indicator_assessment import apply as apply_v024
 from backend.storage.migrations.v025_run_indicator_evaluation import apply as apply_v025
 from backend.storage.migrations.v026_inventory_contract_repair import apply as apply_v026
+from backend.storage.migrations.v027_run_comparison_records import apply as apply_v027
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -83,6 +84,7 @@ _MIGRATIONS: Tuple[Tuple[str, Callable[[sqlite3.Connection], None]], ...] = (
     ("v024_indicator_assessment", apply_v024),
     ("v025_run_indicator_evaluation", apply_v025),
     ("v026_inventory_contract_repair", apply_v026),
+    ("v027_run_comparison_records", apply_v027),
 )
 
 

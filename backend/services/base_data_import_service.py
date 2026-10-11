@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
@@ -16,6 +17,8 @@ from backend.services.airport_master_parser import (
 )
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.mission_repository import MissionRepository
+from backend.security.sm4 import SM4Error, SM4FileCipher
+from backend.services import data_codec_service as codec
 
 
 class BaseDataImportError(ValueError):
@@ -29,6 +32,36 @@ SUPPORTED_DATASETS = frozenset({
     "resource_types",
     "aircraft_resource_requirements",
 })
+
+# Stable file columns. Optional domain fields may be omitted on input, but an
+# unknown column is never silently discarded. Nested values use JSON cells.
+TABULAR_COLUMNS = {
+    "airports": ("airport_id", "airport_name", "facility_type", "role", "icao_code", "iata_code",
+                 "region", "municipality", "longitude", "latitude", "elevation_m", "scheduled_service",
+                 "parking_stand_count", "runway_count", "max_runway_length_m", "runways_json", "operational_profile_json"),
+    "missions": ("mission_id", "name", "longitude", "latitude", "window_start_slot", "window_end_slot", "aircraft_requirements_json"),
+    "aircraft_types": ("aircraft_type_id", "name", "speed_kmh", "max_range_km", "reserve_ratio",
+                       "departure_capacity_occupancy_factor", "arrival_capacity_occupancy_factor"),
+    "resource_types": ("resource_type_id", "name", "category", "unit"),
+    "aircraft_resource_requirements": ("aircraft_type_id", "resource_type_id", "basis", "quantity"),
+}
+REQUIRED_COLUMNS = {
+    "airports": {"airport_id", "airport_name", "facility_type", "role", "longitude", "latitude", "scheduled_service"},
+    "missions": {"mission_id", "name", "longitude", "latitude", "window_start_slot", "window_end_slot"},
+    "aircraft_types": {"aircraft_type_id", "name"},
+    "resource_types": set(TABULAR_COLUMNS["resource_types"]),
+    "aircraft_resource_requirements": set(TABULAR_COLUMNS["aircraft_resource_requirements"]),
+}
+
+
+def validate_columns(dataset: str, fields: Iterable[str]) -> None:
+    fields = set(fields)
+    missing = REQUIRED_COLUMNS[dataset] - fields
+    unknown = fields - set(TABULAR_COLUMNS[dataset])
+    if missing:
+        raise BaseDataImportError(f"missing fields: {', '.join(sorted(missing))}")
+    if unknown:
+        raise BaseDataImportError(f"unknown fields: {', '.join(sorted(str(x) for x in unknown))}")
 
 
 @dataclass(frozen=True)
@@ -63,18 +96,27 @@ def _none_if_blank(value: Any) -> Any:
 
 def _float_or_none(value: Any) -> Optional[float]:
     value = _none_if_blank(value)
+    if isinstance(value, bool):
+        raise ValueError("boolean is not a number")
     return None if value is None else float(value)
 
 
 def _int_or_none(value: Any) -> Optional[int]:
     value = _none_if_blank(value)
-    return None if value is None else int(value)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("boolean is not an integer")
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError("value must be an integer")
+    return int(value)
 
 
 def _bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    text = str(value or "").strip().lower()
+    text = str(value if value is not None else "").strip().lower()
     if text in {"1", "true", "yes", "y", "是"}:
         return True
     if text in {"0", "false", "no", "n", "否"}:
@@ -135,17 +177,72 @@ class BaseDataImportService:
         if not isinstance(text, str) or not text.strip():
             raise BaseDataImportError("CSV content is empty")
         try:
-            rows = list(csv.DictReader(io.StringIO(text)))
-        except csv.Error as exc:
-            raise BaseDataImportError(f"invalid CSV: {exc}") from exc
-        if not rows:
-            # An explicit header-only CSV is a valid replacement with an empty current
-            # dataset.  Missing headers are not.
-            reader = csv.DictReader(io.StringIO(text))
-            if not reader.fieldnames:
-                raise BaseDataImportError("CSV header is required")
+            # Validate headers even for the legacy, explicitly header-only replacement.
+            headers = next(csv.reader(io.StringIO(text.lstrip("\ufeff"))), [])
+            validate_columns(dataset, (header.strip() for header in headers))
+            rows = codec.decode_records(text.encode("utf-8"), fmt="csv")
+        except (csv.Error, codec.DataCodecError) as exc:
+            raise BaseDataImportError(str(exc)) from exc
         items = [self._csv_row(dataset, row, index=i) for i, row in enumerate(rows)]
         return self._replace(dataset, items, source_format="csv")
+
+    def parse_multi_format(self, dataset: str, data: bytes, *, format: str,
+                           encrypted: bool = False, cipher: Optional[SM4FileCipher] = None) -> Any:
+        """Decrypt and parse a file; no database write occurs in this method."""
+        dataset = self._dataset(dataset)
+        try:
+            fmt = codec.normalize_format(format)
+            if not isinstance(data, bytes) or not data or len(data) > codec.MAX_FILE_BYTES:
+                raise BaseDataImportError("file is empty or exceeds 50 MB")
+            if encrypted or SM4FileCipher.is_encrypted(data):
+                data = (cipher or SM4FileCipher.from_environment()).decrypt_file(data)
+            parsed = codec.decode_records(data, fmt=fmt)
+        except (codec.DataCodecError, SM4Error) as exc:
+            raise BaseDataImportError(str(exc)) from exc
+        if fmt == "json":
+            if isinstance(parsed, Mapping):
+                if parsed.get("schema") == "airport_master_v1":
+                    if dataset != "airports":
+                        raise BaseDataImportError("airport_master_v1 requires dataset airports")
+                    # Preserve the existing master-document profile-preserving path.
+                    try:
+                        airports = parse_airport_master_document(parsed)
+                    except (AirportMasterParseError, AirportValidationError) as exc:
+                        raise BaseDataImportError(str(exc)) from exc
+                    if not airports:
+                        raise BaseDataImportError("file contains no records; replacement refused")
+                    return parsed
+                if set(parsed) - {"dataset", "items", "exported_at"}:
+                    raise BaseDataImportError("JSON document contains unknown fields")
+                if "dataset" in parsed and parsed["dataset"] != dataset:
+                    raise BaseDataImportError("file dataset does not match selected dataset")
+                parsed = parsed.get("items")
+            if not isinstance(parsed, list):
+                raise BaseDataImportError("JSON must be an array, items document or airport_master_v1")
+            if dataset == "airports":
+                for index, item in enumerate(parsed):
+                    if isinstance(item, Mapping) and "airport" in item and set(item) - {"airport", "operational_profile"}:
+                        raise BaseDataImportError(f"items[{index}] airport bundle contains unknown fields")
+        else:
+            for index, row in enumerate(parsed):
+                try:
+                    validate_columns(dataset, row)
+                except BaseDataImportError as exc:
+                    raise BaseDataImportError(f"record {index + 1}: {exc}") from exc
+            parsed = [self._csv_row(dataset, row, index=i) for i, row in enumerate(parsed)]
+        if not parsed:
+            raise BaseDataImportError("file contains no records; replacement refused")
+        if len(parsed) > codec.MAX_ROWS:
+            raise BaseDataImportError("file exceeds 100000 records")
+        return parsed
+
+    def replace_multi_format(self, dataset: str, data: bytes, *, format: str,
+                             encrypted: bool = False, cipher: Optional[SM4FileCipher] = None) -> BaseDataReplaceResult:
+        dataset = self._dataset(dataset)
+        parsed = self.parse_multi_format(dataset, data, format=format, encrypted=encrypted, cipher=cipher)
+        if isinstance(parsed, Mapping) and parsed.get("schema") == "airport_master_v1":
+            return self.replace_airport_master_document(parsed)
+        return self._replace(dataset, parsed, source_format=codec.normalize_format(format))
 
     @staticmethod
     def _dataset(value: Any) -> str:
@@ -209,27 +306,33 @@ class BaseDataImportService:
                     "iata_code": _none_if_blank(row.get("iata_code")),
                     "region": _none_if_blank(row.get("region")),
                     "municipality": _none_if_blank(row.get("municipality")),
-                    "longitude": float(row.get("longitude")),
-                    "latitude": float(row.get("latitude")),
+                    "longitude": _float_or_none(row.get("longitude")),
+                    "latitude": _float_or_none(row.get("latitude")),
                     "elevation_m": _float_or_none(row.get("elevation_m")),
                     "scheduled_service": _bool(row.get("scheduled_service")),
-                    "parking_stand_count": (
-                        None
-                        if _none_if_blank(row.get("parking_stand_count")) is None
-                        else int(str(row.get("parking_stand_count")).strip())
-                    ),
+                    "parking_stand_count": _int_or_none(row.get("parking_stand_count")),
                     "runways": _json_cell(row.get("runways_json"), field="runways_json", default=None),
                 }
+                runways = airport["runways"]
+                if runways is not None:
+                    if not isinstance(runways, list) or any(not isinstance(r, Mapping) for r in runways):
+                        raise BaseDataImportError("runways_json must contain an array of runway objects")
+                    lengths = [float(r["length_m"]) for r in runways if r.get("length_m") is not None]
+                    airport["runway_count"] = len(runways) if _none_if_blank(row.get("runway_count")) is None else _int_or_none(row["runway_count"])
+                    airport["max_runway_length_m"] = (max(lengths) if lengths else None) if _none_if_blank(row.get("max_runway_length_m")) is None else _float_or_none(row["max_runway_length_m"])
+                else:
+                    airport["runway_count"] = _int_or_none(row.get("runway_count"))
+                    airport["max_runway_length_m"] = _float_or_none(row.get("max_runway_length_m"))
                 profile = _json_cell(row.get("operational_profile_json"), field="operational_profile_json", default=None)
                 return {"airport": airport, "operational_profile": profile}
             if dataset == "missions":
                 return {
                     "mission_id": row.get("mission_id"),
                     "name": row.get("name"),
-                    "longitude": float(row.get("longitude")),
-                    "latitude": float(row.get("latitude")),
-                    "window_start_slot": int(row.get("window_start_slot")),
-                    "window_end_slot": int(row.get("window_end_slot")),
+                    "longitude": _float_or_none(row.get("longitude")),
+                    "latitude": _float_or_none(row.get("latitude")),
+                    "window_start_slot": _int_or_none(row.get("window_start_slot")),
+                    "window_end_slot": _int_or_none(row.get("window_end_slot")),
                     "aircraft_requirements": _json_cell(
                         row.get("aircraft_requirements_json"), field="aircraft_requirements_json", default=[]
                     ),
@@ -256,10 +359,10 @@ class BaseDataImportService:
                     "aircraft_type_id": row.get("aircraft_type_id"),
                     "resource_type_id": row.get("resource_type_id"),
                     "basis": row.get("basis"),
-                    "quantity": float(row.get("quantity")),
+                    "quantity": _float_or_none(row.get("quantity")),
                 }
         except (TypeError, ValueError) as exc:
-            raise BaseDataImportError(f"CSV row {index + 2} contains an invalid scalar value") from exc
+            raise BaseDataImportError(f"record {index + 1} (table row {index + 2}): {exc}") from exc
         raise AssertionError(dataset)
 
 

@@ -1,14 +1,10 @@
 {% extends "base.html" %}
-{% block title %}指标管理 · 机场群顽存能力仿真系统{% endblock %}
+{% block title %}指标管理 · 机场群顽存能力仿真验证系统{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/indicators.css') }}">{% endblock %}
 {% block content %}
 <main class="indicator-page shell-content">
-  <!-- 指标管理不参与算法运行；完整说明已收敛至标题旁 tooltip。 -->
   <header class="indicator-header">
-    <div class="indicator-title">
-      <h1>指标管理</h1>
-      <span class="info-icon" tabindex="0" aria-label="指标管理说明" title="维护指标定义与评分权重；指标管理不直接参与算法运行。">i</span>
-    </div>
+    <h1>指标管理</h1>
     <div class="indicator-set-tools">
       <label for="indicatorSetSelect">指标集</label>
       <select id="indicatorSetSelect" class="control" aria-label="当前指标集"></select>

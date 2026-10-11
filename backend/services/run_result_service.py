@@ -15,6 +15,7 @@ from backend.analysis.comparison import (
     check_r0_r1_r2,
 )
 from backend.analysis.metrics import build_metrics_core
+from backend.services.run_assessment_labels import run_display_identity
 from backend.domain.run import RunRecord
 from backend.domain.run_snapshot import RunSnapshot
 from backend.storage.run_repository import RunRepository
@@ -206,6 +207,7 @@ class RunResultService:
             "content_hash": payload.get("situation_content_hash"),
         }
         out["damage_scenario"] = damage_scenario
+        out["display_identity"] = run_display_identity(payload, out)
         return out
 
     @staticmethod
@@ -241,6 +243,7 @@ class RunResultService:
             statuses=("succeeded",), limit=limit, offset=0,
         )
         items = []
+        base_damage_id = (base_snapshot.to_dict().get('run_config') or {}).get('damage_scenario_id')
         for record in candidates:
             if record.run_id == base_run_id:
                 continue
@@ -265,11 +268,14 @@ class RunResultService:
             if check_configuration_comparable(base_snapshot, snapshot).comparable:
                 strict_modes.append("configuration")
             payload = snapshot.to_dict()
+            if mode == "multi_scenario" and (payload.get("run_config") or {}).get("damage_scenario_id") == base_damage_id:
+                continue
             items.append({
                 "run_id": record.run_id,
                 "created_at": record.created_at,
                 "finished_at": record.finished_at,
                 "run_config": payload.get("run_config"),
+                "display_identity": run_display_identity(payload, record.to_dict()),
                 "comparability": {
                     "strict_comparable": bool(strict_modes),
                     "strict_modes": strict_modes,

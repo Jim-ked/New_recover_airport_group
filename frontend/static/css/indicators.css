@@ -16,15 +16,13 @@
   background: var(--bg-surface);
 }
 
-.indicator-title,
 .indicator-set-tools,
 .score-rule {
   display: flex;
   align-items: center;
 }
 
-.indicator-title { gap: 7px; }
-.indicator-title h1 { margin: 0; font-size: 17px; line-height: 1; }
+.indicator-header h1 { margin: 0; font-size: 17px; line-height: 1; }
 
 .info-icon {
   width: 17px;

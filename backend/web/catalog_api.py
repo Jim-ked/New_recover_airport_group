@@ -13,6 +13,8 @@ from backend.storage.mission_repository import MissionRepository
 from backend.storage.run_repository import RunRepository
 from backend.storage.run_snapshot_repository import RunSnapshotRepository
 from backend.services.base_data_import_service import BaseDataImportService, BaseDataImportError
+from backend.services.base_data_export_service import BaseDataExportService, BaseDataExportError, BaseDataFile
+from backend.security.sm4 import SM4FileCipher
 from backend.web.error_mapping import map_expected_error
 from backend.web.http import (
     ApiInputError,
@@ -41,11 +43,16 @@ class CatalogApi:
         mission_repository: MissionRepository,
         run_repository: Optional[RunRepository] = None,
         snapshot_repository: Optional[RunSnapshotRepository] = None,
+        file_cipher: Optional[SM4FileCipher] = None,
     ) -> None:
         self.airports = airport_repository
         self.missions = mission_repository
         self.runs = run_repository
         self.snapshots = snapshot_repository
+        self.file_cipher = file_cipher
+        self.export_service = BaseDataExportService(
+            airport_repository=airport_repository, mission_repository=mission_repository
+        )
         self.import_service = BaseDataImportService(
             airport_repository=airport_repository, mission_repository=mission_repository
         )
@@ -58,6 +65,8 @@ class CatalogApi:
             return ApiResponse(error_body("CATALOG_NOT_FOUND", str(exc).strip("'")), 404)
         except BaseDataImportError as exc:
             return ApiResponse(error_body("BASE_DATA_IMPORT_INVALID", str(exc)), 400)
+        except BaseDataExportError as exc:
+            return ApiResponse(error_body("BASE_DATA_EXPORT_INVALID", str(exc)), 400)
         except Exception as exc:
             mapped = map_expected_error(exc)
             if mapped is not None:
@@ -337,6 +346,41 @@ class CatalogApi:
                 raise ApiInputError("CSV request body must be text", field="body")
             result = self.import_service.replace_csv(dataset.strip(), text)
             return ApiResponse(result.to_dict(), 200)
+        return self._handle(action)
+
+    @staticmethod
+    def _file_boolean(value: Any, *, field: str) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.lower() in {"true", "false"}:
+            return value.lower() == "true"
+        raise ApiInputError(f"{field} must be true or false", field=field)
+
+    def replace_base_data_multi_format(self, raw_params: Any, data: bytes, *, principal: Principal) -> ApiResponse:
+        def action() -> ApiResponse:
+            principal.require_permission("catalog.write")
+            params = require_object(raw_params)
+            reject_unknown(params, {"dataset", "format", "encrypted"})
+            dataset = required_nonblank_string(params, "dataset")
+            fmt = required_nonblank_string(params, "format")
+            encrypted = self._file_boolean(params.get("encrypted", False), field="encrypted")
+            result = self.import_service.replace_multi_format(
+                dataset, data, format=fmt, encrypted=encrypted, cipher=self.file_cipher
+            )
+            return ApiResponse(result.to_dict(), 200)
+        return self._handle(action)
+
+    def export_base_data(self, raw_params: Any, *, principal: Principal) -> BaseDataFile | ApiResponse:
+        def action() -> BaseDataFile:
+            principal.require_permission("catalog.read")
+            params = require_object(raw_params)
+            reject_unknown(params, {"dataset", "format", "encrypt"})
+            return self.export_service.export_dataset_records(
+                required_nonblank_string(params, "dataset"),
+                format=required_nonblank_string(params, "format"),
+                encrypt=self._file_boolean(params.get("encrypt", False), field="encrypt"),
+                cipher=self.file_cipher,
+            )
         return self._handle(action)
 
     def mission_history(self, *, principal: Principal, limit: Any = None) -> ApiResponse:

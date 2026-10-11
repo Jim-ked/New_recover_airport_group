@@ -303,6 +303,26 @@ class AirportRepository:
 
     # ---------- catalogs ----------
 
+    @staticmethod
+    def _validate_requirement_resources(
+        conn: sqlite3.Connection, items: Sequence[AircraftResourceRequirement], *, prefix: str = "requirements"
+    ) -> None:
+        for index, item in enumerate(items):
+            row = conn.execute("SELECT resource_type_id,name,category,unit FROM resource_types WHERE resource_type_id=?",
+                               (item.resource_type_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"resource type not found: {item.resource_type_id}")
+            item.validate_resource(ResourceType(**dict(row)), field=f"{prefix}[{index}].basis")
+
+    @staticmethod
+    def _validate_resource_category(conn: sqlite3.Connection, resource: ResourceType) -> None:
+        rows = conn.execute(
+            "SELECT aircraft_type_id,resource_type_id,basis,quantity FROM aircraft_resource_requirements WHERE resource_type_id=?",
+            (resource.resource_type_id,),
+        ).fetchall()
+        for row in rows:
+            AircraftResourceRequirement(**dict(row)).validate_resource(resource, field="category")
+
     def save_aircraft_type(self, item: AircraftType) -> None:
         with self.connect() as conn:
             conn.execute(
@@ -332,6 +352,8 @@ class AirportRepository:
 
     def save_resource_type(self, item: ResourceType) -> None:
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._validate_resource_category(conn, item)
             conn.execute(
                 """
                 INSERT INTO resource_types (resource_type_id, name, category, unit)
@@ -344,6 +366,8 @@ class AirportRepository:
 
     def save_aircraft_resource_requirement(self, item: AircraftResourceRequirement) -> None:
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._validate_requirement_resources(conn, [item])
             conn.execute(
                 """
                 INSERT INTO aircraft_resource_requirements (
@@ -864,11 +888,13 @@ class AirportRepository:
 
     def save_resource_type_versioned(self, item: ResourceType, *, expected_revision: int) -> Dict[str, Any]:
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT revision FROM resource_types WHERE resource_type_id=?", (item.resource_type_id,)).fetchone()
             if row is None:
                 raise KeyError(f"resource type not found: {item.resource_type_id}")
             if int(row["revision"]) != int(expected_revision):
                 raise CatalogConflictError("resource type revision conflict")
+            self._validate_resource_category(conn, item)
             conn.execute(
                 """UPDATE resource_types SET name=?,category=?,unit=?,revision=revision+1,updated_at=CURRENT_TIMESTAMP
                    WHERE resource_type_id=?""",
@@ -897,11 +923,13 @@ class AirportRepository:
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate aircraft resource requirement")
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             ac = conn.execute("SELECT revision FROM aircraft_types WHERE aircraft_type_id=?", (aircraft_type_id,)).fetchone()
             if ac is None:
                 raise KeyError(f"aircraft type not found: {aircraft_type_id}")
             if int(ac["revision"]) != int(expected_aircraft_revision):
                 raise CatalogConflictError("aircraft type revision conflict")
+            self._validate_requirement_resources(conn, rows)
             conn.execute("DELETE FROM aircraft_resource_requirements WHERE aircraft_type_id=?", (aircraft_type_id,))
             for item in rows:
                 conn.execute(
@@ -1032,8 +1060,10 @@ class AirportRepository:
             raise CatalogConflictError("bulk resource type import contains duplicate resource_type_id")
         try:
             with self.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
                 old_ids = {str(r[0]) for r in conn.execute("SELECT resource_type_id FROM resource_types").fetchall()}
                 for item in items:
+                    self._validate_resource_category(conn, item)
                     if item.resource_type_id in old_ids:
                         conn.execute(
                             """UPDATE resource_types SET name=?,category=?,unit=?,revision=revision+1,
@@ -1063,6 +1093,8 @@ class AirportRepository:
         if len(keys) != len(set(keys)):
             raise CatalogConflictError("bulk requirement import contains duplicate key")
         with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._validate_requirement_resources(conn, items, prefix="items")
             old_keys = {tuple(r) for r in conn.execute(
                 "SELECT aircraft_type_id,resource_type_id,basis FROM aircraft_resource_requirements"
             ).fetchall()}

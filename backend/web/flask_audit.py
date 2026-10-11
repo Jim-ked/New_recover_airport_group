@@ -17,6 +17,8 @@ def derive_resource_target(path: str) -> Tuple[Optional[str], Optional[str]]:
         return None, None
     resource_type = parts[1]
     resource_id = None
+    if parts[:3] == ['api', 'results', 'comparison-records']:
+        return 'results', parts[3] if len(parts) > 3 else None
     # Collection/action endpoints do not invent object identity.  A concrete second
     # segment after the collection is treated as an ID unless it is a known collection
     # action word.
@@ -83,6 +85,8 @@ def install_audit_hook(
                 principal = None
             rule = request.url_rule.rule if request.url_rule is not None else request.path
             resource_type, resource_id = derive_resource_target(request.path)
+            if request.method == 'POST' and request.path == '/api/results/comparison-records' and status < 400:
+                resource_type, resource_id = 'results', getattr(g, 'comparison_audit_resource_id', None)
             outcome = "success" if status < 400 else ("denied" if status in {401, 403} else "error")
             repository.append(
                 actor_user_id=(principal.user_id if isinstance(principal, Principal) else None),

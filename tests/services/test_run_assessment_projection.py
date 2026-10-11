@@ -9,6 +9,12 @@ from backend.services.run_assessment_projection import (
 
 
 class RunAssessmentProjectionTests(unittest.TestCase):
+    def test_duplicate_or_unordered_windows_are_rejected_without_losing_points(self):
+        for windows in ([1, 1], [2, 1], [-1, 1]):
+            with self.subTest(windows=windows), self.assertRaises(RunAssessmentProjectionError):
+                derive_capacity_observation(airport_id="AP1", baseline_capacity=10,
+                                            windows=windows, capacity={"available": [10, 10], "used_total": [0, 0]})
+
     def test_capacity_observation_uses_sum_over_valid_denominators(self) -> None:
         observation = derive_capacity_observation(
             airport_id="AP1",

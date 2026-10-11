@@ -1,9 +1,11 @@
 import { apiFetch, apiDownload, saveBlob } from './api-client.js';
 import { getAccount } from './account-context.js';
 import { formatDecimal } from './number-display.js';
+import { formatRunIdentity, shortRunId, repeatedRunIds, runIdentityMarkup } from '../utils/run-identity.js';
 
 const $ = (id) => document.getElementById(id);
 const MODES = ['damage', 'multi', 'configuration'];
+function isComparisonWorkspace(workspace) { return MODES.includes(workspace); }
 const colors = ['#55a8ed', '#ef9a3c', '#70bd61', '#a887d5', '#d7bd55', '#55c7bf'];
 const modeLabels = { damage: '损毁与组群', multi: '多损毁', configuration: '方案配置' };
 const configLabels = {
@@ -17,18 +19,20 @@ function createDraft() {
 function createWorkspaceState() {
   return {
     payload: null, selection: null, draft: createDraft(), activeDamageStage: 'damage',
+    comparisonLoading: false, comparisonGeneration: 0,
     seriesKind: 'departures', observation: 'trend', analysisTheme: 'tasks', windowStart: 0,
   };
 }
 const state = {
   workspace: 'damage', runs: [], runById: new Map(), damageCandidates: [], canExport: false,
+  canSaveComparison: false, pendingSaves: new Set(), saveGeneration: 0,
   status: 'loading', error: null,
   workspaceStates: {
     damage: createWorkspaceState(),
     multi: createWorkspaceState(),
     configuration: createWorkspaceState(),
   },
-  assessment: { status: 'idle', overview: null, curves: null, comparisons: null, evaluations: null, airportId: null, runId: null, error: null },
+  assessment: { status: 'idle', overview: null, curves: null, comparisons: null, evaluations: null, airportId: null, runId: null, curveRunId: null, error: null },
 };
 const refs = {
   page: $('resultsPage'), conditionTitle: $('conditionTitle'), conditionFacts: $('conditionFacts'),
@@ -42,18 +46,19 @@ const refs = {
   overlay: $('resultsOverlay'), overlayBody: $('resultsOverlayBody'), search: $('resultsRunSearch'),
   apply: $('applyResultsComparison'), error: $('resultsError'),
   exportWrap: $('resultsExport'), exportButton: $('resultsExportButton'), exportMenu: $('resultsExportMenu'),
+  saveComparison: $('saveComparisonButton'), saveStatus: $('comparisonSaveStatus'),
   comparisonCondition: $('comparisonCondition'), primary: $('resultsPrimary'), analysis: $('resultsAnalysis'),
   assessmentWorkbench: $('assessmentWorkbench'), assessmentError: $('assessmentError'),
   assessmentRefresh: $('assessmentRefreshButton'), assessmentHeatmap: $('assessmentHeatmap'),
   assessmentCurves: $('assessmentCurves'), assessmentCurveLegend: $('assessmentCurveLegend'),
   assessmentAirportSelect: $('assessmentAirportSelect'), assessmentRiskTable: $('assessmentRiskTable'),
+  assessmentCurveRunSelect: $('assessmentCurveRunSelect'),
   assessmentComparisons: $('assessmentComparisons'), assessmentRunSelect: $('assessmentRunSelect'),
   assessmentIndicatorTable: $('assessmentIndicatorTable'), assessmentComposite: $('assessmentComposite'),
 };
 
 function view() { return state.workspaceStates[state.workspace]; }
 function esc(value) { const node = document.createElement('span'); node.textContent = String(value ?? ''); return node.innerHTML; }
-function shortRunId(value) { const text = String(value || ''); return text.length > 14 ? `${text.substring(0, 6)}…${text.substring(text.length - 5)}` : text; }
 function shortHash(value) { const text = String(value || ''); return text.length > 12 ? `${text.substring(0, 12)}…` : text || '未记录'; }
 function number(value, digits = 2) { return Number(value).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits }); }
 function displayValue(value, { formatter = null, comparable = true, notApplicable = false } = {}) {
@@ -114,38 +119,44 @@ function solverStatusSummary(technical) {
   const gapDetail = gap === null || gap === undefined || !Number.isFinite(Number(gap)) ? '' : `；Gap ${number(Number(gap) * 100, 2)}%`;
   return { text: '可行解，未证最优', detail: `求解终止状态：${label}${gapDetail}。页面展示已取得的可行值。` };
 }
-function runIdentity(runId) {
-  const run = state.runById.get(runId) || {};
-  const shortId = shortRunId(runId);
-  const damageName = run.damage_scenario?.name || (run.run_config?.damage_scenario_id ? run.run_config.damage_scenario_id : '无损毁');
+function runIdentity(runId, { candidate = false } = {}) {
+  const run = state.runById.get(runId) || { run_id: runId };
+  const saved = view().payload?.run_identities?.[runId];
+  const identity = formatRunIdentity(saved ? { ...run, display_identity: saved } : run, { multi: state.workspace === 'multi' });
   const ids = view().payload?.run_ids || Object.values(view().payload?.roles || {});
-  const index = Math.max(0, ids.indexOf(runId));
-  if (state.workspace === 'multi') {
-    const primary = `D${index}`;
-    return { primary, chips: [`${primary} ${damageName}`], secondary: shortId, context: damageName };
+  const index = ids.indexOf(runId);
+  let role = '';
+  if (!candidate && index >= 0) {
+    if (state.workspace === 'multi') role = `D${index}`;
+    else if (state.workspace === 'damage') role = Object.entries(view().payload?.roles || {}).find(([, id]) => id === runId)?.[0] || '';
+    else if (state.workspace === 'configuration') role = runId === view().payload?.baseline_run_id ? '基准方案' : '对照方案';
   }
-  if (state.workspace === 'configuration') {
-    const config = run.run_config || {};
-    const cluster = config.cluster_enabled ? `组群${config.cluster_size ? config.cluster_size : ''}` : '未组群';
-    const baselineId = view().payload?.baseline_run_id || view().selection?.baseline_run_id;
-    const alternatives = ids.filter((id) => id !== baselineId);
-    const alternativeIndex = Math.max(0, alternatives.indexOf(runId));
-    const primary = runId === baselineId ? '基准方案' : `方案${alternativeIndex + 2}`;
-    return { primary, chips: [primary, cluster], secondary: shortId, context: cluster };
-  }
-  if (state.workspace === 'damage') {
-    const role = Object.entries(view().payload?.roles || {}).find((entry) => entry[1] === runId)?.[0];
-    const cluster = run.run_config?.cluster_enabled ? '组群' : '未组群';
-    const primary = role || shortId;
-    return { primary, chips: [primary, damageName, cluster], secondary: shortId, context: `${damageName} · ${cluster}` };
-  }
-  const situation = run.situation?.name || run.situation_name || run.situation?.situation_id || '';
-  return { primary: shortId, chips: [shortId], secondary: situation, context: situation };
+  const title = state.workspace === 'multi' && identity.title === '无损毁' ? '基准场景' : identity.title;
+  return { ...identity, title, role };
 }
-function selectionLabel(runId) {
-  const identity = runIdentity(runId);
-  return [identity.primary, identity.context].filter(Boolean).join(' · ');
+function selectionLabel(runId, options = {}) {
+  const identity = runIdentity(runId, options);
+  if (state.workspace === 'multi' && !options.candidate) {
+    return [identity.role, identity.title, identity.short_id].filter(Boolean).join(' · ');
+  }
+  const baselineSubtitle = state.workspace === 'multi' && identity.title === '基准场景' ? '无损毁' : '';
+  return [identity.role, identity.title, baselineSubtitle, identity.subtitle, identity.short_id].filter(Boolean).join(' · ');
 }
+function identityHtml(runId, options = {}) {
+  const identity = runIdentity(runId, options);
+  if (state.workspace === 'multi' && !options.candidate) {
+    const baselineSubtitle = identity.title === '基准场景' ? '无损毁' : '';
+    const configSummary = identity.subtitle.split(' · ').slice(0, -1).join(' · ');
+    const subtitle = options.scope === 'overview' ? baselineSubtitle
+      : options.scope === 'focus' ? [baselineSubtitle, identity.short_id].filter(Boolean).join(' · ')
+      : [baselineSubtitle, configSummary].filter(Boolean).join(' · ');
+    return `<span class="identity-chip primary">${esc(identity.role)}</span><span class="run-label multi-label" title="${esc(identity.detail)}"><b>${esc(identity.title)}</b>${subtitle ? `<small>${esc(subtitle)}</small>` : ''}</span>`;
+  }
+  const candidateIdentity = state.workspace === 'multi' && identity.title === '基准场景'
+    ? { ...identity, subtitle: `无损毁 · ${identity.subtitle}` } : identity;
+  return `${identity.role ? `<span class="identity-chip primary">${esc(identity.role)}</span>` : ''}${runIdentityMarkup(candidateIdentity, esc)}`;
+}
+function damageKey(runId) { return state.runById.get(runId)?.run_config?.damage_scenario_id ?? null; }
 
 const ASSESSMENT_SCENARIO_LABELS = {
   low: '低强度', medium: '中强度', high: '高强度', extreme: '极重',
@@ -169,25 +180,37 @@ function assessmentCellValue(cell) {
   }
   return cell?.support_index == null ? null : Number(cell.support_index);
 }
+function compactAssessmentRun(label, runId) {
+  const parts = String(label || '').split(' · ');
+  return { primary: parts.length >= 4 ? parts[1] : parts[0] || '场景未记录',
+    context: parts.length >= 4 ? parts.slice(2).join(' · ') : '',
+    secondary: shortRunId(runId), title: `${label || '场景未记录'} · ${runId || '来源未记录'}` };
+}
 function renderAssessmentHeatmap() {
   const overview = state.assessment.overview;
-  if (!overview?.airport_ids?.length || !overview?.scenario_types?.length) {
+  const scenarios = overview?.scenario_keys ?? overview?.scenario_types ?? [];
+  const matrix = overview?.run_cells ?? overview?.cells;
+  const label = (key) => overview?.scenario_labels?.[key] ?? assessmentScenarioLabel(key);
+  if (!overview?.airport_ids?.length || !scenarios.length) {
     refs.assessmentHeatmap.innerHTML = '<div class="results-placeholder">暂无评估落库结果</div>'; return;
   }
-  const scenarios = overview.scenario_types;
-  const header = scenarios.map((scenario) => `<th>${esc(assessmentScenarioLabel(scenario))}</th>`).join('');
+  const header = scenarios.map((scenario) => {
+    const compact = compactAssessmentRun(label(scenario), scenario);
+    const current = scenario === state.assessment.runId;
+    return `<th data-run-id="${esc(scenario)}"${current ? ' aria-current="true"' : ''} title="${esc(compact.title)}"><span class="assessment-run-label">${esc(compact.primary)}</span><small>${esc(compact.secondary)}${current ? ' · 当前评价' : ''}</small></th>`;
+  }).join('');
   const rows = overview.airport_ids.map((airportId) => {
     const cells = scenarios.map((scenario) => {
-      const cell = overview.cells?.[airportId]?.[scenario];
+      const cell = matrix?.[airportId]?.[scenario];
       if (!cell) return '<td class="assessment-heat-cell assessment-heat-empty" title="暂无评估">—</td>';
       const value = assessmentCellValue(cell);
       const isCapacity = cell.metric_kind === 'capacity_availability_v1';
       const display = value == null || !Number.isFinite(value) ? '未记录' : (isCapacity ? `${number(value * 100, 1)}%` : formatDecimal(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       const coverage = isCapacity ? ` · 有效窗 ${cell.effective_windows ?? '未记录'} · 不可用窗 ${cell.unavailable_windows ?? '未记录'}` : '';
       const title = isCapacity
-        ? `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 运行期容量占用率 ${display}${coverage} · 来源 ${cell.source_run_id || '未记录'}`
-        : `${assessmentAirportName(airportId)} · ${assessmentScenarioLabel(scenario)} · 支撑度 ${display} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
-      return `<td class="assessment-heat-cell" style="background:${assessmentHeatColor(value ?? 0)}" title="${esc(title)}">${esc(display)}</td>`;
+        ? `${assessmentAirportName(airportId)} · ${label(scenario)} · 运行期容量占用率 ${display}${coverage} · 来源 ${cell.source_run_id || '未记录'} · Snapshot ${cell.snapshot_hash || '未记录'} · Metrics ${cell.metrics_hash || '未记录'}`
+        : `${assessmentAirportName(airportId)} · ${label(scenario)} · 支撑度 ${display} · 衰减率 ${number(cell.decline_rate * 100, 1)}%`;
+      return `<td class="assessment-heat-cell${scenario === state.assessment.runId ? ' assessment-heat-current' : ''}" style="background:${assessmentHeatColor(value ?? 0)}" title="${esc(title)}">${esc(display)}</td>`;
     }).join('');
     return `<tr><th title="${esc(airportId)}">${esc(assessmentAirportName(airportId))}</th>${cells}</tr>`;
   }).join('');
@@ -196,25 +219,53 @@ function renderAssessmentHeatmap() {
 function renderAssessmentCurves() {
   const airportIds = state.assessment.overview?.airport_ids || [];
   refs.assessmentAirportSelect.innerHTML = airportIds.map((id) => `<option value="${esc(id)}" ${id === state.assessment.airportId ? 'selected' : ''}>${esc(assessmentAirportName(id))}</option>`).join('');
-  const series = state.assessment.curves?.series || [];
-  if (!series.length) {
+  const allSeries = state.assessment.curves?.series || [];
+  const chosen = state.assessment.curveRunId || state.assessment.runId;
+  const series = allSeries.filter(row => row.source_run_id === chosen);
+  refs.assessmentCurveRunSelect.innerHTML = '<option value="">跟随综合评价 Run</option>' + allSeries.map(row => {
+    const compact = compactAssessmentRun(row.scenario_label, row.source_run_id);
+    return `<option value="${esc(row.source_run_id)}" title="${esc(compact.title)}">${esc([compact.primary, compact.context, compact.secondary].filter(Boolean).join(' · '))}</option>`;
+  }).join('');
+  refs.assessmentCurveRunSelect.value = state.assessment.curveRunId || '';
+  refs.assessmentCurveRunSelect.disabled = !allSeries.length;
+  refs.assessmentCurveRunSelect.title = series[0] ? compactAssessmentRun(series[0].scenario_label, chosen).title : chosen || '来源未记录';
+  if (!allSeries.length) {
     refs.assessmentCurves.innerHTML = '<div class="results-placeholder">当前机场暂无评估曲线</div>';
     refs.assessmentCurveLegend.innerHTML = ''; return;
   }
+  if (!series.length) {
+    refs.assessmentCurves.innerHTML = '<div class="results-placeholder">所选 Run 暂无当前机场的容量曲线，请选择其他 Run</div>';
+    refs.assessmentCurveLegend.innerHTML = ''; return;
+  }
   const allSteps = series.flatMap((row) => row.steps || []).map(Number).filter(Number.isFinite);
+  if (!allSteps.length) {
+    refs.assessmentCurves.innerHTML = '<div class="results-placeholder">所选 Run 暂无正式时间窗</div>';
+    refs.assessmentCurveLegend.innerHTML = ''; return;
+  }
   const minStep = Math.min(...allSteps); const maxStep = Math.max(...allSteps); const stepSpan = Math.max(1, maxStep - minStep);
-  const width = 760; const height = 230; const pad = { left: 42, right: 18, top: 16, bottom: 28 };
+  const width = 760; const height = 300; const pad = { left: 46, right: 22, top: 30, bottom: 44 };
   const x = (value) => pad.left + (Number(value) - minStep) / stepSpan * (width - pad.left - pad.right);
   const y = (value) => height - pad.bottom - Math.max(0, Math.min(1, Number(value))) * (height - pad.top - pad.bottom);
   const grid = [0, .5, 1].map((value) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y(value)}" y2="${y(value)}" stroke="#29495d"/><text x="${pad.left - 7}" y="${y(value) + 3}" text-anchor="end" fill="#7894a6" font-size="10">${value.toFixed(1)}</text>`).join('');
   const lines = series.map((row, index) => {
     const values = row.values || row.support || [];
-    const points = row.steps.map((step, pointIndex) => `${x(step)},${y(values[pointIndex])}`).join(' ');
-    return `<polyline points="${points}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`;
+    const segments = [[]];
+    (row.steps || []).forEach((step, pointIndex) => {
+      const value = values[pointIndex];
+      if (value == null || !Number.isFinite(Number(value)) || !Number.isFinite(Number(step))) { segments.push([]); return; }
+      segments.at(-1).push(`${x(step)},${y(value)}`);
+    });
+    return segments.filter(points => points.length).map(points => `<polyline points="${points.join(' ')}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4" vector-effect="non-scaling-stroke"/>`).join('');
   }).join('');
   const metricLabel = series[0]?.metric_label || (series[0]?.metric_kind === 'capacity_availability_v1' ? '起降容量可用比例' : '评估指标');
-  refs.assessmentCurves.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(metricLabel)}逐窗曲线">${grid}<path d="M${pad.left} ${height - pad.bottom}H${width - pad.right}M${pad.left} ${pad.top}V${height - pad.bottom}" stroke="#48687b"/>${lines}</svg>`;
-  refs.assessmentCurveLegend.innerHTML = series.map((row, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${esc(assessmentScenarioLabel(row.scenario_type))}</span>`).join('');
+  const steps = [...new Set(allSteps)].sort((a, b) => a - b);
+  const ticks = [...new Set(Array.from({ length: Math.min(8, steps.length) }, (_, i) => steps[Math.round(i * (steps.length - 1) / Math.max(1, Math.min(8, steps.length) - 1))]))];
+  const axis = ticks.map(step => `<text x="${x(step)}" y="${height - pad.bottom + 18}" text-anchor="middle" fill="#9fb7c6" font-size="11">T${esc(step)}</text>`).join('');
+  refs.assessmentCurves.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(metricLabel)}逐窗曲线"><text x="${pad.left}" y="16" fill="#9fb7c6" font-size="11">${esc(metricLabel)}</text>${grid}<path d="M${pad.left} ${height - pad.bottom}H${width - pad.right}M${pad.left} ${pad.top}V${height - pad.bottom}" stroke="#48687b"/>${axis}<text x="${width - pad.right}" y="${height - 4}" text-anchor="end" fill="#9fb7c6" font-size="10">时间窗</text>${lines}</svg>`;
+  refs.assessmentCurveLegend.innerHTML = series.map((row, index) => {
+    const compact = compactAssessmentRun(row.scenario_label || assessmentScenarioLabel(row.scenario_type), row.source_run_id);
+    return `<span title="${esc(compact.title)}"><i style="background:${colors[index % colors.length]}"></i>${esc([compact.primary, compact.context, compact.secondary].filter(Boolean).join(' · '))}</span>`;
+  }).join('');
 }
 function currentAssessmentEvaluation() {
   const items = Array.isArray(state.assessment.evaluations?.items) ? state.assessment.evaluations.items : [];
@@ -282,11 +333,52 @@ function renderAssessmentRisk() {
   const rows = risks.map((risk) => `<tr><td title="${esc(risk.airport_id)}">${esc(assessmentAirportName(risk.airport_id))}</td><td><span class="assessment-risk-badge" data-risk-level="${esc(risk.risk_level)}">${esc(ASSESSMENT_RISK_LABELS[risk.risk_level] || risk.risk_level)}</span></td><td>${esc(number(Number(risk.risk_score) * 100, 1))}%</td><td>${esc(risk.updated_at || '—')}</td></tr>`).join('');
   refs.assessmentRiskTable.innerHTML = `<table><thead><tr><th>机场</th><th>风险等级</th><th>评分</th><th>更新时间</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
+const recordModeLabels = { damage_effect: '损毁影响', cluster_effect: '组群调整', multi_scenario: '多损毁', configuration: '方案配置' };
+const recordStatusLabels = { current: '来源有效', stale: '来源已过期', unavailable: '来源不可用' };
+function savedRecordTime(value) {
+  if (!value) return '时间未记录';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+function savedEvidence(value) {
+  if (value == null || typeof value !== 'object') return `<span>${esc(value == null ? '未记录' : String(value))}</span>`;
+  const entries = Object.entries(value);
+  if (!entries.length) return `<span>${Array.isArray(value) ? '[]' : '{}'}</span>`;
+  return `<dl class="comparison-evidence">${entries.map(([key, fact]) => `<dt>${esc(key)}</dt><dd>${savedEvidence(fact)}</dd>`).join('')}</dl>`;
+}
+function comparisonRecordDetails(item) {
+  const envelope = item.result_json;
+  if (!envelope || typeof envelope !== 'object' || envelope.schema_version !== 'comparison-record.v1') return '<p>保存事实不可读取</p>';
+  const focus = envelope.focus_comparison || {};
+  const valueLabels = { required_sorties_total: '任务需求', fulfilled_sorties_total: '已履行', unmet_sorties_total: '任务缺口', additional_sorties_total: '额外出动', scheduled_sorties_total: '总出动', completion_ratio: '履行率' };
+  const values = Object.entries(focus.values || {}).map(([key, value]) => `<tr><th>${esc(valueLabels[key] || key)}</th><td>${esc(displayValue(value.baseline))}</td><td>${esc(displayValue(value.current))}</td><td>${esc(displayValue(value.delta))}</td></tr>`).join('');
+  const components = Object.entries(focus.objective_components || {}).map(([key, value]) => `<tr><th>${esc(key)}</th><td>${esc(displayValue(value.baseline))}</td><td>${esc(displayValue(value.current))}</td><td>${esc(value.definition_comparable === false ? '不可直接比较' : displayValue(value.delta))}</td></tr>`).join('');
+  const notes = Object.entries(focus.objective_components || {}).filter(([, value]) => value.definition_comparable === false || !value.recorded || value.reasons?.length)
+    .map(([key, value]) => `<li>${esc(key)}：${esc((value.reasons || []).join('；') || (value.recorded ? '不可直接比较' : '未记录'))}</li>`).join('');
+  const provenance = Object.fromEntries(['base_run_id','compared_run_id','base_snapshot_hash','base_metrics_hash','compared_snapshot_hash','compared_metrics_hash','comparison_version'].map(key => [key, item[key]]));
+  const basic = [['记录', item.id], ['比较类型', recordModeLabels[item.comparison_mode] || item.comparison_mode],
+    ['基准 Run', item.base_run_id], ['对照 Run', item.compared_run_id], ['作者', item.created_by_user_id],
+    ['保存时间（北京时间）', savedRecordTime(item.created_at)], ['来源状态', `${recordStatusLabels[item.provenance_status] || '来源不可用'} (${item.provenance_status})`]];
+  return `<div class="comparison-record-detail-body"><h4>基本信息</h4><dl class="comparison-record-basics">${basic.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value || '未记录')}</dd>`).join('')}</dl><h4>核心结果 · 保存事实</h4><table><thead><tr><th>指标</th><th>基准</th><th>对照</th><th>差值</th></tr></thead><tbody>${values}${components}</tbody></table>${notes ? `<h4>不可比／缺失说明</h4><ul>${notes}</ul>` : ''}<p class="comparison-record-conclusion">${esc(item.conclusion || '')}${item.conclusion ? '<br>' : ''}${esc((focus.conclusions || []).join('；'))}</p><details class="comparison-record-evidence"><summary>保存的 pair 与结构事实</summary>${savedEvidence({pair_facts: envelope.pair_facts, structural_changes: focus.structural_changes, timeline: focus.timeline, assurance: focus.assurance})}</details><details class="comparison-record-evidence"><summary>provenance / eligibility · 来源与资格证据</summary>${savedEvidence({provenance, provenance_status: item.provenance_status, reasons: item.provenance_reasons, eligibility: envelope.eligibility_evidence})}</details></div>`;
+}
+function savedRunIdentity(item, id) {
+  const saved = item.result_json?.labels?.runs?.[id];
+  if (saved?.display_identity) return runIdentityMarkup(formatRunIdentity(saved, { multi: item.comparison_mode === 'multi_scenario' }), esc);
+  return `<span class="run-label" title="${esc(id || '')}"><b>${esc(saved?.label || (id ? '历史 Run' : '无权查看'))}</b><small>${esc(shortRunId(id) || '无权查看')}</small></span>`;
+}
 function renderAssessmentComparisons() {
   const items = state.assessment.comparisons?.items || [];
-  if (!items.length) { refs.assessmentComparisons.innerHTML = '<div class="results-placeholder">暂无跨场景评估对比记录</div>'; return; }
-  const rows = items.map((item) => `<tr><td>${esc(assessmentComparisonLabel(item.base_airport_id, item.base_scenario_type))}</td><td>${esc(assessmentComparisonLabel(item.compared_airport_id, item.compared_scenario_type))}</td><td title="${esc(item.log || '')}">${esc(item.conclusion || '—')}</td><td>${esc(item.created_at || '—')}</td></tr>`).join('');
-  refs.assessmentComparisons.innerHTML = `<table><thead><tr><th>基准</th><th>对照</th><th>记录结论</th><th>时间</th></tr></thead><tbody>${rows}</tbody></table>`;
+  if (!items.length) { refs.assessmentComparisons.innerHTML = '<div class="results-placeholder">暂无结果比较记录，可在结果分析中保存当前重点对照</div>'; return; }
+  refs.assessmentComparisons.innerHTML = items.map(item => {
+    const meta = `<div class="comparison-record-meta"><b>${esc(recordModeLabels[item.comparison_mode] || item.comparison_mode)}</b><span class="comparison-record-pair">${savedRunIdentity(item, item.base_run_id)} → ${savedRunIdentity(item, item.compared_run_id)}</span><span data-provenance-status="${esc(item.provenance_status)}" title="${esc((item.provenance_reasons || []).join('；'))}">${esc(recordStatusLabels[item.provenance_status] || '来源不可用')} (${esc(item.provenance_status)})</span><span>${esc(item.created_by_user_id)}</span><time title="${esc(item.created_at)} · 北京时间">${esc(savedRecordTime(item.created_at))}</time></div>`;
+    const summary = `<span class="comparison-record-summary" title="${esc(item.conclusion || '')}">${esc(item.conclusion || '无权查看保存事实')}</span>`;
+    return item.result_json
+      ? `<details class="comparison-record-details"><summary>${meta}<div class="comparison-record-preview">${summary}<span class="comparison-record-toggle">查看保存事实</span></div></summary>${comparisonRecordDetails(item)}</details>`
+      : `<article class="comparison-record-details">${meta}${summary}</article>`;
+  }).join('');
 }
 function renderAssessmentWorkspace() {
   const active = state.workspace === 'assessment';
@@ -373,7 +465,9 @@ function restoreSessionState() {
 async function loadComparable(baseRunId, mode) {
   const query = new URLSearchParams({ base_run_id: baseRunId, mode });
   const response = await apiFetch(`/api/results/comparable-runs?${query.toString()}`);
-  return response.items || [];
+  const items = response.items || [];
+  for (const run of items) state.runById.set(run.run_id, { ...state.runById.get(run.run_id), ...run });
+  return items;
 }
 async function discoverCandidates(mode) {
   const apiMode = mode === 'multi' ? 'multi_scenario' : 'configuration';
@@ -392,13 +486,32 @@ async function requestComparison(mode, selection) {
   };
   return apiFetch(mode === 'multi' ? '/api/results/scenario-comparison' : '/api/results/config-comparison', { method: 'POST', body });
 }
+async function loadComparison(mode, selection) {
+  const item = state.workspaceStates[mode];
+  const generation = ++item.comparisonGeneration;
+  item.selection = structuredClone(selection); item.payload = null; item.comparisonLoading = true;
+  renderSaveComparison();
+  try {
+    const payload = await requestComparison(mode, structuredClone(selection));
+    if (generation !== item.comparisonGeneration) return false;
+    item.payload = payload; item.windowStart = 0;
+    return true;
+  } catch (error) {
+    if (generation !== item.comparisonGeneration) return false;
+    throw error;
+  } finally {
+    if (generation === item.comparisonGeneration) item.comparisonLoading = false;
+    renderSaveComparison();
+  }
+}
 async function restoreComparison(mode) {
   const item = state.workspaceStates[mode];
   if (!item.selection) return false;
-  try { item.payload = await requestComparison(mode, item.selection); return true; }
+  try { return await loadComparison(mode, item.selection); }
   catch (_) { item.payload = null; item.selection = null; return false; }
 }
 async function applyDefault(mode) {
+  if (!isComparisonWorkspace(mode)) return;
   const item = state.workspaceStates[mode];
   if (item.payload || item.selection) return;
   if (mode === 'damage') {
@@ -406,16 +519,20 @@ async function applyDefault(mode) {
     const row = state.damageCandidates[0];
     item.selection = { r0_run_id: row.r0_run_id, r1_run_id: row.r1_run_id, r2_run_id: row.r2_run_id };
   } else {
-    const candidate = await discoverCandidates(mode); if (!candidate) return;
+    const candidate = await discoverCandidates(mode); if (!candidate || item.selection) return;
     const max = mode === 'multi' ? 6 : 5;
     const runIds = [candidate.baseRunId, ...candidate.items.map((row) => row.run_id)];
-    const unique = [...new Set(runIds)]; while (unique.length > max) unique.pop();
+    const schemes = new Set();
+    const unique = [...new Set(runIds)].filter(id => {
+      if (mode !== 'multi') return true;
+      const key = damageKey(id); if (schemes.has(key)) return false; schemes.add(key); return true;
+    }).slice(0, max);
     item.selection = {
       run_ids: unique, baseline_run_id: candidate.baseRunId,
       comparison_run_id: unique.find((id) => id !== candidate.baseRunId),
     };
   }
-  item.payload = await requestComparison(mode, item.selection);
+  await loadComparison(mode, item.selection);
 }
 async function loadInitial() {
   refs.page.setAttribute('aria-busy', 'true');
@@ -424,7 +541,7 @@ async function loadInitial() {
     state.runs = result.items || []; state.runById = new Map(state.runs.map((run) => [run.run_id, run]));
     state.damageCandidates = (await apiFetch('/api/results/damage-candidates')).items || [];
     await Promise.all(MODES.map((mode) => restoreComparison(mode)));
-    await applyDefault(state.workspace);
+    if (isComparisonWorkspace(state.workspace)) await applyDefault(state.workspace);
     state.status = 'ready'; state.error = null;
   } catch (error) { console.error(error); state.status = 'error'; state.error = error; }
   refs.page.setAttribute('aria-busy', 'false'); render();
@@ -445,15 +562,15 @@ function renderCondition() {
   }
   const ids = payload.run_ids || Object.values(payload.roles || {});
   refs.conditionFacts.innerHTML = ids.map((id) => {
-    const identity = runIdentity(id);
-    const chips = identity.chips.map((chip, index) => `<span class="identity-chip${index === 0 ? ' primary' : ''}">${esc(chip)}</span>`).join('');
-    return `<a class="run-identity" href="/runs/${encodeURIComponent(id)}" title="${esc(id)}">${chips}<small>${esc(identity.secondary)}</small></a>`;
+    return `<a class="run-identity" href="/runs/${encodeURIComponent(id)}" title="${esc(runIdentity(id).detail)}">${identityHtml(id)}</a>`;
   }).join('<i class="identity-separator" aria-hidden="true"></i>');
   refs.focusControls.classList.toggle('hidden', state.workspace === 'damage');
   if (state.workspace !== 'damage') {
-    const options = ids.map((id) => `<option value="${esc(id)}" title="${esc(id)}">${esc(selectionLabel(id))}</option>`).join('');
+    const options = ids.map((id) => `<option value="${esc(id)}" title="${esc(runIdentity(id).detail)}">${esc(selectionLabel(id))}</option>`).join('');
     refs.focusBaseline.innerHTML = options; refs.focusComparison.innerHTML = options;
     refs.focusBaseline.value = payload.baseline_run_id; refs.focusComparison.value = payload.comparison_run_id;
+    $('focusBaselineIdentity').innerHTML = identityHtml(payload.baseline_run_id, { scope: 'focus' });
+    $('focusComparisonIdentity').innerHTML = identityHtml(payload.comparison_run_id, { scope: 'focus' });
     refs.focusBaseline.title = `${selectionLabel(payload.baseline_run_id)} · ${payload.baseline_run_id}`;
     refs.focusComparison.title = `${selectionLabel(payload.comparison_run_id)} · ${payload.comparison_run_id}`;
   }
@@ -475,7 +592,7 @@ function renderMultiOverview() {
   const payload = view().payload || {}; const solver = payload.solver_comparison?.by_run || {};
   const rows = (payload.run_ids || []).map((id) => {
     const summary = payload.run_summaries?.[id] || {}; const technical = solver[id] || {};
-    return `<article title="${esc(id)}"><strong>${esc(selectionLabel(id))}</strong><span><i>履行 <b>${displayValue(summary.fulfilled_sorties_total)}</b></i><i>缺口 <b>${displayValue(summary.unmet_sorties_total)}</b></i><i>出动 <b>${displayValue(summary.scheduled_sorties_total)}</b></i><i>J <b>${displayValue(technical.objective, { formatter: (v) => number(v, 4) })}</b></i></span></article>`;
+    return `<article title="${esc(runIdentity(id).detail)}"><div class="run-identity">${identityHtml(id, { scope: 'overview' })}</div><span><i>实际履行 <b>${displayValue(summary.fulfilled_sorties_total)}</b></i><i>任务缺口 <b>${displayValue(summary.unmet_sorties_total)}</b></i><i>出动 <b>${displayValue(summary.scheduled_sorties_total)}</b></i><i class="multi-objective">J <b>${displayValue(technical.objective, { formatter: (v) => number(v, 4) })}</b></i></span></article>`;
   }).join('');
   refs.multiOverview.innerHTML = `<div class="multi-overview-grid">${rows}</div>`;
 }
@@ -623,6 +740,7 @@ function renderConclusions() {
 function render() {
   document.querySelectorAll('[data-workspace]').forEach((button) => button.classList.toggle('active', button.dataset.workspace === state.workspace));
   renderAssessmentWorkspace();
+  renderSaveComparison();
   if (state.workspace === 'assessment') return;
   document.querySelectorAll('[data-series-kind]').forEach((button) => button.classList.toggle('active', button.dataset.seriesKind === view().seriesKind));
   document.querySelectorAll('[data-observation]').forEach((button) => button.classList.toggle('active', button.dataset.observation === view().observation));
@@ -648,19 +766,26 @@ function renderOverlay() {
   const item = view(); const query = item.draft.search;
   if (state.workspace === 'damage') {
     const rows = state.damageCandidates.map((row, index) => ({ row, index })).filter(({ row }) => [row.r0_run_id, row.r1_run_id, row.r2_run_id].some((id) => runMatches(state.runById.get(id) || { run_id: id }, query)));
-    refs.overlayBody.innerHTML = `<p class="overlay-title">${overlayModeName()}</p><div class="candidate-list">${rows.map(({ row, index }) => `<label class="candidate-row"><input type="radio" name="damageTriple" value="${index}" ${item.draft.damageIndex === index ? 'checked' : ''}><span><b>R0 ${esc(shortRunId(row.r0_run_id))} → R1 ${esc(shortRunId(row.r1_run_id))} → R2 ${esc(shortRunId(row.r2_run_id))}</b><small>损毁影响与组群调整均保留</small></span></label>`).join('') || '<p>没有符合条件的组合。</p>'}</div>`;
+    refs.overlayBody.innerHTML = `<p class="overlay-title">${overlayModeName()}</p><div class="candidate-list">${rows.map(({ row, index }) => `<label class="candidate-row"><input type="radio" name="damageTriple" value="${index}" ${item.draft.damageIndex === index ? 'checked' : ''}><span><b>R0</b>${identityHtml(row.r0_run_id, { candidate: true })}<b>R1</b>${identityHtml(row.r1_run_id, { candidate: true })}<b>R2</b>${identityHtml(row.r2_run_id, { candidate: true })}<small>损毁影响与组群调整均保留</small></span></label>`).join('') || '<p>没有符合条件的组合。</p>'}</div>`;
     refs.overlayBody.querySelectorAll('[name="damageTriple"]').forEach((radio) => radio.addEventListener('change', () => { item.draft.damageIndex = Number(radio.value); renderOverlay(); }));
     refs.apply.disabled = item.draft.damageIndex < 0 || item.draft.damageIndex === null; return;
   }
-  const baseOptions = state.runs.filter((run) => runMatches(run, query)).map((run) => `<option value="${esc(run.run_id)}" title="${esc(run.run_id)}" ${item.draft.baseRunId === run.run_id ? 'selected' : ''}>${esc(selectionLabel(run.run_id))}</option>`).join('');
+  const baseOptions = state.runs.filter((run) => runMatches(run, query)).map((run) => `<option value="${esc(run.run_id)}" title="${esc(runIdentity(run.run_id, { candidate: true }).detail)}" ${item.draft.baseRunId === run.run_id ? 'selected' : ''}>${esc(selectionLabel(run.run_id, { candidate: true }))}</option>`).join('');
   const candidates = [state.runById.get(item.draft.baseRunId), ...item.draft.comparableRuns].filter(Boolean).filter((run, index, array) => array.findIndex((other) => other.run_id === run.run_id) === index).filter((run) => runMatches(run, query));
-  refs.overlayBody.innerHTML = `<label class="overlay-title">参照Run<select id="comparisonBaseRun" class="control"><option value="">请选择</option>${baseOptions}</select></label><p class="overlay-title">${overlayModeName()}</p><div class="candidate-list">${candidates.map((run) => `<label class="candidate-row" title="${esc(run.run_id)}"><input type="checkbox" data-run-id="${esc(run.run_id)}" ${item.draft.selectedRunIds.has(run.run_id) ? 'checked' : ''} ${run.run_id === item.draft.baseRunId ? 'disabled' : ''}><span><b>${esc(selectionLabel(run.run_id))}</b><small>${run.run_id === item.draft.baseRunId ? '参照Run' : `严格可比 · ${esc(shortRunId(run.run_id))}`}</small></span></label>`).join('') || '<p>请先选择参照Run。</p>'}</div>`;
+  const repeats = repeatedRunIds([...state.runById.values()]);
+  const candidateRows = candidates.map(run => {
+    const selected = item.draft.selectedRunIds.has(run.run_id);
+    const duplicateScheme = state.workspace === 'multi' && !selected && [...item.draft.selectedRunIds].some(id => damageKey(id) === damageKey(run.run_id));
+    const disabled = run.run_id === item.draft.baseRunId || duplicateScheme;
+    return `<label class="candidate-row" title="${esc(runIdentity(run.run_id, { candidate: true }).detail)}"><input type="checkbox" data-run-id="${esc(run.run_id)}" ${selected ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span>${identityHtml(run.run_id, { candidate: true })}<small>${run.run_id === item.draft.baseRunId ? '参照Run' : duplicateScheme ? '该损毁方案已选择一次 Run' : '严格可比'}${repeats.has(run.run_id) ? ' · 同配置重复运行' : ''}</small></span></label>`;
+  }).join('');
+  refs.overlayBody.innerHTML = `<label class="overlay-title">参照Run<select id="comparisonBaseRun" class="control"><option value="">请选择</option>${baseOptions}</select>${item.draft.baseRunId ? identityHtml(item.draft.baseRunId, { candidate: true }) : ''}</label><p class="overlay-title">${overlayModeName()}</p><div class="candidate-list">${candidateRows || '<p>请先选择参照Run。</p>'}</div>`;
   $('comparisonBaseRun').addEventListener('change', async (event) => { item.draft.baseRunId = event.target.value || null; item.draft.selectedRunIds = new Set(item.draft.baseRunId ? [item.draft.baseRunId] : []); item.draft.comparableRuns = item.draft.baseRunId ? await loadComparable(item.draft.baseRunId, state.workspace === 'multi' ? 'multi_scenario' : 'configuration') : []; renderOverlay(); });
   refs.overlayBody.querySelectorAll('[data-run-id]').forEach((box) => box.addEventListener('change', () => { box.checked ? item.draft.selectedRunIds.add(box.dataset.runId) : item.draft.selectedRunIds.delete(box.dataset.runId); renderOverlay(); }));
-  const count = item.draft.selectedRunIds.size; refs.apply.disabled = count < 2 || count > (state.workspace === 'multi' ? 6 : 5);
+  const count = item.draft.selectedRunIds.size; refs.apply.disabled = count < 2 || (state.workspace === 'multi' && new Set([...item.draft.selectedRunIds].map(damageKey)).size !== count) || count > (state.workspace === 'multi' ? 6 : 5);
 }
 async function applyOverlay() {
-  const item = view(); refs.apply.disabled = true;
+  const mode = state.workspace; const item = view(); refs.apply.disabled = true;
   try {
     if (state.workspace === 'damage') {
       const row = state.damageCandidates[item.draft.damageIndex];
@@ -669,15 +794,72 @@ async function applyOverlay() {
       const runIds = [...item.draft.selectedRunIds]; const baseline = item.draft.baseRunId;
       item.selection = { run_ids: runIds, baseline_run_id: baseline, comparison_run_id: runIds.find((id) => id !== baseline) };
     }
-    item.payload = await requestComparison(state.workspace, item.selection); item.windowStart = 0; closeOverlay(); persistSessionState(); render();
+    if (await loadComparison(mode, item.selection)) { closeOverlay(); persistSessionState(); render(); }
   } catch (error) { showError(error); refs.apply.disabled = false; }
 }
 async function changeFocus() {
   if (state.workspace === 'damage' || !view().selection) return;
   const baseline = refs.focusBaseline.value; const comparison = refs.focusComparison.value;
   if (!baseline || !comparison || baseline === comparison) { showError(new Error('参照Run和对照Run必须不同。')); return; }
-  view().selection = { ...view().selection, baseline_run_id: baseline, comparison_run_id: comparison };
-  view().payload = await requestComparison(state.workspace, view().selection); view().windowStart = 0; persistSessionState(); render();
+  const mode = state.workspace;
+  const selection = { ...view().selection, baseline_run_id: baseline, comparison_run_id: comparison };
+  if (await loadComparison(mode, selection)) { persistSessionState(); render(); }
+}
+
+function captureComparisonSave() {
+  if (!state.canSaveComparison || !isComparisonWorkspace(state.workspace)) return null;
+  const item = view(); const focus = currentFocus(); const context = item.payload?.save_context;
+  if (item.comparisonLoading || !item.selection || !focus || focus.eligible !== true || item.payload?.eligible === false || !context?.comparison_version) return null;
+  const sources = context.sources;
+  const ids = state.workspace === 'damage' ? [item.selection.r0_run_id, item.selection.r1_run_id, item.selection.r2_run_id] : item.selection.run_ids;
+  if (!Array.isArray(sources) || sources.length !== ids.length || !ids.every((id) => sources.some((source) => source.run_id === id && /^[0-9a-f]{64}$/.test(source.snapshot_hash) && /^[0-9a-f]{64}$/.test(source.metrics_hash)))) return null;
+  const pair = [focus.baseline_run_id, focus.comparison_run_id];
+  const expectedPair = state.workspace === 'damage'
+    ? (item.activeDamageStage === 'cluster' ? [item.selection.r1_run_id, item.selection.r2_run_id] : [item.selection.r0_run_id, item.selection.r1_run_id])
+    : [item.selection.baseline_run_id, item.selection.comparison_run_id];
+  if (!pair[0] || pair[0] === pair[1] || pair.some((id, index) => id !== expectedPair[index])) return null;
+  const mode = state.workspace === 'damage' ? (item.activeDamageStage === 'cluster' ? 'cluster_effect' : 'damage_effect') : state.workspace === 'multi' ? 'multi_scenario' : 'configuration';
+  const body = structuredClone({ comparison_mode: mode, selection: item.selection, expected_provenance: sources, comparison_version: context.comparison_version });
+  return { workspace: state.workspace, stage: item.activeDamageStage, pair, body,
+    requestGeneration: item.comparisonGeneration, key: JSON.stringify([state.workspace, item.activeDamageStage, item.comparisonGeneration, body]) };
+}
+function renderSaveComparison() {
+  const snapshot = captureComparisonSave();
+  refs.saveComparison.classList.toggle('hidden', !state.canSaveComparison || !isComparisonWorkspace(state.workspace));
+  const pending = snapshot && state.pendingSaves.has(snapshot.key);
+  refs.saveComparison.disabled = !snapshot || pending;
+  refs.saveComparison.textContent = pending ? '保存中…' : state.workspace === 'damage'
+    ? `保存比较记录 · ${view().activeDamageStage === 'cluster' ? '组群调整' : '损毁影响'}` : '保存比较记录';
+  refs.saveComparison.title = snapshot ? `仅保存 ${snapshot.pair.join(' → ')}` : '等待当前重点对照完成并通过严格校验';
+}
+async function saveCurrentComparison() {
+  const snapshot = captureComparisonSave();
+  if (!snapshot || state.pendingSaves.has(snapshot.key)) return;
+  const operation = ++state.saveGeneration;
+  state.pendingSaves.add(snapshot.key); renderSaveComparison();
+  try {
+    const response = await apiFetch('/api/results/comparison-records', { method: 'POST', body: snapshot.body });
+    const record = response.record;
+    // The response belongs to the captured pair, even if the current UI has moved on.
+    if (record.base_run_id !== snapshot.pair[0] || record.compared_run_id !== snapshot.pair[1]) throw new Error('保存响应与请求对照不一致');
+    if (operation === state.saveGeneration) {
+      refs.saveStatus.textContent = `${response.created ? '已保存' : '已有记录'} ${snapshot.pair.map(shortRunId).join(' → ')}`;
+      refs.saveStatus.title = `${snapshot.pair.join(' → ')} · ${record.id}`;
+      refs.saveStatus.classList.remove('hidden');
+    }
+    // Refresh only the read-only history, without overwriting any comparison workspace.
+    if (state.assessment.comparisons) {
+      state.assessment.comparisons = await apiFetch('/api/results/assessment/comparisons?limit=50');
+      renderAssessmentComparisons();
+    }
+  } catch (error) {
+    if (operation === state.saveGeneration) {
+      refs.saveStatus.textContent = `保存 ${snapshot.pair.map(shortRunId).join(' → ')} 失败：${error.message || '请重试'}`;
+      refs.saveStatus.classList.remove('hidden');
+    }
+  } finally {
+    state.pendingSaves.delete(snapshot.key); renderSaveComparison();
+  }
 }
 
 function exportRequestBody() {
@@ -707,6 +889,7 @@ document.querySelectorAll('[data-analysis-theme]').forEach((button) => button.ad
 refs.timeStart.addEventListener('input', () => { view().windowStart = Number(refs.timeStart.value); renderChart(); persistSessionState(); });
 refs.focusBaseline.addEventListener('change', () => changeFocus().catch(showError)); refs.focusComparison.addEventListener('change', () => changeFocus().catch(showError));
 refs.change.addEventListener('click', () => openOverlay().catch(showError)); refs.search.addEventListener('input', () => { view().draft.search = refs.search.value; renderOverlay(); });
+refs.saveComparison.addEventListener('click', saveCurrentComparison);
 $('closeResultsOverlay').addEventListener('click', closeOverlay); $('cancelResultsOverlay').addEventListener('click', closeOverlay); refs.apply.addEventListener('click', () => applyOverlay());
 refs.exportButton.addEventListener('click', () => { const open = !refs.exportMenu.classList.contains('open'); refs.exportMenu.classList.toggle('open', open); refs.exportMenu.setAttribute('aria-hidden', String(!open)); });
 refs.exportMenu.addEventListener('click', (event) => { const button = event.target.closest('[data-export-format]'); if (button) { refs.exportMenu.classList.remove('open'); exportResults(button.dataset.exportFormat); } });
@@ -721,6 +904,11 @@ refs.assessmentAirportSelect.addEventListener('change', async () => {
 });
 refs.assessmentRunSelect.addEventListener('change', () => {
   state.assessment.runId = refs.assessmentRunSelect.value || null;
+  state.assessment.curveRunId = null;
+  renderAssessmentWorkspace();
+});
+refs.assessmentCurveRunSelect.addEventListener('change', () => {
+  state.assessment.curveRunId = refs.assessmentCurveRunSelect.value || null;
   renderAssessmentWorkspace();
 });
 globalThis.addEventListener('resize', () => {
@@ -728,5 +916,5 @@ globalThis.addEventListener('resize', () => {
 });
 
 restoreSessionState();
-getAccount().then((account) => { state.canExport = Boolean(account.permissions?.includes('results.export')); render(); }).catch(() => {});
+getAccount().then((account) => { state.canExport = Boolean(account.permissions?.includes('results.export')); state.canSaveComparison = Boolean(account.permissions?.includes('results.comparison.write')); render(); }).catch(() => {});
 loadInitial();

@@ -17,6 +17,7 @@ from backend.settings import AppSettings, SettingsError
 from backend.services.airport_seed_service import AirportSeedError, bootstrap_airport_master
 from backend.storage.airport_repository import AirportRepository
 from backend.storage.identifier_migration import backup_database, migrate_project_identifiers
+from backend.services.run_capacity_assessment import backfill_capacity
 
 
 def _settings() -> AppSettings:
@@ -118,9 +119,21 @@ def main(argv: list[str] | None = None) -> int:
         default=1.0,
         help="idle queue polling interval in seconds (0.2..60, default 1.0)",
     )
+    assessment_parser = sub.add_parser("assessment", help="maintain derived assessment artifacts")
+    assessment_commands = assessment_parser.add_subparsers(dest="assessment_command", required=True)
+    capacity_parser = assessment_commands.add_parser("backfill-capacity", help="project succeeded Run capacity facts")
+    selection = capacity_parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--run-id", action="append", dest="run_ids")
+    selection.add_argument("--all-succeeded", action="store_true")
+    capacity_parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
         settings = _settings()
+        if args.command == "assessment":
+            report = backfill_capacity(settings.db_path, run_ids=args.run_ids,
+                                      all_succeeded=args.all_succeeded, dry_run=args.dry_run)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 1 if report["failed"] or report["conflicts"] or report["not_succeeded"] else 0
         if args.command == "init":
             return _init_command(settings, non_interactive=bool(args.non_interactive))
         if args.command == "check":

@@ -105,7 +105,7 @@ def create_app(
     )
     if results_api is not None:
         app.register_blueprint(
-            create_results_blueprint(api=results_api, principal_resolver=principal_resolver)
+            create_results_blueprint(api=results_api, principal_resolver=principal_resolver, mutation_guard=mutation_guard)
         )
     if assessment_results_api is not None:
         app.register_blueprint(
